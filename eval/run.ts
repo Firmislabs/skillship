@@ -156,7 +156,7 @@ function computeQualitative(
     ? readFileSync(skillMdPath, "utf8")
     : "";
   const skillMdBytes = Buffer.byteLength(skillMd, "utf8");
-  return scoreQualitative(db, productId, skillMd, skillMdBytes, expected);
+  return scoreQualitative(db, productId, skillMd, skillMdBytes, expected, undefined, skillDir);
 }
 
 function printSummary(report: HarnessReport, outPath: string): void {

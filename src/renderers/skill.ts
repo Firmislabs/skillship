@@ -29,7 +29,7 @@ interface ProductView {
   readonly surfaces: SurfaceView[];
 }
 
-const DEFAULT_CAP = 50;
+const DEFAULT_CAP = Infinity;
 
 export function renderSkillMd(input: RenderSkillMdInput): string {
   const cap = input.operationIndexCap ?? DEFAULT_CAP;

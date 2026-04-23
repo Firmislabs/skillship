@@ -1,5 +1,7 @@
 // Qualitative skill scorer — 5-dimension deterministic rubric.
 // No LLM calls. Pure functions per dimension + composite.
+import { existsSync, readdirSync, statSync } from 'node:fs'
+import { join } from 'node:path'
 import type { Database as Sqlite3Database } from 'better-sqlite3'
 import { scoreCoverage, type ExpectedOp } from './scorers.js'
 
@@ -59,11 +61,26 @@ export function scoreStructure(skillMd: string): number {
   return Math.min(base + bonus, 1.1) // bonus can push above 1.0 (per spec)
 }
 
+// Check references/ directory: returns 1.0 if refs exist and count matches,
+// 0 if refs dir missing or empty when ops > 0.
+export function scoreStructureWithRefs(
+  skillDir: string,
+  opCount: number,
+): number {
+  if (opCount === 0) return 1.0
+  const refsDir = join(skillDir, 'references')
+  if (!existsSync(refsDir)) return 0
+  const files = readdirSync(refsDir).filter(f => f.endsWith('.md'))
+  if (files.length === 0) return 0
+  return files.length >= opCount ? 1.0 : files.length / opCount
+}
+
 // ---- Dimension 2: Density ------------------------------------------
 // Tokens ≈ bytes / 4 (GPT-style approximation: ~4 bytes per token on average).
 // Ideal band [200, 2000] tokens/op → 1.0.
 // Linear decay below 200 to 0 at 50 t/op.
 // Linear decay above 2000 to 0 at 10000 t/op.
+// Now includes per-op reference file bytes in the total.
 
 const DENSITY_IDEAL_LOW = 200
 const DENSITY_IDEAL_HIGH = 2000
@@ -71,9 +88,18 @@ const DENSITY_FLOOR = 50
 const DENSITY_CEILING = 10000
 
 export function scoreDensity(bytes: number, opCount: number): number {
+  return scoreDensityWithRefs(bytes, 0, opCount)
+}
+
+// scoreDensityWithRefs: bytes = SKILL.md size, refBytes = total references/ size
+export function scoreDensityWithRefs(
+  bytes: number,
+  refBytes: number,
+  opCount: number,
+): number {
   if (opCount === 0) return 0
   // bytes / 4 ≈ token count (documented: GPT-4 tokenizer averages ~4 bytes/token)
-  const tokensPerOp = bytes / 4 / opCount
+  const tokensPerOp = (bytes + refBytes) / 4 / opCount
   if (tokensPerOp < DENSITY_FLOOR) return 0
   if (tokensPerOp < DENSITY_IDEAL_LOW) {
     return (tokensPerOp - DENSITY_FLOOR) / (DENSITY_IDEAL_LOW - DENSITY_FLOOR)
@@ -156,10 +182,12 @@ export function scoreQualitative(
   skillMdBytes: number,
   expectedOps: readonly ExpectedOp[],
   now?: Date,
+  skillDir?: string,
 ): QualitativeReport {
   const structure = scoreStructure(skillMd)
   const opCount = countOperations(db, productId)
-  const density = scoreDensity(skillMdBytes, opCount)
+  const refBytes = skillDir !== undefined ? measureRefBytes(skillDir, opCount) : 0
+  const density = scoreDensityWithRefs(skillMdBytes, refBytes, opCount)
   const fetchedAts = loadFetchedAts(db, productId)
   const freshness = scoreFreshness(fetchedAts, now ?? new Date())
   const schemaFidelity = scoreSchemaFidelity(db, productId)
@@ -212,6 +240,20 @@ function countOperations(
     )
     .get(productId) as { cnt: number }
   return row.cnt
+}
+
+function measureRefBytes(skillDir: string, opCount: number): number {
+  if (opCount === 0) return 0
+  const refsDir = join(skillDir, 'references')
+  if (!existsSync(refsDir)) return 0
+  const files = readdirSync(refsDir).filter(f => f.endsWith('.md'))
+  return files.reduce((sum, f) => {
+    try {
+      return sum + statSync(join(refsDir, f)).size
+    } catch {
+      return sum
+    }
+  }, 0)
 }
 
 function scoreSingleOpFidelity(

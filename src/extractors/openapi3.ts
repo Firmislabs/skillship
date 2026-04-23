@@ -62,11 +62,11 @@ export function extractOpenApi3Doc(
   const claims: ExtractedClaim[] = [];
   const edges: ExtractedEdge[] = [];
 
-  const surfaceId = stableId("sfc", [
-    input.productId,
-    "rest",
-    doc.info?.version ?? "",
-  ]);
+  // Surface ID is stable per (product, kind) — version is excluded so that
+  // multiple spec files for the same product (e.g. openapi.json + openapi.yaml,
+  // or v1 + v2 SDK variants) all merge into one surface node rather than
+  // producing N duplicate surface rows.
+  const surfaceId = stableId("sfc", [input.productId, "rest"]);
   nodes.push({ id: surfaceId, kind: "surface", parent_id: input.productId });
   edges.push({
     kind: "exposes",

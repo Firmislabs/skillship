@@ -12,6 +12,7 @@ import type { Database as Sqlite3Database } from "better-sqlite3";
 import { openGraph } from "../graph/db.js";
 import { ingestConfig, type IngestSummary } from "../ingest/pipeline.js";
 import { renderSkillMd } from "../renderers/skill.js";
+import { renderOpReference } from "../renderers/opReference.js";
 import { renderMcpJson } from "../renderers/mcpJson.js";
 import {
   renderLlmsTxt,
@@ -89,17 +90,48 @@ function writeAll(
 ): BuildArtifact[] {
   const skillDir = join(outDir, "skills", slug(args.productName));
   mkdirSync(skillDir, { recursive: true });
-  const entries: [string, string][] = [
+  const topLevel: [string, string][] = [
     [join(skillDir, "SKILL.md"), renderSkill(db, args)],
     [join(outDir, ".mcp.json"), renderMcp(db, args)],
     [join(outDir, "llms.txt"), renderShortLlms(db, args)],
     [join(outDir, "llms-full.txt"), renderFullLlms(db, args)],
     [join(outDir, "manifest.json"), renderManifest(args)],
   ];
-  return entries.map(([path, content]) => {
+  const topArtifacts = topLevel.map(([path, content]) => {
     writeFileSync(path, content, "utf8");
     return { path, bytes: Buffer.byteLength(content, "utf8") };
   });
+  const refArtifacts = writeOpReferences(db, skillDir, args.productId);
+  return [...topArtifacts, ...refArtifacts];
+}
+
+function writeOpReferences(
+  db: Sqlite3Database,
+  skillDir: string,
+  productId: string,
+): BuildArtifact[] {
+  const refsDir = join(skillDir, "references");
+  mkdirSync(refsDir, { recursive: true });
+  const opIds = loadAllOpIds(db, productId);
+  return opIds.map(opId => {
+    const content = renderOpReference(db, opId, productId);
+    const filePath = join(refsDir, `${opId}.md`);
+    writeFileSync(filePath, content, "utf8");
+    return { path: filePath, bytes: Buffer.byteLength(content, "utf8") };
+  });
+}
+
+function loadAllOpIds(db: Sqlite3Database, productId: string): string[] {
+  const rows = db
+    .prepare(
+      `SELECT DISTINCT n.id
+         FROM nodes n
+         JOIN nodes s ON s.id = n.parent_id
+        WHERE n.kind = 'operation' AND s.parent_id = ?
+        ORDER BY n.id`,
+    )
+    .all(productId) as { id: string }[];
+  return rows.map(r => r.id);
 }
 
 function renderSkill(db: Sqlite3Database, args: WriteArgs): string {
