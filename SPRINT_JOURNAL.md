@@ -404,3 +404,26 @@ tests + exit codes / files changed / checkpoint tag or rollback reason.
   +tests/extractors/zodAst.test.ts,
   +tests/fixtures/zod-ast/mcp-tools.ts,
   ~package.json, ~package-lock.json (ts-morph).
+
+### T20 — src/extractors/docsMd.ts (TDD)
+- **Started:** 2026-04-23 15:10 local
+- **Status:** completed
+- **Pre-flight:** 112/112 tests EXIT=0.
+- **RED:** `tests/extractors/docsMd.test.ts` — 8 tests. Import failed
+  ("Failed to load url ../../src/extractors/docsMd.js"). RED verified.
+- **GREEN:** `extractDocsMd({bytes, source, productId})` enforces a
+  `text/markdown` or `text/plain` prefix on `source.content_type`
+  (charset params ignored). Non-matching content returns an empty
+  Extraction stamped with extractor + source_id. On match, emits one
+  `doc_page` parented to productId with claims:
+  - `url` (attested) from `source.url`
+  - `title` (attested if from first H1, else derived from URL slug)
+  - `content_hash` (attested) = sha256 hex of bytes
+  - `category` (derived) from URL path: drops the last segment, joins
+    the rest by `/`; single-segment URLs use the segment itself; no
+    path → claim omitted.
+- **Tests:** 8 passed first run. Full suite: 120 passed / 18 files. EXIT=0.
+- **Files:** +src/extractors/docsMd.ts (122 LOC),
+  +tests/extractors/docsMd.test.ts,
+  +tests/fixtures/docs-md/guide-auth.md,
+  +tests/fixtures/docs-md/no-h1.md.
