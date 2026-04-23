@@ -1,5 +1,7 @@
 import type { Database as Sqlite3Database } from "better-sqlite3";
 import { readBestClaim } from "./claims.js";
+import { renderAuthSection } from "./skill-auth.js";
+import { renderErrorsSection } from "./skill-errors.js";
 import type { SurfaceKind } from "../graph/types.js";
 
 export interface RenderSkillMdInput {
@@ -40,20 +42,37 @@ export function renderSkillMd(input: RenderSkillMdInput): string {
     description: view.description ?? defaultDescription(input.productName),
     allowedTools: input.allowedTools,
   });
-  const body = [
-    `# ${input.productName}`,
+  const authBlock = renderAuthSection(input.db, input.productId);
+  const errorsBlock = renderErrorsSection(input.db, input.productId);
+  const body = buildBody(input.productName, view, allOps, cap, authBlock, errorsBlock);
+  return `${frontmatter}\n\n${body}\n`;
+}
+
+function buildBody(
+  productName: string,
+  view: ProductView,
+  allOps: OperationView[],
+  cap: number,
+  authBlock: string | null,
+  errorsBlock: string | null,
+): string {
+  const sections: string[] = [
+    `# ${productName}`,
     "",
     describeProduct(view),
     "",
     "## Surfaces",
     "",
     renderSurfaces(view.surfaces),
-    "",
-    "## Operations",
-    "",
-    renderOperationIndex(allOps, cap),
-  ].join("\n");
-  return `${frontmatter}\n\n${body}\n`;
+  ];
+  if (authBlock !== null) {
+    sections.push("", authBlock);
+  }
+  sections.push("", "## Operations", "", renderOperationIndex(allOps, cap));
+  if (errorsBlock !== null) {
+    sections.push("", errorsBlock);
+  }
+  return sections.join("\n");
 }
 
 function buildView(input: RenderSkillMdInput): ProductView {
