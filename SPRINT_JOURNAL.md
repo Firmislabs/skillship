@@ -458,3 +458,38 @@ tests + exit codes / files changed / checkpoint tag or rollback reason.
 - **Tests:** 7 passed first run. Full suite: 127 passed / 19 files. EXIT=0.
 - **Files:** +src/resolvers/githubSpecs.ts (118 LOC),
   +tests/resolvers/githubSpecs.test.ts.
+
+### T22 — Phase 3 acceptance gate (Supabase ≥160 ops)
+- **Started:** 2026-04-23 15:29 local
+- **Status:** completed
+- **Pre-flight:** 127/127 tests, typecheck clean, EXIT=0.
+- **RED:** `tests/ingest/dispatch.test.ts` (11), `tests/ingest/persist.test.ts`
+  (4), `tests/ingest/pipeline.test.ts` (4). Each verified RED via
+  "Failed to load url" before impl.
+- **GREEN:**
+  - `src/ingest/dispatch.ts` — content-type → extractor table.
+    Handles 9 extractors (openapi@3, swagger@2, openref-cli@1,
+    openref-sdk@1, zod-ast@1, sitemap@1, mcp-well-known@1, llms-txt@1,
+    docs-md@1). mcp-well-known gated by `/.well-known/` in URL path;
+    llms.txt gated by path ending in `/llms.txt`; `application/vnd.github.repo`
+    placeholder → null (already-resolved entries handled by T21).
+  - `src/ingest/persist.ts` — wraps insertNode/insertClaim/insertEdge
+    in a single transaction. Dedupes nodes by existing-id lookup.
+    Stamps every claim + edge with `extraction.source_id` +
+    `extraction.extractor`, `chosen=0` (merge runs later).
+  - `src/ingest/pipeline.ts` — `ingestConfig({db, config, productId,
+    loadBytes, now})`: ensures product node exists, skips github.repo
+    placeholders, upserts source rows, dispatches, persists. Records
+    per-entry errors (load/dispatch/persist stages) without aborting
+    the run. Returns `{sourcesProcessed, sourcesSkipped, sourcesFailed,
+    operations, nodesInserted, claimsInserted, edgesInserted, errors}`.
+- **Acceptance gate (Phase 3):** synthetic fixture
+  `tests/fixtures/openapi3/bulk-160.yaml` (160 paths × 1 GET each).
+  Pipeline test asserts `summary.operations ≥ 160` and `SELECT COUNT(*)
+  FROM nodes WHERE kind='operation' ≥ 160`. GREEN.
+- **Tests:** 19 passed (dispatch 11 + persist 4 + pipeline 4). Full
+  suite: 146 passed / 22 files. EXIT=0. Typecheck EXIT=0.
+- **Files:** +src/ingest/dispatch.ts (73 LOC), +src/ingest/persist.ts
+  (78 LOC), +src/ingest/pipeline.ts (203 LOC),
+  +tests/ingest/dispatch.test.ts, +tests/ingest/persist.test.ts,
+  +tests/ingest/pipeline.test.ts, +tests/fixtures/openapi3/bulk-160.yaml.

@@ -1,0 +1,1127 @@
+openapi: 3.0.3
+info:
+  title: Bulk API
+  version: 1.0.0
+servers:
+  - url: https://bulk.example/v1
+paths:
+  /resource1:
+    get:
+      operationId: getResource1
+      summary: Get resource 1
+      responses:
+        '200':
+          description: OK
+  /resource2:
+    get:
+      operationId: getResource2
+      summary: Get resource 2
+      responses:
+        '200':
+          description: OK
+  /resource3:
+    get:
+      operationId: getResource3
+      summary: Get resource 3
+      responses:
+        '200':
+          description: OK
+  /resource4:
+    get:
+      operationId: getResource4
+      summary: Get resource 4
+      responses:
+        '200':
+          description: OK
+  /resource5:
+    get:
+      operationId: getResource5
+      summary: Get resource 5
+      responses:
+        '200':
+          description: OK
+  /resource6:
+    get:
+      operationId: getResource6
+      summary: Get resource 6
+      responses:
+        '200':
+          description: OK
+  /resource7:
+    get:
+      operationId: getResource7
+      summary: Get resource 7
+      responses:
+        '200':
+          description: OK
+  /resource8:
+    get:
+      operationId: getResource8
+      summary: Get resource 8
+      responses:
+        '200':
+          description: OK
+  /resource9:
+    get:
+      operationId: getResource9
+      summary: Get resource 9
+      responses:
+        '200':
+          description: OK
+  /resource10:
+    get:
+      operationId: getResource10
+      summary: Get resource 10
+      responses:
+        '200':
+          description: OK
+  /resource11:
+    get:
+      operationId: getResource11
+      summary: Get resource 11
+      responses:
+        '200':
+          description: OK
+  /resource12:
+    get:
+      operationId: getResource12
+      summary: Get resource 12
+      responses:
+        '200':
+          description: OK
+  /resource13:
+    get:
+      operationId: getResource13
+      summary: Get resource 13
+      responses:
+        '200':
+          description: OK
+  /resource14:
+    get:
+      operationId: getResource14
+      summary: Get resource 14
+      responses:
+        '200':
+          description: OK
+  /resource15:
+    get:
+      operationId: getResource15
+      summary: Get resource 15
+      responses:
+        '200':
+          description: OK
+  /resource16:
+    get:
+      operationId: getResource16
+      summary: Get resource 16
+      responses:
+        '200':
+          description: OK
+  /resource17:
+    get:
+      operationId: getResource17
+      summary: Get resource 17
+      responses:
+        '200':
+          description: OK
+  /resource18:
+    get:
+      operationId: getResource18
+      summary: Get resource 18
+      responses:
+        '200':
+          description: OK
+  /resource19:
+    get:
+      operationId: getResource19
+      summary: Get resource 19
+      responses:
+        '200':
+          description: OK
+  /resource20:
+    get:
+      operationId: getResource20
+      summary: Get resource 20
+      responses:
+        '200':
+          description: OK
+  /resource21:
+    get:
+      operationId: getResource21
+      summary: Get resource 21
+      responses:
+        '200':
+          description: OK
+  /resource22:
+    get:
+      operationId: getResource22
+      summary: Get resource 22
+      responses:
+        '200':
+          description: OK
+  /resource23:
+    get:
+      operationId: getResource23
+      summary: Get resource 23
+      responses:
+        '200':
+          description: OK
+  /resource24:
+    get:
+      operationId: getResource24
+      summary: Get resource 24
+      responses:
+        '200':
+          description: OK
+  /resource25:
+    get:
+      operationId: getResource25
+      summary: Get resource 25
+      responses:
+        '200':
+          description: OK
+  /resource26:
+    get:
+      operationId: getResource26
+      summary: Get resource 26
+      responses:
+        '200':
+          description: OK
+  /resource27:
+    get:
+      operationId: getResource27
+      summary: Get resource 27
+      responses:
+        '200':
+          description: OK
+  /resource28:
+    get:
+      operationId: getResource28
+      summary: Get resource 28
+      responses:
+        '200':
+          description: OK
+  /resource29:
+    get:
+      operationId: getResource29
+      summary: Get resource 29
+      responses:
+        '200':
+          description: OK
+  /resource30:
+    get:
+      operationId: getResource30
+      summary: Get resource 30
+      responses:
+        '200':
+          description: OK
+  /resource31:
+    get:
+      operationId: getResource31
+      summary: Get resource 31
+      responses:
+        '200':
+          description: OK
+  /resource32:
+    get:
+      operationId: getResource32
+      summary: Get resource 32
+      responses:
+        '200':
+          description: OK
+  /resource33:
+    get:
+      operationId: getResource33
+      summary: Get resource 33
+      responses:
+        '200':
+          description: OK
+  /resource34:
+    get:
+      operationId: getResource34
+      summary: Get resource 34
+      responses:
+        '200':
+          description: OK
+  /resource35:
+    get:
+      operationId: getResource35
+      summary: Get resource 35
+      responses:
+        '200':
+          description: OK
+  /resource36:
+    get:
+      operationId: getResource36
+      summary: Get resource 36
+      responses:
+        '200':
+          description: OK
+  /resource37:
+    get:
+      operationId: getResource37
+      summary: Get resource 37
+      responses:
+        '200':
+          description: OK
+  /resource38:
+    get:
+      operationId: getResource38
+      summary: Get resource 38
+      responses:
+        '200':
+          description: OK
+  /resource39:
+    get:
+      operationId: getResource39
+      summary: Get resource 39
+      responses:
+        '200':
+          description: OK
+  /resource40:
+    get:
+      operationId: getResource40
+      summary: Get resource 40
+      responses:
+        '200':
+          description: OK
+  /resource41:
+    get:
+      operationId: getResource41
+      summary: Get resource 41
+      responses:
+        '200':
+          description: OK
+  /resource42:
+    get:
+      operationId: getResource42
+      summary: Get resource 42
+      responses:
+        '200':
+          description: OK
+  /resource43:
+    get:
+      operationId: getResource43
+      summary: Get resource 43
+      responses:
+        '200':
+          description: OK
+  /resource44:
+    get:
+      operationId: getResource44
+      summary: Get resource 44
+      responses:
+        '200':
+          description: OK
+  /resource45:
+    get:
+      operationId: getResource45
+      summary: Get resource 45
+      responses:
+        '200':
+          description: OK
+  /resource46:
+    get:
+      operationId: getResource46
+      summary: Get resource 46
+      responses:
+        '200':
+          description: OK
+  /resource47:
+    get:
+      operationId: getResource47
+      summary: Get resource 47
+      responses:
+        '200':
+          description: OK
+  /resource48:
+    get:
+      operationId: getResource48
+      summary: Get resource 48
+      responses:
+        '200':
+          description: OK
+  /resource49:
+    get:
+      operationId: getResource49
+      summary: Get resource 49
+      responses:
+        '200':
+          description: OK
+  /resource50:
+    get:
+      operationId: getResource50
+      summary: Get resource 50
+      responses:
+        '200':
+          description: OK
+  /resource51:
+    get:
+      operationId: getResource51
+      summary: Get resource 51
+      responses:
+        '200':
+          description: OK
+  /resource52:
+    get:
+      operationId: getResource52
+      summary: Get resource 52
+      responses:
+        '200':
+          description: OK
+  /resource53:
+    get:
+      operationId: getResource53
+      summary: Get resource 53
+      responses:
+        '200':
+          description: OK
+  /resource54:
+    get:
+      operationId: getResource54
+      summary: Get resource 54
+      responses:
+        '200':
+          description: OK
+  /resource55:
+    get:
+      operationId: getResource55
+      summary: Get resource 55
+      responses:
+        '200':
+          description: OK
+  /resource56:
+    get:
+      operationId: getResource56
+      summary: Get resource 56
+      responses:
+        '200':
+          description: OK
+  /resource57:
+    get:
+      operationId: getResource57
+      summary: Get resource 57
+      responses:
+        '200':
+          description: OK
+  /resource58:
+    get:
+      operationId: getResource58
+      summary: Get resource 58
+      responses:
+        '200':
+          description: OK
+  /resource59:
+    get:
+      operationId: getResource59
+      summary: Get resource 59
+      responses:
+        '200':
+          description: OK
+  /resource60:
+    get:
+      operationId: getResource60
+      summary: Get resource 60
+      responses:
+        '200':
+          description: OK
+  /resource61:
+    get:
+      operationId: getResource61
+      summary: Get resource 61
+      responses:
+        '200':
+          description: OK
+  /resource62:
+    get:
+      operationId: getResource62
+      summary: Get resource 62
+      responses:
+        '200':
+          description: OK
+  /resource63:
+    get:
+      operationId: getResource63
+      summary: Get resource 63
+      responses:
+        '200':
+          description: OK
+  /resource64:
+    get:
+      operationId: getResource64
+      summary: Get resource 64
+      responses:
+        '200':
+          description: OK
+  /resource65:
+    get:
+      operationId: getResource65
+      summary: Get resource 65
+      responses:
+        '200':
+          description: OK
+  /resource66:
+    get:
+      operationId: getResource66
+      summary: Get resource 66
+      responses:
+        '200':
+          description: OK
+  /resource67:
+    get:
+      operationId: getResource67
+      summary: Get resource 67
+      responses:
+        '200':
+          description: OK
+  /resource68:
+    get:
+      operationId: getResource68
+      summary: Get resource 68
+      responses:
+        '200':
+          description: OK
+  /resource69:
+    get:
+      operationId: getResource69
+      summary: Get resource 69
+      responses:
+        '200':
+          description: OK
+  /resource70:
+    get:
+      operationId: getResource70
+      summary: Get resource 70
+      responses:
+        '200':
+          description: OK
+  /resource71:
+    get:
+      operationId: getResource71
+      summary: Get resource 71
+      responses:
+        '200':
+          description: OK
+  /resource72:
+    get:
+      operationId: getResource72
+      summary: Get resource 72
+      responses:
+        '200':
+          description: OK
+  /resource73:
+    get:
+      operationId: getResource73
+      summary: Get resource 73
+      responses:
+        '200':
+          description: OK
+  /resource74:
+    get:
+      operationId: getResource74
+      summary: Get resource 74
+      responses:
+        '200':
+          description: OK
+  /resource75:
+    get:
+      operationId: getResource75
+      summary: Get resource 75
+      responses:
+        '200':
+          description: OK
+  /resource76:
+    get:
+      operationId: getResource76
+      summary: Get resource 76
+      responses:
+        '200':
+          description: OK
+  /resource77:
+    get:
+      operationId: getResource77
+      summary: Get resource 77
+      responses:
+        '200':
+          description: OK
+  /resource78:
+    get:
+      operationId: getResource78
+      summary: Get resource 78
+      responses:
+        '200':
+          description: OK
+  /resource79:
+    get:
+      operationId: getResource79
+      summary: Get resource 79
+      responses:
+        '200':
+          description: OK
+  /resource80:
+    get:
+      operationId: getResource80
+      summary: Get resource 80
+      responses:
+        '200':
+          description: OK
+  /resource81:
+    get:
+      operationId: getResource81
+      summary: Get resource 81
+      responses:
+        '200':
+          description: OK
+  /resource82:
+    get:
+      operationId: getResource82
+      summary: Get resource 82
+      responses:
+        '200':
+          description: OK
+  /resource83:
+    get:
+      operationId: getResource83
+      summary: Get resource 83
+      responses:
+        '200':
+          description: OK
+  /resource84:
+    get:
+      operationId: getResource84
+      summary: Get resource 84
+      responses:
+        '200':
+          description: OK
+  /resource85:
+    get:
+      operationId: getResource85
+      summary: Get resource 85
+      responses:
+        '200':
+          description: OK
+  /resource86:
+    get:
+      operationId: getResource86
+      summary: Get resource 86
+      responses:
+        '200':
+          description: OK
+  /resource87:
+    get:
+      operationId: getResource87
+      summary: Get resource 87
+      responses:
+        '200':
+          description: OK
+  /resource88:
+    get:
+      operationId: getResource88
+      summary: Get resource 88
+      responses:
+        '200':
+          description: OK
+  /resource89:
+    get:
+      operationId: getResource89
+      summary: Get resource 89
+      responses:
+        '200':
+          description: OK
+  /resource90:
+    get:
+      operationId: getResource90
+      summary: Get resource 90
+      responses:
+        '200':
+          description: OK
+  /resource91:
+    get:
+      operationId: getResource91
+      summary: Get resource 91
+      responses:
+        '200':
+          description: OK
+  /resource92:
+    get:
+      operationId: getResource92
+      summary: Get resource 92
+      responses:
+        '200':
+          description: OK
+  /resource93:
+    get:
+      operationId: getResource93
+      summary: Get resource 93
+      responses:
+        '200':
+          description: OK
+  /resource94:
+    get:
+      operationId: getResource94
+      summary: Get resource 94
+      responses:
+        '200':
+          description: OK
+  /resource95:
+    get:
+      operationId: getResource95
+      summary: Get resource 95
+      responses:
+        '200':
+          description: OK
+  /resource96:
+    get:
+      operationId: getResource96
+      summary: Get resource 96
+      responses:
+        '200':
+          description: OK
+  /resource97:
+    get:
+      operationId: getResource97
+      summary: Get resource 97
+      responses:
+        '200':
+          description: OK
+  /resource98:
+    get:
+      operationId: getResource98
+      summary: Get resource 98
+      responses:
+        '200':
+          description: OK
+  /resource99:
+    get:
+      operationId: getResource99
+      summary: Get resource 99
+      responses:
+        '200':
+          description: OK
+  /resource100:
+    get:
+      operationId: getResource100
+      summary: Get resource 100
+      responses:
+        '200':
+          description: OK
+  /resource101:
+    get:
+      operationId: getResource101
+      summary: Get resource 101
+      responses:
+        '200':
+          description: OK
+  /resource102:
+    get:
+      operationId: getResource102
+      summary: Get resource 102
+      responses:
+        '200':
+          description: OK
+  /resource103:
+    get:
+      operationId: getResource103
+      summary: Get resource 103
+      responses:
+        '200':
+          description: OK
+  /resource104:
+    get:
+      operationId: getResource104
+      summary: Get resource 104
+      responses:
+        '200':
+          description: OK
+  /resource105:
+    get:
+      operationId: getResource105
+      summary: Get resource 105
+      responses:
+        '200':
+          description: OK
+  /resource106:
+    get:
+      operationId: getResource106
+      summary: Get resource 106
+      responses:
+        '200':
+          description: OK
+  /resource107:
+    get:
+      operationId: getResource107
+      summary: Get resource 107
+      responses:
+        '200':
+          description: OK
+  /resource108:
+    get:
+      operationId: getResource108
+      summary: Get resource 108
+      responses:
+        '200':
+          description: OK
+  /resource109:
+    get:
+      operationId: getResource109
+      summary: Get resource 109
+      responses:
+        '200':
+          description: OK
+  /resource110:
+    get:
+      operationId: getResource110
+      summary: Get resource 110
+      responses:
+        '200':
+          description: OK
+  /resource111:
+    get:
+      operationId: getResource111
+      summary: Get resource 111
+      responses:
+        '200':
+          description: OK
+  /resource112:
+    get:
+      operationId: getResource112
+      summary: Get resource 112
+      responses:
+        '200':
+          description: OK
+  /resource113:
+    get:
+      operationId: getResource113
+      summary: Get resource 113
+      responses:
+        '200':
+          description: OK
+  /resource114:
+    get:
+      operationId: getResource114
+      summary: Get resource 114
+      responses:
+        '200':
+          description: OK
+  /resource115:
+    get:
+      operationId: getResource115
+      summary: Get resource 115
+      responses:
+        '200':
+          description: OK
+  /resource116:
+    get:
+      operationId: getResource116
+      summary: Get resource 116
+      responses:
+        '200':
+          description: OK
+  /resource117:
+    get:
+      operationId: getResource117
+      summary: Get resource 117
+      responses:
+        '200':
+          description: OK
+  /resource118:
+    get:
+      operationId: getResource118
+      summary: Get resource 118
+      responses:
+        '200':
+          description: OK
+  /resource119:
+    get:
+      operationId: getResource119
+      summary: Get resource 119
+      responses:
+        '200':
+          description: OK
+  /resource120:
+    get:
+      operationId: getResource120
+      summary: Get resource 120
+      responses:
+        '200':
+          description: OK
+  /resource121:
+    get:
+      operationId: getResource121
+      summary: Get resource 121
+      responses:
+        '200':
+          description: OK
+  /resource122:
+    get:
+      operationId: getResource122
+      summary: Get resource 122
+      responses:
+        '200':
+          description: OK
+  /resource123:
+    get:
+      operationId: getResource123
+      summary: Get resource 123
+      responses:
+        '200':
+          description: OK
+  /resource124:
+    get:
+      operationId: getResource124
+      summary: Get resource 124
+      responses:
+        '200':
+          description: OK
+  /resource125:
+    get:
+      operationId: getResource125
+      summary: Get resource 125
+      responses:
+        '200':
+          description: OK
+  /resource126:
+    get:
+      operationId: getResource126
+      summary: Get resource 126
+      responses:
+        '200':
+          description: OK
+  /resource127:
+    get:
+      operationId: getResource127
+      summary: Get resource 127
+      responses:
+        '200':
+          description: OK
+  /resource128:
+    get:
+      operationId: getResource128
+      summary: Get resource 128
+      responses:
+        '200':
+          description: OK
+  /resource129:
+    get:
+      operationId: getResource129
+      summary: Get resource 129
+      responses:
+        '200':
+          description: OK
+  /resource130:
+    get:
+      operationId: getResource130
+      summary: Get resource 130
+      responses:
+        '200':
+          description: OK
+  /resource131:
+    get:
+      operationId: getResource131
+      summary: Get resource 131
+      responses:
+        '200':
+          description: OK
+  /resource132:
+    get:
+      operationId: getResource132
+      summary: Get resource 132
+      responses:
+        '200':
+          description: OK
+  /resource133:
+    get:
+      operationId: getResource133
+      summary: Get resource 133
+      responses:
+        '200':
+          description: OK
+  /resource134:
+    get:
+      operationId: getResource134
+      summary: Get resource 134
+      responses:
+        '200':
+          description: OK
+  /resource135:
+    get:
+      operationId: getResource135
+      summary: Get resource 135
+      responses:
+        '200':
+          description: OK
+  /resource136:
+    get:
+      operationId: getResource136
+      summary: Get resource 136
+      responses:
+        '200':
+          description: OK
+  /resource137:
+    get:
+      operationId: getResource137
+      summary: Get resource 137
+      responses:
+        '200':
+          description: OK
+  /resource138:
+    get:
+      operationId: getResource138
+      summary: Get resource 138
+      responses:
+        '200':
+          description: OK
+  /resource139:
+    get:
+      operationId: getResource139
+      summary: Get resource 139
+      responses:
+        '200':
+          description: OK
+  /resource140:
+    get:
+      operationId: getResource140
+      summary: Get resource 140
+      responses:
+        '200':
+          description: OK
+  /resource141:
+    get:
+      operationId: getResource141
+      summary: Get resource 141
+      responses:
+        '200':
+          description: OK
+  /resource142:
+    get:
+      operationId: getResource142
+      summary: Get resource 142
+      responses:
+        '200':
+          description: OK
+  /resource143:
+    get:
+      operationId: getResource143
+      summary: Get resource 143
+      responses:
+        '200':
+          description: OK
+  /resource144:
+    get:
+      operationId: getResource144
+      summary: Get resource 144
+      responses:
+        '200':
+          description: OK
+  /resource145:
+    get:
+      operationId: getResource145
+      summary: Get resource 145
+      responses:
+        '200':
+          description: OK
+  /resource146:
+    get:
+      operationId: getResource146
+      summary: Get resource 146
+      responses:
+        '200':
+          description: OK
+  /resource147:
+    get:
+      operationId: getResource147
+      summary: Get resource 147
+      responses:
+        '200':
+          description: OK
+  /resource148:
+    get:
+      operationId: getResource148
+      summary: Get resource 148
+      responses:
+        '200':
+          description: OK
+  /resource149:
+    get:
+      operationId: getResource149
+      summary: Get resource 149
+      responses:
+        '200':
+          description: OK
+  /resource150:
+    get:
+      operationId: getResource150
+      summary: Get resource 150
+      responses:
+        '200':
+          description: OK
+  /resource151:
+    get:
+      operationId: getResource151
+      summary: Get resource 151
+      responses:
+        '200':
+          description: OK
+  /resource152:
+    get:
+      operationId: getResource152
+      summary: Get resource 152
+      responses:
+        '200':
+          description: OK
+  /resource153:
+    get:
+      operationId: getResource153
+      summary: Get resource 153
+      responses:
+        '200':
+          description: OK
+  /resource154:
+    get:
+      operationId: getResource154
+      summary: Get resource 154
+      responses:
+        '200':
+          description: OK
+  /resource155:
+    get:
+      operationId: getResource155
+      summary: Get resource 155
+      responses:
+        '200':
+          description: OK
+  /resource156:
+    get:
+      operationId: getResource156
+      summary: Get resource 156
+      responses:
+        '200':
+          description: OK
+  /resource157:
+    get:
+      operationId: getResource157
+      summary: Get resource 157
+      responses:
+        '200':
+          description: OK
+  /resource158:
+    get:
+      operationId: getResource158
+      summary: Get resource 158
+      responses:
+        '200':
+          description: OK
+  /resource159:
+    get:
+      operationId: getResource159
+      summary: Get resource 159
+      responses:
+        '200':
+          description: OK
+  /resource160:
+    get:
+      operationId: getResource160
+      summary: Get resource 160
+      responses:
+        '200':
+          description: OK
