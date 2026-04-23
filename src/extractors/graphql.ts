@@ -145,7 +145,9 @@ function printType(t: TypeNode): string {
 }
 
 function printArg(arg: InputValueDefinitionNode): string {
-  return `${arg.name.value}: ${printType(arg.type)}`
+  const base = `${arg.name.value}: ${printType(arg.type)}`
+  const desc = arg.description?.value?.trim()
+  return desc !== undefined && desc.length > 0 ? `${base} — ${desc}` : base
 }
 
 function emitDefaultBearerAuth(

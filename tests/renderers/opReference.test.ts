@@ -207,6 +207,30 @@ describe('renderOpReference', () => {
     expect(md).toMatch(/string\s*\(open\|closed\|draft\)/)
   })
 
+  test('falls back to params claim list when no parameter child nodes exist', () => {
+    const db = graph.db
+    const NOW2 = '2026-04-23T00:00:00Z'
+    db.prepare(
+      `INSERT INTO sources (id, surface, url, content_type, fetched_at, bytes, cache_path)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+    ).run('src-gql', 'graphql', 'https://x/schema.graphql', 'application/graphql', NOW2, 100, '/tmp/x')
+    db.prepare(
+      `INSERT INTO nodes (id, kind, parent_id, created_at, updated_at)
+       VALUES (?, 'operation', ?, ?, ?)`,
+    ).run('op-fb-1', 'p-fb', NOW2, NOW2)
+    const insertClaim = db.prepare(
+      `INSERT INTO claims (id, node_id, field, value_json, source_id, extractor, extracted_at, confidence, chosen)
+       VALUES (?, ?, ?, ?, 'src-gql', 'graphql@1', ?, 'attested', 1)`,
+    )
+    insertClaim.run('c1', 'op-fb-1', 'method', JSON.stringify('QUERY'), NOW2)
+    insertClaim.run('c2', 'op-fb-1', 'path_or_name', JSON.stringify('issue'), NOW2)
+    insertClaim.run('c3', 'op-fb-1', 'params', JSON.stringify(['id: ID!', 'teamId: String']), NOW2)
+    const md = renderOpReference(db, 'op-fb-1', 'p-fb')
+    expect(md).toMatch(/## Parameters/)
+    expect(md).toMatch(/id: ID!/)
+    expect(md).toMatch(/teamId: String/)
+  })
+
   test('returns non-empty string for any valid opId', async () => {
     await ingestOpenapi(graph, 'tests/fixtures/openapi3/minimal.yaml', 'p-ref6', 'ref6.example')
     const opId = getFirstOpId(graph, 'p-ref6')

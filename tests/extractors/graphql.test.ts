@@ -294,6 +294,30 @@ describe("extractGraphql", () => {
     expect(typeClaim?.confidence).toBe("inferred")
   })
 
+  test("printArg includes argument description when present", async () => {
+    const src = `
+      type Query {
+        issue(
+          """The unique ID of the issue."""
+          id: ID!
+          teamId: String
+        ): Issue
+      }
+    `
+    const result = await extractGraphql({
+      bytes: sdl(src),
+      source: fakeSource(),
+      productId: "prod-arg-desc",
+    })
+    const params = result.claims.find(c => c.field === "params")
+    expect(params).toBeDefined()
+    const val = params?.value as string[]
+    // Arg with description should include it after an em-dash separator
+    expect(val).toContain("id: ID! — The unique ID of the issue.")
+    // Arg without description keeps the original format
+    expect(val).toContain("teamId: String")
+  })
+
   test("does not emit auth_scheme when SDL has no operations", async () => {
     const src = `
       type Foo { x: String }

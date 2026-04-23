@@ -51,6 +51,11 @@ export function renderOpReference(
 
   if (params.length > 0) {
     sections.push(...renderParametersSection(params))
+  } else {
+    const fallback = readParamsClaimList(db, opId)
+    if (fallback.length > 0) {
+      sections.push(...renderParamsFallbackSection(fallback))
+    }
   }
   const requestExample = readExampleClaim(db, opId, 'request_example')
   if (requestExample !== undefined) {
@@ -86,6 +91,32 @@ function readExampleClaim(
   } catch {
     return undefined
   }
+}
+
+function readParamsClaimList(
+  db: Sqlite3Database,
+  opId: string,
+): readonly string[] {
+  const row = db
+    .prepare(
+      `SELECT value_json FROM claims WHERE node_id = ? AND field = 'params' ORDER BY id LIMIT 1`,
+    )
+    .get(opId) as { value_json: string } | undefined
+  if (row === undefined) return []
+  try {
+    const parsed = JSON.parse(row.value_json)
+    if (!Array.isArray(parsed)) return []
+    return parsed.filter((v): v is string => typeof v === 'string')
+  } catch {
+    return []
+  }
+}
+
+function renderParamsFallbackSection(items: readonly string[]): string[] {
+  const lines: string[] = ['## Parameters', '']
+  for (const item of items) lines.push(`- ${item}`)
+  lines.push('')
+  return lines
 }
 
 function renderExampleSection(heading: string, example: unknown): string[] {
