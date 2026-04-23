@@ -7,7 +7,7 @@
     "skillship": "./dist/cli/index.js"
   },
   "scripts": {
-    "build": "tsc",
+    "build": "tsc && cp src/graph/schema.sql dist/graph/schema.sql",
     "test": "vitest run",
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit",
