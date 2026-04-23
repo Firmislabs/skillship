@@ -1,0 +1,7 @@
+{
+  "resource": "https://mcp.example.com/mcp",
+  "authorization_servers": ["https://auth.example.com"],
+  "scopes_supported": ["read", "write", "admin"],
+  "bearer_methods_supported": ["header"],
+  "resource_documentation": "https://docs.example.com/mcp"
+}

@@ -348,3 +348,29 @@ tests + exit codes / files changed / checkpoint tag or rollback reason.
 - **Files:** +src/extractors/llmsTxt.ts (105 LOC),
   +tests/extractors/llmsTxt.test.ts,
   +tests/fixtures/llms-txt/supa.txt.
+
+### T18 — src/extractors/mcpWellKnown.ts (TDD)
+- **Started:** 2026-04-23 14:40 local
+- **Status:** completed
+- **Pre-flight:** 97/97 tests EXIT=0.
+- **RED:** `tests/extractors/mcpWellKnown.test.ts` — 8 tests. Import
+  failed ("Failed to load url ../../src/extractors/mcpWellKnown.js").
+  RED verified.
+- **GREEN:** `extractMcpWellKnown({bytes, source, productId})` parses
+  the RFC 9728 JSON body. Emits one `surface(kind=surface)` plus one
+  `auth_scheme` node. Surface gets `base_url` claim from `resource`
+  (attested) and `spec_url` from `source.url` (derived). Auth_scheme
+  gets `type="oauth2"` (derived) plus per-field `attested` claims for
+  every present array (`authorization_servers`, `scopes_supported`,
+  `bearer_methods_supported`) AND a bundled `flows` claim
+  (`{authorization_servers?, scopes?, bearer_methods?}`). One
+  `auth_requires` edge wired surface → auth_scheme. Invalid JSON
+  returns an empty Extraction stamped with extractor + source_id.
+- **Cycle 2:** `exactOptionalPropertyTypes: true` rejected the literal
+  `{ resource: undefined, ... }`; refactored `safeParse` to build the
+  Parsed object via conditional `Object.assign` so absent keys are
+  truly absent.
+- **Tests:** 8 passed. Full suite: 105 passed / 16 files. EXIT=0.
+- **Files:** +src/extractors/mcpWellKnown.ts (157 LOC),
+  +tests/extractors/mcpWellKnown.test.ts,
+  +tests/fixtures/mcp-well-known/sample.json.
