@@ -521,3 +521,27 @@ tests + exit codes / files changed / checkpoint tag or rollback reason.
 - **Full suite:** 152 passed / 23 files. EXIT=0. Typecheck EXIT=0.
 - **Files:** +src/renderers/skill.ts (176 LOC),
   +tests/renderers/skill.test.ts (174 LOC).
+
+### T24 — .mcp.json renderer (TDD)
+- **Started:** 2026-04-23 15:46 local
+- **Status:** completed
+- **Pre-flight:** 152/152 tests, typecheck clean.
+- **RED:** `tests/renderers/mcpJson.test.ts` — 6 tests (empty mcpServers
+  on no-mcp product, http entry from mcp-well-known, non-mcp surfaces
+  ignored, surface without base_url skipped, pretty-printed output,
+  serverName defaults to productId). Module-not-found RED verified.
+- **GREEN:** `renderMcpJson({db, productId, serverName?})` returns a
+  `\n`-terminated 2-space-indented JSON string. MCP surfaces are
+  detected by joining claims.source_id → sources.surface='mcp' (not by
+  a "type" claim on the surface node, because the mcp-well-known
+  extractor only claims base_url/spec_url on the surface and emits the
+  oauth2 type on the linked auth_scheme node). For each MCP surface
+  with a base_url claim, emit
+  `{ type: "http", url: <base_url> }`. Surface without base_url is
+  skipped. With one MCP surface the key is the passed serverName
+  (default productId); with multiple, keys are suffixed `-1`, `-2`, …
+- **Tests:** 3 failed first run (no match on "type" claim — fixed by
+  joining against sources.surface instead). 6 passed after fix.
+- **Full suite:** 158 passed / 24 files. EXIT=0. Typecheck EXIT=0.
+- **Files:** +src/renderers/mcpJson.ts (69 LOC),
+  +tests/renderers/mcpJson.test.ts.
