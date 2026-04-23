@@ -573,3 +573,36 @@ tests + exit codes / files changed / checkpoint tag or rollback reason.
 - **Files:** +src/renderers/llmsTxt.ts (100 LOC),
   +src/renderers/claims.ts (25 LOC, shared helper),
   +tests/renderers/llmsTxt.test.ts.
+
+### T26 — skillship build CLI command (TDD)
+- **Started:** 2026-04-23 15:54 local
+- **Status:** completed
+- **Pre-flight:** 165/165 tests EXIT=0, typecheck clean.
+- **RED:** `tests/cli/build.test.ts` — 6 tests: produces
+  SKILL.md/.mcp.json/llms.txt/llms-full.txt artifacts; SKILL.md has
+  YAML frontmatter and `## Operations` index; .mcp.json parses as
+  JSON with one server; llms.txt excludes optional while
+  llms-full.txt includes it; manifest.json summarises
+  product/sources with sha256; missing `.skillship/config.yaml`
+  throws. Module-not-found RED verified.
+- **GREEN:** `src/cli/build.ts` — `runBuild({in, out, productId?,
+  description?})`: reads `.skillship/config.yaml`, opens
+  `.skillship/graph.sqlite`, loads source bytes from
+  `.skillship/sources/<sha>.<ext>`, derives productId from
+  sha1(domain) when absent, runs `ingestConfig`, then writes five
+  artifacts under `out/`:
+  - `skills/<slug>/SKILL.md` (via `renderSkillMd`)
+  - `.mcp.json` (via `renderMcpJson`)
+  - `llms.txt` / `llms-full.txt` (via llms renderers)
+  - `manifest.json` — `{product:{id,domain}, sources:[{url,surface,
+    sha256,content_type}]}`
+  Wired into CLI at `src/cli/index.ts` as `skillship build
+  [--in <dir>] [--out <dir>] [--product-id <id>]`.
+- **Refactor:** `writeAll` dropped from 55 to 19 lines by extracting
+  5 per-artifact render helpers (renderSkill, renderMcp,
+  renderShortLlms, renderFullLlms, renderManifest). All five
+  helpers under 10 lines. File total 184 LOC (under 300 cap).
+- **Tests:** 6 passed first run after RED.
+- **Full suite:** 171 passed / 26 files. EXIT=0. Typecheck EXIT=0.
+- **Files:** +src/cli/build.ts, ~src/cli/index.ts (added build
+  subcommand), +tests/cli/build.test.ts.

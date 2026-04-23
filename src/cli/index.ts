@@ -1,6 +1,8 @@
 #!/usr/bin/env node
 import { Command } from "commander";
+import { join } from "node:path";
 import { runInit } from "./init.js";
+import { runBuild } from "./build.js";
 
 function printConfigSummary(
   configPath: string,
@@ -50,7 +52,35 @@ function makeProgram(): Command {
       );
     });
 
+  program
+    .command("build")
+    .description("Ingest sources into the graph and render skill artifacts")
+    .option("--in <dir>", "project directory (defaults to cwd)")
+    .option("--out <dir>", "output directory (defaults to <in>/dist)")
+    .option("--product-id <id>", "override product node id")
+    .action(async (opts: {
+      in?: string;
+      out?: string;
+      productId?: string;
+    }) => {
+      const inDir = opts.in ?? process.cwd();
+      const outDir = opts.out ?? join(inDir, "dist");
+      const result = await runBuild({
+        in: inDir,
+        out: outDir,
+        ...(opts.productId !== undefined ? { productId: opts.productId } : {}),
+      });
+      printBuildSummary(result.artifacts.map((a) => a.path), outDir);
+    });
+
   return program;
+}
+
+function printBuildSummary(paths: readonly string[], outDir: string): void {
+  process.stdout.write(
+    `skillship build: wrote ${paths.length} artifacts to ${outDir}\n`,
+  );
+  for (const p of paths) process.stdout.write(`  - ${p}\n`);
 }
 
 export async function main(argv: readonly string[]): Promise<void> {
