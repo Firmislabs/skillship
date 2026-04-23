@@ -606,3 +606,40 @@ tests + exit codes / files changed / checkpoint tag or rollback reason.
 - **Full suite:** 171 passed / 26 files. EXIT=0. Typecheck EXIT=0.
 - **Files:** +src/cli/build.ts, ~src/cli/index.ts (added build
   subcommand), +tests/cli/build.test.ts.
+
+### T27 — Phase 4 acceptance gate (quick_validate.py)
+- **Started:** 2026-04-23 15:59 local
+- **Status:** completed
+- **Pre-flight:** 171/171 tests EXIT=0, typecheck clean.
+- **Validator:** downloaded anthropics/skills/skills/skill-creator/
+  scripts/quick_validate.py into
+  `vendor/anthropic-skills/quick_validate.py` (102 LOC, SHA
+  ed8e1dd). It enforces:
+  - `SKILL.md` exists
+  - starts with `---` and parses as YAML dict
+  - allowed keys only: name, description, license, allowed-tools,
+    metadata, compatibility
+  - name required, kebab-case, ≤64 chars
+  - description required, no angle brackets, ≤1024 chars
+- **RED→GREEN:** `tests/cli/acceptance-phase4.test.ts` — 3 tests:
+  validator file exists; runBuild output passes
+  quick_validate.py via `python3 <validator> <skillDir>` exit 0
+  and stdout "Skill is valid!"; validator correctly rejects empty
+  dir. All 3 passed first run (existing renderer already
+  spec-aware from T23). This is an acceptance gate against an
+  external validator, not TDD for new behavior.
+- **Manual sanity check:** built project JS (`npm run build`),
+  seeded tmp project with OpenAPI minimal fixture, ran
+  `node dist/cli/index.js build --in $TMP --out $TMP/dist`. CLI
+  wrote 5 artifacts. `python3 vendor/anthropic-skills/
+  quick_validate.py $TMP/dist/skills/acme-example` → "Skill is
+  valid!" EXIT=0. Frontmatter emitted:
+    ---
+    name: acme-example
+    description: Agent onboarding skill for acme.example.
+    allowed-tools: Read, Bash
+    ---
+- **Full suite:** 174 passed / 27 files. EXIT=0. Typecheck EXIT=0.
+- **Files:** +vendor/anthropic-skills/quick_validate.py (upstream
+  copy), +tests/cli/acceptance-phase4.test.ts.
+- **Phase-4 acceptance:** PASSED.
