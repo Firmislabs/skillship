@@ -427,3 +427,34 @@ tests + exit codes / files changed / checkpoint tag or rollback reason.
   +tests/extractors/docsMd.test.ts,
   +tests/fixtures/docs-md/guide-auth.md,
   +tests/fixtures/docs-md/no-h1.md.
+
+### T21 — src/resolvers/githubSpecs.ts (TDD)
+- **Started:** 2026-04-23 15:15 local
+- **Status:** completed
+- **Pre-flight:** 120/120 tests EXIT=0.
+- **RED:** `tests/resolvers/githubSpecs.test.ts` — 7 tests. Import
+  failed ("Failed to load url ../../src/resolvers/githubSpecs.js").
+  RED verified.
+- **GREEN:** `resolveGithubSpecs(entries, fetcher, opts?)` is a pure
+  transformer. Pass-through for any entry whose `content_type` is not
+  `application/vnd.github.repo`. For placeholder entries it calls the
+  injected `GithubRepoFetcher(repoUrl) → readonly GithubBlob[]` and
+  classifies each blob's path:
+  - `openapi.{yaml|yml|json}` → `application/openapi+{yaml|json}`,
+    surface=rest
+  - `swagger.{yaml|yml|json}` → `application/swagger+{yaml|json}`,
+    surface=rest
+  - `openref/cli/...yaml` or `cli.yaml` → `application/x-openref-cli+yaml`,
+    surface=cli
+  - `openref/...yaml` (any other) → `application/x-openref-sdk+yaml`,
+    surface=sdk
+  - Anything else (README, .ts, etc.) → skipped
+  Each surviving blob becomes a `ConfigSourceEntry` with sha256 of the
+  blob bytes, `url = repoUrl + "/blob/HEAD/" + path`, and the injected
+  `now()` (defaulting to `new Date().toISOString()`). Order is
+  preserved around expansions; placeholder entries with zero matches
+  are dropped. The classified surface beats the placeholder's surface
+  unless the classifier returns `docs` (defensive default).
+- **Tests:** 7 passed first run. Full suite: 127 passed / 19 files. EXIT=0.
+- **Files:** +src/resolvers/githubSpecs.ts (118 LOC),
+  +tests/resolvers/githubSpecs.test.ts.
