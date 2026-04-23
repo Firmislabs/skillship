@@ -374,3 +374,33 @@ tests + exit codes / files changed / checkpoint tag or rollback reason.
 - **Files:** +src/extractors/mcpWellKnown.ts (157 LOC),
   +tests/extractors/mcpWellKnown.test.ts,
   +tests/fixtures/mcp-well-known/sample.json.
+
+### T19 — src/extractors/zodAst.ts (TDD)
+- **Started:** 2026-04-23 14:55 local
+- **Status:** completed
+- **Pre-flight:** 105/105 tests EXIT=0.
+- **Dep added:** `ts-morph@^28.0.0` (devDependency).
+- **RED:** `tests/extractors/zodAst.test.ts` — 7 tests. Import failed
+  ("Failed to load url ../../src/extractors/zodAst.js"). RED verified.
+- **GREEN:** `extractZodAst({bytes, source, productId})` parses TS via
+  `ts-morph` `useInMemoryFileSystem`, walks exported VariableStatements,
+  matches object literals carrying `name` (string) + `description`
+  (string) + `inputSchema: z.object({...})` + `annotations` (object).
+  Skips literals missing any of the four. Per matched tool emits one
+  `operation(method=mcp)` parented to a single `surface(zod-ast)` node,
+  plus per-property `parameter(location=body)` nodes. MCP annotation
+  hints map to graph fields: `readOnlyHint→is_read_only`,
+  `destructiveHint→is_destructive`, `idempotentHint→is_idempotent`,
+  `openWorldHint→opens_world` (each `attested`). Zod chain analysed for
+  base method (`string|number|boolean|array|enum|object`) and `.optional()`
+  presence → `type` + `required` claims (`attested`). Structural edges
+  `has_operation` and `has_parameter` emitted.
+- **Cycle 2:** unused `PropertyAssignment` import → removed.
+- **Cycle 3:** zodAst.ts hit 316 LOC (>300 cap) → split chain analysis
+  into `src/extractors/zodAst-types.ts` (46 LOC). zodAst.ts now 272 LOC.
+- **Tests:** 7 passed first run. Full suite: 112 passed / 17 files. EXIT=0.
+- **Files:** +src/extractors/zodAst.ts (272 LOC),
+  +src/extractors/zodAst-types.ts (46 LOC),
+  +tests/extractors/zodAst.test.ts,
+  +tests/fixtures/zod-ast/mcp-tools.ts,
+  ~package.json, ~package-lock.json (ts-morph).
