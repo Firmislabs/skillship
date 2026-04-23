@@ -13,7 +13,8 @@
     "typecheck": "tsc --noEmit",
     "lint": "tsc --noEmit",
     "eval:build": "tsc -p tsconfig.eval.json && cp src/graph/schema.sql dist-eval/src/graph/schema.sql",
-    "eval": "npm run eval:build && node dist-eval/eval/run.js"
+    "eval": "npm run eval:build && node dist-eval/eval/run.js",
+    "eval:compare": "npm run eval:build && node dist-eval/eval/compare.js"
   },
   "engines": {
     "node": ">=20"

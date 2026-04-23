@@ -6,6 +6,7 @@ coverage/
 # Eval harness working state (regenerable)
 eval/projects/
 eval/out/
+eval/external/
 .DS_Store
 .env
 .env.local
