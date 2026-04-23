@@ -265,3 +265,26 @@ tests + exit codes / files changed / checkpoint tag or rollback reason.
   +tests/extractors/swagger2.test.ts,
   +tests/fixtures/swagger2/gotrue-like.json,
   modified src/extractors/openapi3.ts (+`extractOpenApi3Doc` export).
+
+### T14 — src/extractors/openrefCli.ts (TDD)
+- **Started:** 2026-04-23 13:04 local
+- **Status:** completed
+- **Pre-flight:** 70/70 tests EXIT=0.
+- **RED:** `tests/extractors/openrefCli.test.ts` — 7 tests. First run
+  failed import. RED verified.
+- **GREEN:** `extractOpenrefCli({bytes, source, productId})` parses
+  openref CLI YAML, emits one `surface(kind=cli)` per product, recurses
+  over `commands[].subcommands[]` to emit one `operation` per command
+  node with `method="cli"` and `path_or_name = joined command chain`
+  (e.g. `"db reset"`). Flags become `parameter` nodes with
+  `location="flag"`, capturing `name/type/required/default/description`.
+  Structural `exposes | has_operation | has_parameter` edges wired.
+  All claims `confidence="attested"` with YAML-style `$.commands[i]
+  .subcommands[j]...` span_paths.
+- **Cycle 2:** two assertions expected 5 parameter nodes; the fixture
+  only contains 4 flags (init.force, init.workdir, db-reset.yes,
+  db-diff.schema). Test-count fix, extractor unchanged.
+- **Tests:** 7 passed. Full suite: 77 passed / 12 files. EXIT=0.
+- **Files:** +src/extractors/openrefCli.ts (261 LOC),
+  +tests/extractors/openrefCli.test.ts,
+  +tests/fixtures/openref-cli/supa-cli.yaml.

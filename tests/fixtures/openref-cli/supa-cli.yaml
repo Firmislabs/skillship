@@ -1,0 +1,44 @@
+clispec: "001"
+info:
+  id: supa-cli
+  version: 2.0.0
+  title: Supa CLI
+  language: en
+commands:
+  - id: init
+    title: supa init
+    summary: Initialize a local project
+    description: Creates .supa/config and bootstraps a workspace.
+    usage: supa init [flags]
+    flags:
+      - id: force
+        name: "-f, --force"
+        description: Overwrite existing config
+        default_value: "false"
+        type: boolean
+      - id: workdir
+        name: "-w, --workdir"
+        description: Override the working directory
+        type: string
+  - id: db
+    title: supa db
+    summary: Database commands
+    subcommands:
+      - id: reset
+        title: supa db reset
+        summary: Drop and re-create the local database
+        description: Destructive.
+        flags:
+          - id: yes
+            name: "-y, --yes"
+            description: Skip confirmation
+            type: boolean
+      - id: diff
+        title: supa db diff
+        summary: Print schema diff
+        flags:
+          - id: schema
+            name: "--schema"
+            description: Target schema
+            type: string
+            required: true
