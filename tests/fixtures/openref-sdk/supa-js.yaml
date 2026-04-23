@@ -1,0 +1,38 @@
+openref: "0.1"
+info:
+  id: supa-js
+  version: 2.39.0
+  title: supa-js
+  language: js
+functions:
+  - id: from
+    title: "supa.from()"
+    summary: Start a query against a table
+    description: Returns a builder for the given table.
+    examples:
+      - name: basic
+        code: |
+          const { data } = await supa.from('users').select()
+    params:
+      - name: table
+        type: string
+        required: true
+        description: Name of the table
+  - id: rpc
+    title: "supa.rpc()"
+    summary: Call a Postgres function
+    params:
+      - name: fn
+        type: string
+        required: true
+      - name: args
+        type: object
+        required: false
+  - $ref: "#/functions/shared-from-other-spec"
+  - id: select
+    title: "builder.select()"
+    summary: Choose columns to fetch
+    params:
+      - name: columns
+        type: string
+        required: false

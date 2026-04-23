@@ -288,3 +288,23 @@ tests + exit codes / files changed / checkpoint tag or rollback reason.
 - **Files:** +src/extractors/openrefCli.ts (261 LOC),
   +tests/extractors/openrefCli.test.ts,
   +tests/fixtures/openref-cli/supa-cli.yaml.
+
+### T15 — src/extractors/openrefSdk.ts (TDD)
+- **Started:** 2026-04-23 13:37 local
+- **Status:** completed
+- **Pre-flight:** 77/77 tests EXIT=0.
+- **RED:** `tests/extractors/openrefSdk.test.ts` — 7 tests. Import
+  failed. RED verified.
+- **GREEN:** `extractOpenrefSdk({bytes, source, productId})` parses the
+  openref SDK YAML, emits one `surface(kind=sdk)` with version +
+  language keyed id, then iterates `functions[]`. Bare-`$ref` entries
+  are skipped (per brief: "defer $ref resolution to v2"). Inlined
+  functions become `operation` nodes with `method="sdk"` and
+  `path_or_name = function.title`. Parameters become
+  `parameter(location="positional")` nodes. Code examples become
+  `example` nodes with `language = info.language` and emit
+  `illustrated_by` edges.
+- **Tests:** 7 passed first run. Full suite: 84 passed / 13 files. EXIT=0.
+- **Files:** +src/extractors/openrefSdk.ts (279 LOC),
+  +tests/extractors/openrefSdk.test.ts,
+  +tests/fixtures/openref-sdk/supa-js.yaml.
