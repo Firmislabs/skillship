@@ -23,6 +23,10 @@ import {
   type FormatReport,
   type GroundingReport,
 } from "./scorers.js";
+import {
+  scoreQualitative,
+  type QualitativeReport,
+} from "./qualitative.js";
 
 interface VendorSpec {
   readonly id: string;
@@ -58,6 +62,7 @@ interface VendorReport {
   readonly grounding?: GroundingReport;
   readonly format?: FormatReport;
   readonly opCountMin?: { required: number; observed: number; ok: boolean };
+  readonly qualitative?: QualitativeReport;
 }
 
 interface HarnessReport {
@@ -116,6 +121,12 @@ async function scoreVendor(v: VendorSpec): Promise<VendorReport> {
     );
     const skillDir = resolveSkillDir(distDir);
     const format = scoreFormat(skillDir);
+    const qualitative = computeQualitative(
+      db,
+      build.productId,
+      skillDir,
+      expected,
+    );
     return {
       vendor: v.id,
       status: "ok",
@@ -127,10 +138,25 @@ async function scoreVendor(v: VendorSpec): Promise<VendorReport> {
         observed: build.ingest.operations,
         ok: build.ingest.operations >= v.expected.ops_min,
       },
+      qualitative,
     };
   } finally {
     db.close();
   }
+}
+
+function computeQualitative(
+  db: Database.Database,
+  productId: string,
+  skillDir: string,
+  expected: ExpectedOp[],
+): QualitativeReport {
+  const skillMdPath = join(skillDir, "SKILL.md");
+  const skillMd = existsSync(skillMdPath)
+    ? readFileSync(skillMdPath, "utf8")
+    : "";
+  const skillMdBytes = Buffer.byteLength(skillMd, "utf8");
+  return scoreQualitative(db, productId, skillMd, skillMdBytes, expected);
 }
 
 function printSummary(report: HarnessReport, outPath: string): void {
@@ -146,8 +172,12 @@ function printSummary(report: HarnessReport, outPath: string): void {
     const ops = r.opCountMin
       ? `${r.opCountMin.observed}/${r.opCountMin.required}`
       : "—";
+    const q = r.qualitative;
+    const qStr = q
+      ? ` | qual=${pct(q.composite)} str=${pct(q.structure)} den=${pct(q.density)} frsh=${pct(q.freshness)} sch=${pct(q.schemaFidelity)} qcov=${pct(q.coverage)}`
+      : "";
     process.stdout.write(
-      `  [ok]   ${r.vendor}: cov=${cov} grd=${grd} fmt=${fmt} ops=${ops}\n`,
+      `  [ok]   ${r.vendor}: cov=${cov} grd=${grd} fmt=${fmt} ops=${ops}${qStr}\n`,
     );
   }
 }
