@@ -941,3 +941,56 @@ tests + exit codes / files changed / checkpoint tag or rollback reason.
 - **Tests:** 227/227 green (+18 from T27: +9 sniffer, +4 Stainless,
   +4 crawler, +1 fetcher integration).
 - **Checkpoint:** pending commit.
+
+## Session: 2026-04-23 — Quality Pass (GraphQL + Renderer + Scorer)
+
+- **T31 — GraphQL extractor:** added `src/extractors/graphql.ts` (SDL
+  parser via graphql-js); routed via `application/graphql` in dispatch;
+  classifier matches `.graphql`/`.gql` files. Linear: 0 → 574 ops, 100%
+  coverage. Vendors at 100% structural coverage: 9/9. Commit: b09cf20.
+- **T32 — Qualitative 5-dim scorer:** `eval/qualitative.ts` with pure
+  per-dimension functions (structure, density, freshness, schema
+  fidelity, coverage); composite weights 0.25/0.15/0.10/0.20/0.30.
+  9 ref-aware tests. Commit: 7f0f342.
+- **T33 — Renderer fixes:** removed 50-op `DEFAULT_CAP` (stripe
+  SKILL.md: 71 → 2462 lines); added `renderOpReference` per-op markdown
+  (Parameters + Responses tables); deduped duplicate `rest` surfaces by
+  removing `info.version` from surface stableId. Commit: 2f20e22.
+- **T34 — Auth + Errors sections:** added `renderAuthSection` (walks
+  auth_scheme nodes; emits Bearer/apiKey-header/apiKey-query/OAuth2/
+  Basic hints) and `renderErrorsSection` (aggregates response_shape
+  status_code claims, top-12 by count). 17 new tests. Structure dim
+  +20pp on 7/9 vendors:
+  | Vendor    | str before | str after | composite before → after |
+  |-----------|-----------:|----------:|--------------------------|
+  | supabase  | 60% | 80% | 77% → 82% |
+  | stripe    | 60% | 80% | 82% → 87% |
+  | vercel    | 70% | 90% | 79% → 84% |
+  | linear    | 50% | 50% | 54% → 54% (GraphQL — no auth_scheme nodes) |
+  | anthropic | 40% | 60% | 78% → 83% (errors only; no auth scheme) |
+  | n8n       | 60% | 80% | 77% → 82% |
+  | directus  | 60% | 80% | 76% → 81% |
+  | gitea     | 60% | 80% | 78% → 83% |
+  | posthog   | 60% | 80% | 82% → 87% |
+  Commit: 45ff7aa.
+- **T35 — External-skill comparison harness:** `eval/qualitativeExternal.ts`
+  scorer (no SQLite required); `eval/compare.ts` (npm run eval:compare)
+  fetches anthropics/claude-plugins-official skills via `gh api`. Caveat:
+  marketplace has no linear/github/figma vendor-API SKILL.md — only
+  access plugins (discord/access) and tooling skills (mcp-server,
+  claude-code-setup). Comparison is apples-to-oranges: ours = catalog
+  with hundreds of ops; theirs = single-purpose tutorials. Linear vs
+  external: composite 54% > 43-45% (we win on freshness 100% > 0%);
+  structure 50% < 60% (they have hand-written auth/errors sections);
+  density 10% < 100% (574 ops dilutes tokens/op below ideal band).
+  Commit: a61a6d3.
+- **Open items:**
+  - Linear schema fidelity stuck at 0% — GraphQL ops store args as
+    claim list, not child parameter nodes; scorer expects OpenAPI shape
+  - Linear has no auth_scheme nodes — GraphQL extractor doesn't probe
+    server directives
+  - R3 reseed: `rm eval/projects/*/.skillship/graph.sqlite && npm run eval`
+    to make duplicate-surface dedup take effect on existing graphs
+- **Tests:** 335/335 green (+108 from T27 baseline; +25 from compare
+  scorer + 17 from auth/errors + others from earlier sessions).
+- **Checkpoints:** b09cf20, 7f0f342, 2f20e22, 45ff7aa, a61a6d3.
