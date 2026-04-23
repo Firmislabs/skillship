@@ -31,8 +31,8 @@ vendors:
     domain: linear.app
     github_org: linear
     expected:
-      surfaces: [mcp]
-      ops_min: 30
+      surfaces: [rest]
+      ops_min: 100
       baseline_path: null
 
   - id: anthropic

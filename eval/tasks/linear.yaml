@@ -1,29 +1,34 @@
 vendor: linear
-# Linear ships primarily as MCP tools; operation identifiers are tool
-# names, not HTTP paths. expected_ops.path = tool name, method = "MCP".
+# Linear's GraphQL SDL is at github.com/linear/linear packages/sdk/src/schema.graphql.
+# Operations are GraphQL fields; method is QUERY|MUTATION|SUBSCRIPTION.
 tasks:
   - id: list-issues
     goal: "List the 10 most recently updated issues assigned to me."
     expected_ops:
-      - method: MCP
-        path: "list_issues"
+      - method: QUERY
+        path: issues
+  - id: get-issue
+    goal: "Fetch the details of a specific issue by ID."
+    expected_ops:
+      - method: QUERY
+        path: issue
   - id: create-issue
     goal: "Create an issue titled 'Fix login bug' in team ENG."
     expected_ops:
-      - method: MCP
-        path: "create_issue"
+      - method: MUTATION
+        path: issueCreate
   - id: update-issue-status
     goal: "Move issue LIN-123 to 'In Progress'."
     expected_ops:
-      - method: MCP
-        path: "update_issue"
+      - method: MUTATION
+        path: issueUpdate
   - id: list-projects
     goal: "List all projects in the workspace."
     expected_ops:
-      - method: MCP
-        path: "list_projects"
-  - id: search-comments
-    goal: "Search comments mentioning 'deploy'."
+      - method: QUERY
+        path: projects
+  - id: list-teams
+    goal: "List all teams in the workspace."
     expected_ops:
-      - method: MCP
-        path: "search_comments"
+      - method: QUERY
+        path: teams

@@ -101,6 +101,8 @@ export function classifySpecPath(path: string): SpecClassification | null {
   if (swagger !== null) return swagger;
   const openref = matchOpenref(lower);
   if (openref !== null) return openref;
+  const graphql = matchGraphql(filename);
+  if (graphql !== null) return graphql;
   return null;
 }
 
@@ -150,6 +152,13 @@ function matchSwagger(filename: string): SpecClassification | null {
   }
   if (filename.endsWith(".json")) {
     return { surface: "rest", content_type: "application/swagger+json" };
+  }
+  return null;
+}
+
+function matchGraphql(filename: string): SpecClassification | null {
+  if (filename.endsWith(".graphql") || filename.endsWith(".gql")) {
+    return { surface: "rest", content_type: "application/graphql" };
   }
   return null;
 }

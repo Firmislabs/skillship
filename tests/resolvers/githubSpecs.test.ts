@@ -209,6 +209,57 @@ describe("resolveGithubSpecs", () => {
     expect(result[0]?.url).toBe(`${repoUrl}/blob/HEAD/spec/openapi.yaml`);
   });
 
+  test("classifies .graphql files as application/graphql with rest surface", async () => {
+    const repoUrl = "https://github.com/linear/linear";
+    const ph = entry("rest", repoUrl, "application/vnd.github.repo");
+    const result = await resolveGithubSpecs(
+      [ph],
+      mockFetcher({
+        [repoUrl]: [
+          { path: "packages/sdk/src/schema.graphql", bytes: Buffer.from("type Query { me: User }") },
+        ],
+      }),
+      { now: () => FIXED_NOW },
+    );
+    expect(result).toHaveLength(1);
+    expect(result[0]?.content_type).toBe("application/graphql");
+    expect(result[0]?.surface).toBe("rest");
+  });
+
+  test("classifies .gql files as application/graphql", async () => {
+    const repoUrl = "https://github.com/acme/api";
+    const ph = entry("rest", repoUrl, "application/vnd.github.repo");
+    const result = await resolveGithubSpecs(
+      [ph],
+      mockFetcher({
+        [repoUrl]: [
+          { path: "api/schema.gql", bytes: Buffer.from("type Query { ping: String }") },
+        ],
+      }),
+      { now: () => FIXED_NOW },
+    );
+    expect(result).toHaveLength(1);
+    expect(result[0]?.content_type).toBe("application/graphql");
+  });
+
+  test("mixes graphql and openapi specs in the same repo", async () => {
+    const repoUrl = "https://github.com/acme/mixed";
+    const ph = entry("rest", repoUrl, "application/vnd.github.repo");
+    const result = await resolveGithubSpecs(
+      [ph],
+      mockFetcher({
+        [repoUrl]: [
+          { path: "schema.graphql", bytes: Buffer.from("type Query { x: String }") },
+          { path: "openapi.yaml", bytes: Buffer.from("openapi: 3.0.0") },
+        ],
+      }),
+      { now: () => FIXED_NOW },
+    );
+    expect(result).toHaveLength(2);
+    const cts = result.map(r => r.content_type).sort();
+    expect(cts).toEqual(["application/graphql", "application/openapi+yaml"]);
+  });
+
   test("preserves order: pass-through entries keep their position around expansions", async () => {
     const ghRepo = "https://github.com/supa/openapi";
     const ph = entry("rest", ghRepo, "application/vnd.github.repo");

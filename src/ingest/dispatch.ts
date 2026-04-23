@@ -9,6 +9,7 @@ import { extractLlmsTxt } from "../extractors/llmsTxt.js";
 import { extractMcpWellKnown } from "../extractors/mcpWellKnown.js";
 import { extractZodAst } from "../extractors/zodAst.js";
 import { extractDocsMd } from "../extractors/docsMd.js";
+import { extractGraphql } from "../extractors/graphql.js";
 import { GITHUB_REPO_PLACEHOLDER } from "../resolvers/githubSpecs.js";
 
 export interface DispatchInput {
@@ -27,6 +28,7 @@ const CONTENT_TYPE_DISPATCH: Record<string, ExtractorFn> = {
   "application/x-openref-cli+yaml": extractOpenrefCli,
   "application/x-openref-sdk+yaml": extractOpenrefSdk,
   "application/typescript": extractZodAst,
+  "application/graphql": extractGraphql,
 };
 
 export async function dispatchExtractor(
