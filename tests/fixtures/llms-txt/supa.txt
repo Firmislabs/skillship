@@ -1,0 +1,17 @@
+# Supa
+> Postgres-backed backend platform
+
+Supa is the open-source Firebase alternative, providing a Postgres database,
+authentication, realtime subscriptions, and edge functions.
+
+## Docs
+- [Getting Started](https://supa.example/docs/getting-started): quick on-ramp
+- [Reference](https://supa.example/docs/reference)
+- plain text note, skip me
+
+## Examples
+- [Basic example](https://supa.example/examples/basic)
+
+## Optional
+- [Advanced tuning](https://supa.example/advanced)
+- [Internal migration notes](https://supa.example/migration)

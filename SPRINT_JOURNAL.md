@@ -330,3 +330,21 @@ tests + exit codes / files changed / checkpoint tag or rollback reason.
   +tests/extractors/sitemap.test.ts,
   +tests/fixtures/sitemap/urlset.xml,
   ~src/graph/types.ts.
+
+### T17 — src/extractors/llmsTxt.ts (TDD)
+- **Started:** 2026-04-23 14:20 local
+- **Status:** completed
+- **Pre-flight:** 90/90 tests EXIT=0.
+- **RED:** `tests/extractors/llmsTxt.test.ts` — 7 tests. Import failed
+  ("Failed to load url ../../src/extractors/llmsTxt.js"). RED verified.
+- **GREEN:** `extractLlmsTxt({bytes, source, productId}) → Extraction`
+  walks the llms.txt body line-by-line. Tracks current `## Heading`,
+  matches bullets `^- \[(.+?)\]\((\S+?)\)(?::\s*(.+))?$` inside an H2
+  → emits one `doc_page` per match. Claims per page: `url`/`title`
+  (attested), `category` = heading verbatim (derived),
+  `tier="optional"` if heading.toLowerCase()==="optional" else "core"
+  (derived). Bullets that don't match the link regex are skipped.
+- **Tests:** 7 passed first run. Full suite: 97 passed / 15 files. EXIT=0.
+- **Files:** +src/extractors/llmsTxt.ts (105 LOC),
+  +tests/extractors/llmsTxt.test.ts,
+  +tests/fixtures/llms-txt/supa.txt.
