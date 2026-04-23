@@ -237,6 +237,117 @@ describe("extractOpenApi3", () => {
     expect(summary?.value).toBe("Ping");
   });
 
+  test("emits request_example claim when requestBody has an example", () => {
+    const jsonBytes = Buffer.from(
+      JSON.stringify({
+        openapi: "3.0.3",
+        info: { title: "T", version: "1" },
+        paths: {
+          "/widgets": {
+            post: {
+              summary: "Create widget",
+              requestBody: {
+                content: {
+                  "application/json": {
+                    example: { name: "gizmo", count: 3 },
+                  },
+                },
+              },
+              responses: { "201": { description: "ok" } },
+            },
+          },
+        },
+      }),
+    );
+    const result = extractOpenApi3({
+      bytes: jsonBytes,
+      source: fakeSource({ content_type: "application/json" }),
+      productId: "product-test",
+    });
+    const op = result.nodes.find((n) => n.kind === "operation");
+    expect(op).toBeDefined();
+    const ex = result.claims.find(
+      (c) => c.node_id === op?.id && c.field === "request_example",
+    );
+    expect(ex).toBeDefined();
+    expect(ex?.value).toEqual({ name: "gizmo", count: 3 });
+    expect(ex?.confidence).toBe("attested");
+  });
+
+  test("emits response example claim when response content has an example", () => {
+    const jsonBytes = Buffer.from(
+      JSON.stringify({
+        openapi: "3.0.3",
+        info: { title: "T", version: "1" },
+        paths: {
+          "/widgets/{id}": {
+            get: {
+              summary: "Get widget",
+              responses: {
+                "200": {
+                  description: "ok",
+                  content: {
+                    "application/json": {
+                      example: { id: "w_1", name: "gizmo" },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+      }),
+    );
+    const result = extractOpenApi3({
+      bytes: jsonBytes,
+      source: fakeSource({ content_type: "application/json" }),
+      productId: "product-test",
+    });
+    const resp = result.nodes.find((n) => n.kind === "response_shape");
+    expect(resp).toBeDefined();
+    const ex = result.claims.find(
+      (c) => c.node_id === resp?.id && c.field === "example",
+    );
+    expect(ex).toBeDefined();
+    expect(ex?.value).toEqual({ id: "w_1", name: "gizmo" });
+  });
+
+  test("emits enum_values claim when parameter schema has enum", () => {
+    const jsonBytes = Buffer.from(
+      JSON.stringify({
+        openapi: "3.0.3",
+        info: { title: "T", version: "1" },
+        paths: {
+          "/widgets": {
+            get: {
+              summary: "List",
+              parameters: [
+                {
+                  name: "status",
+                  in: "query",
+                  schema: { type: "string", enum: ["open", "closed", "draft"] },
+                },
+              ],
+              responses: { "200": { description: "ok" } },
+            },
+          },
+        },
+      }),
+    );
+    const result = extractOpenApi3({
+      bytes: jsonBytes,
+      source: fakeSource({ content_type: "application/json" }),
+      productId: "product-test",
+    });
+    const param = result.nodes.find((n) => n.kind === "parameter");
+    expect(param).toBeDefined();
+    const enumClaim = result.claims.find(
+      (c) => c.node_id === param?.id && c.field === "enum_values",
+    );
+    expect(enumClaim).toBeDefined();
+    expect(enumClaim?.value).toEqual(["open", "closed", "draft"]);
+  });
+
   test("produces deterministic node IDs across calls", () => {
     const a = extractOpenApi3({
       bytes,

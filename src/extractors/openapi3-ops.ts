@@ -62,9 +62,47 @@ export function emitOperation(a: EmitOperationArgs): void {
     });
   }
 
+  emitRequestExample(opId, a.opDef, base, a.claims);
   emitParameters(opId, a.opDef, base, a.nodes, a.claims, a.edges);
   emitResponses(opId, a.opDef, base, a.nodes, a.claims, a.edges);
   emitOperationAuth(opId, a.opDef, base, a.authIds, a.edges);
+}
+
+function emitRequestExample(
+  opId: string,
+  opDef: Record<string, unknown>,
+  base: string,
+  claims: ExtractedClaim[],
+): void {
+  const requestBody = isObject(opDef.requestBody) ? opDef.requestBody : undefined;
+  const content = requestBody !== undefined && isObject(requestBody.content)
+    ? requestBody.content
+    : undefined;
+  if (content === undefined) return;
+  const example = pickFirstExample(content);
+  if (example === undefined) return;
+  claims.push({
+    node_id: opId,
+    field: "request_example",
+    value: example,
+    span_path: `${base}.requestBody.content`,
+    confidence: "attested",
+  });
+}
+
+function pickFirstExample(content: Record<string, unknown>): unknown {
+  for (const ct of Object.keys(content)) {
+    const body = isObject(content[ct]) ? content[ct] : undefined;
+    if (body === undefined) continue;
+    if (body.example !== undefined) return body.example;
+    const examples = isObject(body.examples) ? body.examples : undefined;
+    if (examples === undefined) continue;
+    for (const k of Object.keys(examples)) {
+      const ex = isObject(examples[k]) ? examples[k] : undefined;
+      if (ex?.value !== undefined) return ex.value;
+    }
+  }
+  return undefined;
 }
 
 function pushStringClaim(
@@ -179,6 +217,20 @@ function pushParamClaims(
       confidence: "attested",
     });
   }
+  const enumVals = Array.isArray(schema?.enum)
+    ? schema.enum.filter((v): v is string | number | boolean =>
+        typeof v === "string" || typeof v === "number" || typeof v === "boolean",
+      )
+    : undefined;
+  if (enumVals !== undefined && enumVals.length > 0) {
+    claims.push({
+      node_id: paramId,
+      field: "enum_values",
+      value: enumVals,
+      span_path: `${paramBase}.schema.enum`,
+      confidence: "attested",
+    });
+  }
 }
 
 function emitResponses(
@@ -251,6 +303,27 @@ function pushResponseClaims(
       confidence: "attested",
     });
   }
+  const example = ctBody !== undefined ? pickExampleFromBody(ctBody) : undefined;
+  if (example !== undefined) {
+    claims.push({
+      node_id: respId,
+      field: "example",
+      value: example,
+      span_path: `${respBase}.content["${ct}"].example`,
+      confidence: "attested",
+    });
+  }
+}
+
+function pickExampleFromBody(body: Record<string, unknown>): unknown {
+  if (body.example !== undefined) return body.example;
+  const examples = isObject(body.examples) ? body.examples : undefined;
+  if (examples === undefined) return undefined;
+  for (const k of Object.keys(examples)) {
+    const ex = isObject(examples[k]) ? examples[k] : undefined;
+    if (ex?.value !== undefined) return ex.value;
+  }
+  return undefined;
 }
 
 function emitOperationAuth(
