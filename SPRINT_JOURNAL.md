@@ -794,3 +794,61 @@ tests + exit codes / files changed / checkpoint tag or rollback reason.
      grouping, richer description) — original Iter2 scope; now comes
      after the content-quality fixes above, since producing a
      well-structured 0-op skill is pointless.
+
+---
+
+### T27 — Iter2: OpenAPI $ref resolver (bundler)
+- **Started:** 2026-04-23 17:29 local
+- **Status:** completed
+- **Goal:** resolve the n8n + directus 0-op failure mode — split-file
+  OpenAPI specs where the root document `$ref`s into sibling YAML files
+  inside the same repo tree.
+- **Pre-flight:** vitest 198/198 green.
+- **Approach:** new `src/resolvers/openapiBundle.ts` (~115 lines)
+  exposes `bundleOpenapiRefs(rootBytes, rootPath, getBlob)`. Recursively
+  walks the parsed document, replaces external `$ref` strings with the
+  resolved target content. Handles:
+  - relative paths (`./foo.yaml`, `../shared/bar.yaml`) with
+    normalization
+  - JSON pointer fragments (`#/components/schemas/Foo`) — inlines only
+    the targeted subtree
+  - transitive refs (root → a → b) via recursion with new baseDir
+  - cycles (a → b → a) via a path-stack set passed through recursion
+  - missing targets and remote refs — left unmodified rather than
+    crashing
+  Fetcher wires it in: after downloading the root OpenAPI blob, calls
+  the bundler with a `getBlob(path)` that looks up the path in the
+  existing tree listing's path→sha map and issues a `gh api blobs/<sha>`
+  call. Non-OpenAPI spec types (openref CLI/SDK) skip bundling.
+- **TDD:** 10 bundler tests (RED → GREEN) covering single-level,
+  parent-relative, JSON-pointer, transitive, internal-ref preservation,
+  remote-ref preservation, missing target, cycle, JSON files. Plus 1
+  fetcher integration test verifying end-to-end inlining against a fake
+  `gh` invoker.
+- **Eval after (9 vendors):**
+    | vendor   | ops   | cov  | grd  | fmt  | Δ ops   | Δ cov    |
+    |----------|-------|------|------|------|---------|----------|
+    | supabase |   276 | 100% | 100% | pass | —       | —        |
+    | stripe   |  1503 | 100% | 100% | pass | —       | —        |
+    | vercel   |   377 |  80% | 100% | pass | —       | —        |
+    | linear   |     0 |   0% | 100% | pass | —       | —        |
+    | anthropic|     0 |   0% | 100% | pass | —       | —        |
+    | **n8n**      |    **71** | **100%** | 100% | pass | **+71**   | **0→100%**  |
+    | **directus** |   **133** | **100%** | 100% | pass | **+133**  | **0→100%**  |
+    | gitea    |     0 |   0% | 100% | pass | —       | —        |
+    | posthog  |     0 |   0% | 100% | pass | —       | —        |
+  Pipeline now covers 5 of 9 vendors at 80%+ (was 3 of 9). The two
+  remaining OSS zeros (gitea, posthog) are both runtime-generated-spec
+  vendors and will need T3 (probe-path expansion).
+- **Known performance gap:** directus bundling took ~12 minutes because
+  it makes 103 sequential `gh api` calls for the referenced path files.
+  Parallelize or batch via a single `git/trees` walk later if this
+  becomes a problem. Not blocking for the eval.
+- **Files:** +src/resolvers/openapiBundle.ts,
+  +tests/resolvers/openapiBundle.test.ts,
+  ~src/resolvers/githubFetcher.ts,
+  ~tests/resolvers/githubFetcher.test.ts.
+- **Tests:** 209/209 (+11 from +10 bundler and +1 fetcher; -0
+  adjustment on existing fetcher test to account for YAML round-trip
+  trailing newline).
+- **Checkpoint:** pending commit.

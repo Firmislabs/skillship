@@ -82,7 +82,7 @@ describe("fetchGithubRepoBlobs", () => {
       "openapi.yaml",
     ]);
     const openapi = blobs.find((b) => b.path === "openapi.yaml");
-    expect(openapi?.bytes.toString("utf8")).toBe("openapi: 3.0.0");
+    expect(openapi?.bytes.toString("utf8").trim()).toBe("openapi: 3.0.0");
   });
 
   test("skips vendored dirs (node_modules, dist, .git)", async () => {
@@ -140,6 +140,52 @@ describe("fetchGithubRepoBlobs", () => {
       gh,
     );
     expect(blobs).toEqual([]);
+  });
+
+  test("bundles external $refs by pulling referenced blobs", async () => {
+    const rootYaml = [
+      "openapi: 3.0.0",
+      "paths:",
+      "  /users:",
+      "    $ref: './paths/users.yaml'",
+    ].join("\n");
+    const usersYaml = [
+      "get:",
+      "  summary: list users",
+      "  responses:",
+      "    '200':",
+      "      description: ok",
+    ].join("\n");
+    const gh = fakeGhFactory([
+      {
+        args: ["api", "repos/a/b/git/trees/HEAD?recursive=1"],
+        stdout: JSON.stringify({
+          tree: [
+            { path: "openapi.yaml", type: "blob", sha: "root" },
+            { path: "paths/users.yaml", type: "blob", sha: "users" },
+          ],
+        }),
+      },
+      {
+        args: ["api", "repos/a/b/git/blobs/root"],
+        stdout: JSON.stringify({
+          content: Buffer.from(rootYaml).toString("base64"),
+          encoding: "base64",
+        }),
+      },
+      {
+        args: ["api", "repos/a/b/git/blobs/users"],
+        stdout: JSON.stringify({
+          content: Buffer.from(usersYaml).toString("base64"),
+          encoding: "base64",
+        }),
+      },
+    ]);
+    const blobs = await fetchGithubRepoBlobs("https://github.com/a/b", gh);
+    expect(blobs).toHaveLength(1);
+    const bundled = blobs[0]?.bytes.toString("utf8") ?? "";
+    expect(bundled).toContain("list users");
+    expect(bundled).not.toContain("$ref");
   });
 
   test("tree truncated: warns via return metadata", async () => {

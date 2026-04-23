@@ -1,5 +1,6 @@
 import { spawn } from "node:child_process";
 import { classifySpecPath, type GithubBlob } from "./githubSpecs.js";
+import { bundleOpenapiRefs } from "./openapiBundle.js";
 
 export interface ParsedRepoUrl {
   readonly owner: string;
@@ -41,6 +42,7 @@ export async function fetchGithubRepoBlobs(
   }
   const tree = JSON.parse(treeRaw) as TreeResponse;
   if (tree.truncated === true || !Array.isArray(tree.tree)) return [];
+  const pathToSha = indexTree(tree.tree);
   const hits = tree.tree.filter(
     (e) =>
       e.type === "blob" &&
@@ -50,9 +52,44 @@ export async function fetchGithubRepoBlobs(
   const out: GithubBlob[] = [];
   for (const hit of hits) {
     const blob = await fetchBlob(parsed, hit.sha, gh);
-    if (blob !== null) out.push({ path: hit.path, bytes: blob });
+    if (blob === null) continue;
+    const bytes = isOpenapiSpec(hit.path)
+      ? await bundleOpenapiRefs(blob, hit.path, makeGetBlob(parsed, pathToSha, gh))
+      : blob;
+    out.push({ path: hit.path, bytes });
   }
   return out;
+}
+
+function indexTree(entries: readonly TreeEntry[]): ReadonlyMap<string, string> {
+  const map = new Map<string, string>();
+  for (const e of entries) {
+    if (e.type === "blob") map.set(e.path, e.sha);
+  }
+  return map;
+}
+
+function isOpenapiSpec(path: string): boolean {
+  const cls = classifySpecPath(path);
+  if (cls === null) return false;
+  return (
+    cls.content_type === "application/openapi+yaml" ||
+    cls.content_type === "application/openapi+json" ||
+    cls.content_type === "application/swagger+yaml" ||
+    cls.content_type === "application/swagger+json"
+  );
+}
+
+function makeGetBlob(
+  parsed: ParsedRepoUrl,
+  pathToSha: ReadonlyMap<string, string>,
+  gh: GhInvoker,
+): (path: string) => Promise<Buffer | null> {
+  return async (path) => {
+    const sha = pathToSha.get(path);
+    if (sha === undefined) return null;
+    return fetchBlob(parsed, sha, gh);
+  };
 }
 
 async function fetchBlob(
