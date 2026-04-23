@@ -22,7 +22,7 @@ const HTTP_METHODS = [
   "trace",
 ] as const;
 
-interface OpenApiDoc {
+export interface OpenApiDoc {
   readonly openapi?: string;
   readonly info?: { title?: string; version?: string };
   readonly servers?: { url?: string }[];
@@ -38,8 +38,26 @@ export interface ExtractOpenApi3Input {
   readonly productId: string;
 }
 
+export interface ExtractOpenApi3DocInput {
+  readonly doc: OpenApiDoc;
+  readonly source: SourceNode;
+  readonly productId: string;
+  readonly extractor?: string;
+}
+
 export function extractOpenApi3(input: ExtractOpenApi3Input): Extraction {
   const doc = parseDoc(input.bytes, input.source.content_type);
+  return extractOpenApi3Doc({
+    doc,
+    source: input.source,
+    productId: input.productId,
+  });
+}
+
+export function extractOpenApi3Doc(
+  input: ExtractOpenApi3DocInput,
+): Extraction {
+  const { doc } = input;
   const nodes: ExtractedNode[] = [];
   const claims: ExtractedClaim[] = [];
   const edges: ExtractedEdge[] = [];
@@ -77,7 +95,7 @@ export function extractOpenApi3(input: ExtractOpenApi3Input): Extraction {
   }
 
   return {
-    extractor: OPENAPI3_EXTRACTOR,
+    extractor: input.extractor ?? OPENAPI3_EXTRACTOR,
     source_id: input.source.id,
     nodes,
     claims,

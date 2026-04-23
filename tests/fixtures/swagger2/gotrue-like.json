@@ -1,0 +1,60 @@
+{
+  "swagger": "2.0",
+  "info": {
+    "title": "GoTrue-like",
+    "version": "1.0.0"
+  },
+  "host": "gotrue.example.com",
+  "basePath": "/",
+  "schemes": ["https"],
+  "consumes": ["application/json"],
+  "produces": ["application/json"],
+  "paths": {
+    "/token": {
+      "post": {
+        "operationId": "issueToken",
+        "summary": "Issue an auth token",
+        "parameters": [
+          {
+            "name": "grant_type",
+            "in": "query",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "name": "body",
+            "in": "body",
+            "required": true,
+            "schema": { "$ref": "#/definitions/TokenRequest" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "schema": { "$ref": "#/definitions/TokenResponse" }
+          },
+          "400": { "description": "Bad Request" }
+        }
+      }
+    },
+    "/user": {
+      "get": {
+        "operationId": "getUser",
+        "summary": "Current user",
+        "responses": { "200": { "description": "OK" } },
+        "security": [{ "BearerAuth": [] }]
+      }
+    }
+  },
+  "securityDefinitions": {
+    "BearerAuth": {
+      "type": "apiKey",
+      "name": "Authorization",
+      "in": "header"
+    }
+  },
+  "definitions": {
+    "TokenRequest": { "type": "object" },
+    "TokenResponse": { "type": "object" }
+  }
+}

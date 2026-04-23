@@ -238,3 +238,30 @@ tests + exit codes / files changed / checkpoint tag or rollback reason.
   passed. Full suite: 61 passed / 0 failed across 10 test files. EXIT=0.
 - **Files:** +src/extractors/{openapi3.ts,openapi3-ops.ts,openapi3-util.ts,types.ts},
   +tests/extractors/openapi3.test.ts, +tests/fixtures/openapi3/minimal.yaml.
+
+### T13 — src/extractors/swagger2.ts (TDD)
+- **Started:** 2026-04-23 13:00 local
+- **Status:** completed
+- **Pre-flight:** typecheck EXIT=0; 61/61 tests EXIT=0.
+- **RED:** `tests/extractors/swagger2.test.ts` — 9 tests (7 for
+  `convertSwagger2ToOpenapi3`, 2 for `extractSwagger2`). First run
+  failed import of `../../src/extractors/swagger2.js`. RED verified.
+- **Refactor prerequisite:** exposed `extractOpenApi3Doc(doc, source,
+  productId, extractor?)` from `openapi3.ts` so swagger2 can delegate
+  without re-serialising. `extractOpenApi3` now calls it; the default
+  extractor string stays `openapi@3` and swagger2 overrides to
+  `swagger@2`. Existing openapi3 tests remained green (10/10).
+- **GREEN:** `convertSwagger2ToOpenapi3(doc)` applies the standard
+  swagger→openapi3 transforms: `host+basePath+schemes → servers`,
+  `parameters[in:body] → requestBody`, non-body param `type → schema.type`,
+  `response.schema → response.content[<produces>].schema`,
+  `securityDefinitions → components.securitySchemes` (basic → http.basic,
+  oauth2 flows remapped implicit/password/application→clientCredentials/
+  accessCode→authorizationCode), `definitions → components.schemas`,
+  and rewrites all `$ref: #/definitions/X` to `#/components/schemas/X`.
+  `extractSwagger2` parses JSON, converts, delegates.
+- **Tests:** 9 passed first run. Full suite: 70 passed / 11 files. EXIT=0.
+- **Files:** +src/extractors/swagger2.ts (286 LOC),
+  +tests/extractors/swagger2.test.ts,
+  +tests/fixtures/swagger2/gotrue-like.json,
+  modified src/extractors/openapi3.ts (+`extractOpenApi3Doc` export).
