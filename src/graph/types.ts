@@ -177,6 +177,8 @@ export interface DocPageNode {
   url: Claimed<string>;
   category?: Claimed<string>;
   content_hash: Claimed<string>;
+  last_modified?: Claimed<string>;
+  tier?: Claimed<"core" | "optional">;
 }
 
 export interface OverrideNoteNode {

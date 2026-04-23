@@ -308,3 +308,25 @@ tests + exit codes / files changed / checkpoint tag or rollback reason.
 - **Files:** +src/extractors/openrefSdk.ts (279 LOC),
   +tests/extractors/openrefSdk.test.ts,
   +tests/fixtures/openref-sdk/supa-js.yaml.
+
+### T16 — src/extractors/sitemap.ts (TDD)
+- **Started:** 2026-04-23 14:00 local
+- **Status:** completed
+- **Pre-flight:** 84/84 tests EXIT=0.
+- **RED:** `tests/extractors/sitemap.test.ts` — 6 tests. Import
+  failed (no `src/extractors/sitemap.js`). RED verified.
+- **GREEN:** `extractSitemap({bytes, source, productId}) → Promise<Extraction>`
+  uses `xml2js.parseStringPromise` with `explicitArray:false, trim:true`.
+  Walks `urlset.url[]`, emits one `doc_page` node per `<url>` parented
+  to `productId`. Claims: `url` (attested, span `//urlset/url[i]/loc`),
+  `title` (derived from URL last path segment), `last_modified`
+  (attested when `<lastmod>` present). Sitemap indexes (`<sitemapindex>`)
+  return zero pages by design (delegated to a separate index expander).
+- **Schema change:** added `last_modified?: Claimed<string>` and
+  `tier?: Claimed<"core" | "optional">` to `DocPageNode` in
+  `src/graph/types.ts` (T17 also needs `tier`).
+- **Tests:** 6 passed first run. Full suite: 90 passed / 14 files. EXIT=0.
+- **Files:** +src/extractors/sitemap.ts (116 LOC),
+  +tests/extractors/sitemap.test.ts,
+  +tests/fixtures/sitemap/urlset.xml,
+  ~src/graph/types.ts.
