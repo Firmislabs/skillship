@@ -1,17 +1,17 @@
 vendor: posthog
 tasks:
-  - id: capture-event
-    goal: "Send a single event to the capture endpoint."
+  - id: list-feature-flags
+    goal: "List feature flags in a project."
+    expected_ops:
+      - method: GET
+        path: "/api/projects/{project_id}/feature_flags/"
+  - id: create-feature-flag
+    goal: "Create a feature flag."
     expected_ops:
       - method: POST
-        path: "/capture"
-  - id: list-projects
-    goal: "List available projects."
-    expected_ops:
-      - method: GET
-        path: "/api/projects/"
+        path: "/api/projects/{project_id}/feature_flags/"
   - id: list-insights
-    goal: "List insights in a project."
+    goal: "List insights in an environment."
     expected_ops:
       - method: GET
-        path: "/api/projects/{project_id}/insights/"
+        path: "/api/environments/{environment_id}/insights/"

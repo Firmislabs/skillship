@@ -42,7 +42,13 @@ const REST_PROBE_PATHS = [
   "/api/v1/openapi.json",
   "/openapi.json",
   "/swagger.json",
+  "/api/schema/",
+  "/swagger.v1.json",
+  "/v3/api-docs",
+  "/api-docs/v2/swagger.json",
 ];
+
+const API_SUBHOSTS = ["app", "api"] as const;
 
 export function buildProbeTargets(base: URL): ProbeTarget[] {
   const targets: ProbeTarget[] = [
@@ -58,6 +64,12 @@ export function buildProbeTargets(base: URL): ProbeTarget[] {
     targets.push({ surface: "rest", url: new URL(p, base).toString() });
   }
   if (!isNonPublicHost(base.hostname)) {
+    for (const sub of API_SUBHOSTS) {
+      for (const p of REST_PROBE_PATHS) {
+        const url = `${base.protocol}//${sub}.${base.hostname}${p}`;
+        targets.push({ surface: "rest", url });
+      }
+    }
     const mcpUrl = `${base.protocol}//mcp.${base.hostname}/.well-known/oauth-protected-resource/mcp`;
     targets.push({ surface: "mcp", url: mcpUrl });
   }

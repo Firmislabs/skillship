@@ -63,7 +63,7 @@ vendors:
       baseline_path: null
 
   - id: gitea
-    domain: about.gitea.com
+    domain: gitea.com
     github_org: go-gitea
     expected:
       surfaces: [rest, docs]

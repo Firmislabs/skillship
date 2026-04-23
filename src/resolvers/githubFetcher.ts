@@ -1,6 +1,7 @@
 import { spawn } from "node:child_process";
 import { classifySpecPath, type GithubBlob } from "./githubSpecs.js";
 import { bundleOpenapiRefs } from "./openapiBundle.js";
+import { resolveStainlessSpec, type FetchUrl } from "./stainless.js";
 
 export interface ParsedRepoUrl {
   readonly owner: string;
@@ -24,6 +25,7 @@ export function parseGithubRepoUrl(url: string): ParsedRepoUrl | null {
 export async function fetchGithubRepoBlobs(
   repoUrl: string,
   gh: GhInvoker = realGhInvoker,
+  fetchUrl: FetchUrl = realFetchUrl,
 ): Promise<GithubBlob[]> {
   const parsed = parseGithubRepoUrl(repoUrl);
   if (parsed === null) return [];
@@ -43,13 +45,15 @@ export async function fetchGithubRepoBlobs(
   const tree = JSON.parse(treeRaw) as TreeResponse;
   if (tree.truncated === true || !Array.isArray(tree.tree)) return [];
   const pathToSha = indexTree(tree.tree);
+  const out: GithubBlob[] = [];
+  const stainless = await expandStainless(parsed, pathToSha, gh, fetchUrl);
+  if (stainless !== null) out.push(stainless);
   const hits = tree.tree.filter(
     (e) =>
       e.type === "blob" &&
       !SKIP_DIR_RE.test(`/${e.path}`) &&
       classifySpecPath(e.path) !== null,
   );
-  const out: GithubBlob[] = [];
   for (const hit of hits) {
     const blob = await fetchBlob(parsed, hit.sha, gh);
     if (blob === null) continue;
@@ -60,6 +64,28 @@ export async function fetchGithubRepoBlobs(
   }
   return out;
 }
+
+async function expandStainless(
+  parsed: ParsedRepoUrl,
+  pathToSha: ReadonlyMap<string, string>,
+  gh: GhInvoker,
+  fetchUrl: FetchUrl,
+): Promise<GithubBlob | null> {
+  const sha = pathToSha.get(".stats.yml");
+  if (sha === undefined) return null;
+  const statsBytes = await fetchBlob(parsed, sha, gh);
+  if (statsBytes === null) return null;
+  const resolved = await resolveStainlessSpec(statsBytes, fetchUrl);
+  if (resolved === null) return null;
+  return { path: resolved.path, bytes: resolved.bytes };
+}
+
+const realFetchUrl: FetchUrl = async (url) => {
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(`fetch ${url} failed: ${res.status}`);
+  const ab = await res.arrayBuffer();
+  return Buffer.from(ab);
+};
 
 function indexTree(entries: readonly TreeEntry[]): ReadonlyMap<string, string> {
   const map = new Map<string, string>();

@@ -170,6 +170,45 @@ describe("resolveGithubSpecs", () => {
     ]);
   });
 
+  test("rejects CI/GHA workflow, test, and snapshot paths even when filename matches", async () => {
+    const repoUrl = "https://github.com/acme/api";
+    const ph = entry("rest", repoUrl, "application/vnd.github.repo");
+    const result = await resolveGithubSpecs(
+      [ph],
+      mockFetcher({
+        [repoUrl]: [
+          {
+            path: ".github/openapi-problem-matcher.json",
+            bytes: Buffer.from("{}"),
+          },
+          {
+            path: ".github/workflows/ci-openapi-codegen.yml",
+            bytes: Buffer.from("{}"),
+          },
+          {
+            path: "services/mcp/tests/unit/__snapshots__/endpoint-openapi-spec.json",
+            bytes: Buffer.from("{}"),
+          },
+          {
+            path: "examples/openapi-demo.yaml",
+            bytes: Buffer.from("{}"),
+          },
+          {
+            path: "fixtures/openapi.yaml",
+            bytes: Buffer.from("{}"),
+          },
+          {
+            path: "spec/openapi.yaml",
+            bytes: Buffer.from("a: 1"),
+          },
+        ],
+      }),
+      { now: () => FIXED_NOW },
+    );
+    expect(result).toHaveLength(1);
+    expect(result[0]?.url).toBe(`${repoUrl}/blob/HEAD/spec/openapi.yaml`);
+  });
+
   test("preserves order: pass-through entries keep their position around expansions", async () => {
     const ghRepo = "https://github.com/supa/openapi";
     const ph = entry("rest", ghRepo, "application/vnd.github.repo");

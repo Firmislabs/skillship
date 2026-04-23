@@ -24,7 +24,7 @@ describe("normalizeBase", () => {
 });
 
 describe("buildProbeTargets", () => {
-  it("emits llms.txt, sitemap, 4 OpenAPI guesses, + mcp subdomain for real hosts", () => {
+  it("emits llms.txt, sitemap, OpenAPI guesses, + mcp subdomain for real hosts", () => {
     const targets = buildProbeTargets(normalizeBase("supabase.com"));
     const urls = targets.map((t) => t.url);
     expect(urls).toContain("https://supabase.com/llms.txt");
@@ -37,6 +37,30 @@ describe("buildProbeTargets", () => {
     expect(urls).toContain(
       "https://mcp.supabase.com/.well-known/oauth-protected-resource/mcp",
     );
+  });
+
+  it("includes runtime-generated OpenAPI probe paths", () => {
+    const targets = buildProbeTargets(normalizeBase("posthog.com"));
+    const urls = targets.map((t) => t.url);
+    expect(urls).toContain("https://posthog.com/api/schema/");
+    expect(urls).toContain("https://posthog.com/swagger.v1.json");
+    expect(urls).toContain("https://posthog.com/v3/api-docs");
+  });
+
+  it("probes common api sub-hosts (app.*, api.*) for REST specs", () => {
+    const targets = buildProbeTargets(normalizeBase("posthog.com"));
+    const urls = targets.map((t) => t.url);
+    expect(urls).toContain("https://app.posthog.com/api/schema/");
+    expect(urls).toContain("https://api.posthog.com/openapi.json");
+  });
+
+  it("skips sub-host probes for IP/localhost", () => {
+    const targets = buildProbeTargets(
+      normalizeBase("http://127.0.0.1:9999"),
+    );
+    const urls = targets.map((t) => t.url);
+    expect(urls.every((u) => !u.includes("app.127.0.0.1"))).toBe(true);
+    expect(urls.every((u) => !u.includes("api.127.0.0.1"))).toBe(true);
   });
 
   it("omits the mcp subdomain probe for localhost/IP hosts", () => {

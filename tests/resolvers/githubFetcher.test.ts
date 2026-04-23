@@ -188,6 +188,46 @@ describe("fetchGithubRepoBlobs", () => {
     expect(bundled).not.toContain("$ref");
   });
 
+  test("stainless: expands .stats.yml to external openapi spec", async () => {
+    const statsYml = [
+      "configured_endpoints: 77",
+      "openapi_spec_url: https://storage.googleapis.com/example/spec.yml",
+      "openapi_spec_hash: abc",
+    ].join("\n");
+    const gh = fakeGhFactory([
+      {
+        args: ["api", "repos/a/b/git/trees/HEAD?recursive=1"],
+        stdout: JSON.stringify({
+          tree: [
+            { path: ".stats.yml", type: "blob", sha: "stats" },
+          ],
+        }),
+      },
+      {
+        args: ["api", "repos/a/b/git/blobs/stats"],
+        stdout: JSON.stringify({
+          content: Buffer.from(statsYml).toString("base64"),
+          encoding: "base64",
+        }),
+      },
+    ]);
+    const fetchUrl = async (url: string): Promise<Buffer> => {
+      if (url === "https://storage.googleapis.com/example/spec.yml") {
+        return Buffer.from("openapi: 3.1.0\ninfo:\n  title: Demo\n", "utf8");
+      }
+      throw new Error(`unexpected url ${url}`);
+    };
+    const blobs = await fetchGithubRepoBlobs(
+      "https://github.com/a/b",
+      gh,
+      fetchUrl,
+    );
+    expect(blobs).toHaveLength(1);
+    const blob = blobs[0]!;
+    expect(blob.path).toMatch(/openapi\.ya?ml$/);
+    expect(blob.bytes.toString("utf8")).toContain("openapi: 3.1.0");
+  });
+
   test("tree truncated: warns via return metadata", async () => {
     const gh = fakeGhFactory([
       {

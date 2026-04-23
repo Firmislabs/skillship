@@ -8,6 +8,7 @@ import {
   type SkillshipConfig,
 } from "../discovery/config.js";
 import { crawlDomain, type CrawlResult } from "../discovery/crawler.js";
+import { inferSpecContentType } from "../discovery/specSniffer.js";
 import {
   discoverGithubSignals,
   realGhRepoLister,
@@ -46,6 +47,13 @@ function inferSurfaceFromRepoName(name: string): SurfaceKind {
   if (n.includes("cli")) return "cli";
   if (n.includes("openapi") || n.includes("swagger")) return "rest";
   return "sdk";
+}
+
+function refineCrawlResult(r: CrawlResult): CrawlResult {
+  if (r.surface !== "rest") return r;
+  const inferred = inferSpecContentType(r.bytes, r.content_type);
+  if (inferred === r.content_type) return r;
+  return { ...r, content_type: inferred };
 }
 
 function crawlResultToEntry(
@@ -88,15 +96,14 @@ export async function runInit(opts: InitOptions): Promise<InitResult> {
   try {
     const crawled = await crawlDomain(opts.domain, fetchOpts);
     for (const r of crawled) {
+      const normalized = refineCrawlResult(r);
       const node = storeSource(handle.db, sourcesDir, {
-        url: r.url,
-        bytes: r.bytes,
-        content_type: r.content_type,
-        surface: r.surface,
+        url: normalized.url,
+        bytes: normalized.bytes,
+        content_type: normalized.content_type,
+        surface: normalized.surface,
       });
-      entries.push(
-        crawlResultToEntry(r, node.id, node.fetched_at),
-      );
+      entries.push(crawlResultToEntry(normalized, node.id, node.fetched_at));
     }
     if (opts.github) {
       const lister = opts.githubLister ?? realGhRepoLister;

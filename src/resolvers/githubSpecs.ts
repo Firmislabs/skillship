@@ -92,7 +92,9 @@ function pickSurface(
 
 export function classifySpecPath(path: string): SpecClassification | null {
   const lower = path.toLowerCase();
+  if (isRejectedPath(lower)) return null;
   const filename = lower.split("/").pop() ?? "";
+  if (isRejectedFilename(filename)) return null;
   const openapi = matchOpenapi(filename);
   if (openapi !== null) return openapi;
   const swagger = matchSwagger(filename);
@@ -100,6 +102,34 @@ export function classifySpecPath(path: string): SpecClassification | null {
   const openref = matchOpenref(lower);
   if (openref !== null) return openref;
   return null;
+}
+
+const REJECTED_SEGMENTS = new Set([
+  ".github",
+  "__snapshots__",
+  "tests",
+  "test",
+  "examples",
+  "example",
+  "fixtures",
+  "__tests__",
+  "__fixtures__",
+]);
+
+function isRejectedPath(lowerPath: string): boolean {
+  const segments = lowerPath.split("/");
+  for (const seg of segments.slice(0, -1)) {
+    if (REJECTED_SEGMENTS.has(seg)) return true;
+  }
+  return false;
+}
+
+function isRejectedFilename(filename: string): boolean {
+  if (filename.includes("problem-matcher")) return true;
+  if (filename.includes("codegen")) return true;
+  if (filename.includes(".config.")) return true;
+  if (filename.includes(".stub.")) return true;
+  return false;
 }
 
 function matchOpenapi(filename: string): SpecClassification | null {

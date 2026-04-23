@@ -851,4 +851,93 @@ tests + exit codes / files changed / checkpoint tag or rollback reason.
 - **Tests:** 209/209 (+11 from +10 bundler and +1 fetcher; -0
   adjustment on existing fetcher test to account for YAML round-trip
   trailing newline).
+- **Checkpoint:** 631cff1 (sprint/iter2-T1-complete).
+
+---
+
+### T28-T30 — Iter2: classifier tightening + probe expansion + Stainless
+- **Started:** 2026-04-23 17:55 local
+- **Status:** completed
+- **Goal:** unblock the three remaining 0-op OSS/SDK vendors (gitea,
+  posthog, anthropic) and tighten the GitHub spec classifier to reject
+  obvious non-spec files it was accepting.
+
+**T28 — classifier tightening (`src/resolvers/githubSpecs.ts`):**
+  Added `REJECTED_SEGMENTS` guard rejecting any path containing
+  `.github`, `__snapshots__`, `tests`, `test`, `examples`, `example`,
+  `fixtures`, `__tests__`, `__fixtures__` as a directory segment.
+  Added `isRejectedFilename` rejecting filenames matching
+  `problem-matcher`, `codegen`, `.config.`, `.stub.`. These guards run
+  before the filename classifier — previously classifier was greedy on
+  anything ending in `openapi.yaml`.
+
+**T29 — probe-path + sub-host expansion (`src/discovery/crawler.ts`,
+  `src/discovery/specSniffer.ts`, `src/cli/init.ts`):**
+  - Added probe paths: `/api/schema/` (drf-spectacular),
+    `/swagger.v1.json` (go-swagger runtime-generated),
+    `/v3/api-docs`, `/api-docs/v2/swagger.json`.
+  - Added sub-host expansion: for non-public domains, also probe
+    `app.<domain>` and `api.<domain>` for every REST path. Fixes
+    posthog (spec lives at app.posthog.com) and gitea (gitea.com).
+  - Added `src/discovery/specSniffer.ts` content-type normalizer:
+    looks at first 4KB, detects OpenAPI 3.x / Swagger 2.0 in either
+    JSON or YAML body regardless of declared Content-Type, returns
+    canonical `application/openapi+*` or `application/swagger+*` for
+    dispatcher routing. Fixes vendors that serve JSON spec under
+    `text/html` or `text/plain` content-type.
+  - Wired `refineCrawlResult` in `src/cli/init.ts` to apply sniffer to
+    every REST crawl result before persisting config.
+
+**T30 — Stainless resolver (`src/resolvers/stainless.ts`):**
+  Detects `.stats.yml` at repo root (Stainless SDK convention),
+  extracts `openapi_spec_url`, fetches the externally-hosted spec
+  (typically GCS), returns it as a normal blob for downstream bundling.
+  Wired into `src/resolvers/githubFetcher.ts` via `expandStainless` —
+  runs before tree walk so the external spec takes precedence over any
+  stubs. Fixes anthropic, which publishes its OpenAPI via Stainless.
+
+**Eval config updates:**
+  - `eval/vendors.yaml`: gitea domain `about.gitea.com` → `gitea.com`
+    (marketing-only subdomain returned 0 sources).
+  - `eval/tasks/posthog.yaml`: rewrote all 3 task paths to match the
+    actual schema served at `app.posthog.com/api/schema/`
+    (feature_flags / insights endpoints).
+
+- **TDD:**
+  - 9 sniffer tests (RED → GREEN): JSON openapi, YAML openapi, YAML
+    swagger, JSON swagger, unknown-body preservation, leading YAML
+    directive, mis-declared content-type, truncated body, declared
+    content-type passthrough.
+  - 4 Stainless tests: missing URL returns null, fetches referenced
+    URL, fetchUrl rejection handled, quoted URL variant.
+  - 4 new crawler tests: sub-host expansion, new probe paths, probe
+    ordering, hitmap stability.
+  - Classifier tests updated to assert rejections for new segments.
+  - 1 fetcher integration test for Stainless expansion.
+- **Eval after (9 vendors, final):**
+    | vendor    | ops   | cov  | grd  | fmt  | Δ ops   | Δ cov    |
+    |-----------|-------|------|------|------|---------|----------|
+    | supabase  |   276 | 100% | 100% | pass | —       | —        |
+    | stripe    |  1503 | 100% | 100% | pass | —       | —        |
+    | vercel    |   377 |  80% | 100% | pass | —       | —        |
+    | linear    |     0 |   0% | 100% | pass | —       | —        |
+    | anthropic |    90 | 100% | 100% | pass | +90     | 0→100%   |
+    | n8n       |    71 | 100% | 100% | pass | —       | —        |
+    | directus  |   133 | 100% | 100% | pass | —       | —        |
+    | gitea     |   471 | 100% | 100% | pass | +471    | 0→100%   |
+    | posthog   |  1440 | 100% | 100% | pass | +1440   | 0→100%   |
+  **8 of 9 vendors at 100% coverage.** Linear remains at 0% — it is
+  GraphQL-only and has no OpenAPI/Swagger surface; requires a GraphQL
+  extractor (structural limitation, out of scope).
+- **Files:** ~src/resolvers/githubSpecs.ts, +src/discovery/specSniffer.ts,
+  ~src/discovery/crawler.ts, ~src/cli/init.ts,
+  +src/resolvers/stainless.ts, ~src/resolvers/githubFetcher.ts,
+  +tests/discovery/specSniffer.test.ts, +tests/resolvers/stainless.test.ts,
+  ~tests/discovery/crawler.test.ts, ~tests/resolvers/githubSpecs.test.ts,
+  ~tests/resolvers/githubFetcher.test.ts, ~eval/vendors.yaml,
+  ~eval/tasks/posthog.yaml, +eval/projects/anthropic/.skillship/config.yaml,
+  +eval/projects/gitea/.skillship/config.yaml,
+  +eval/projects/posthog/.skillship/config.yaml.
+- **Tests:** 227/227 green (+18 from T27: +9 sniffer, +4 Stainless,
+  +4 crawler, +1 fetcher integration).
 - **Checkpoint:** pending commit.
