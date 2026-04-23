@@ -25,6 +25,11 @@ import {
 } from "../resolvers/githubSpecs.js";
 import { storeSource } from "../sources/store.js";
 import type { SurfaceKind } from "../graph/types.js";
+import { extractLlmsTxt } from "../extractors/llmsTxt.js";
+import {
+  fetchAuthDocPages,
+  type AuthDocPage,
+} from "../discovery/authLinkFollow.js";
 
 export interface InitOptions {
   readonly domain: string;
@@ -105,6 +110,16 @@ export async function runInit(opts: InitOptions): Promise<InitResult> {
       });
       entries.push(crawlResultToEntry(normalized, node.id, node.fetched_at));
     }
+    const authPages = await fetchAuthDocPagesFromCrawl(crawled, fetchOpts.timeoutMs);
+    for (const r of authPages) {
+      const node = storeSource(handle.db, sourcesDir, {
+        url: r.url,
+        bytes: r.bytes,
+        content_type: r.content_type,
+        surface: r.surface,
+      });
+      entries.push(crawlResultToEntry(r, node.id, node.fetched_at));
+    }
     if (opts.github) {
       const lister = opts.githubLister ?? realGhRepoLister;
       const hits = await discoverGithubSignals(opts.github, lister);
@@ -143,4 +158,54 @@ function pickFetcher(opts: InitOptions): GithubRepoFetcher | null {
     return (url) => fetchGithubRepoBlobs(url, invoker);
   }
   return null;
+}
+
+function makeFakeSource(url: string): import("../graph/types.js").SourceNode {
+  return {
+    id: `fake-${url}`,
+    kind: "source",
+    surface: "llms_txt",
+    url,
+    content_type: "text/plain",
+    fetched_at: new Date().toISOString(),
+    bytes: 0,
+    cache_path: "",
+  };
+}
+
+function extractAuthDocPages(
+  llmsResult: CrawlResult,
+): AuthDocPage[] {
+  const extraction = extractLlmsTxt({
+    bytes: llmsResult.bytes,
+    source: makeFakeSource(llmsResult.url),
+    productId: "init",
+  });
+  const urlByNode = new Map<string, string>();
+  const titleByNode = new Map<string, string>();
+  const categoryByNode = new Map<string, string>();
+  for (const c of extraction.claims) {
+    if (c.field === "url") urlByNode.set(c.node_id, String(c.value));
+    if (c.field === "title") titleByNode.set(c.node_id, String(c.value));
+    if (c.field === "category") categoryByNode.set(c.node_id, String(c.value));
+  }
+  const pages: AuthDocPage[] = [];
+  for (const [nodeId, url] of urlByNode) {
+    pages.push({
+      url,
+      title: titleByNode.get(nodeId) ?? "",
+      category: categoryByNode.get(nodeId) ?? "",
+    });
+  }
+  return pages;
+}
+
+async function fetchAuthDocPagesFromCrawl(
+  crawled: CrawlResult[],
+  timeoutMs: number | undefined,
+): Promise<CrawlResult[]> {
+  const llmsTxt = crawled.find(r => r.surface === "llms_txt");
+  if (llmsTxt === undefined) return [];
+  const pages = extractAuthDocPages(llmsTxt);
+  return fetchAuthDocPages({ pages, timeoutMs });
 }

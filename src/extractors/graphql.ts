@@ -74,6 +74,8 @@ export async function extractGraphql(
     claims.push(...fieldClaims(opId, entry))
   }
 
+  emitDefaultBearerAuth(input.productId, nodes, claims)
+
   return {
     extractor: GRAPHQL_EXTRACTOR,
     source_id: input.source.id,
@@ -144,6 +146,22 @@ function printType(t: TypeNode): string {
 
 function printArg(arg: InputValueDefinitionNode): string {
   return `${arg.name.value}: ${printType(arg.type)}`
+}
+
+function emitDefaultBearerAuth(
+  productId: string,
+  nodes: ExtractedNode[],
+  claims: ExtractedClaim[],
+): void {
+  const id = stableId("ath", [productId, "graphql-default"])
+  nodes.push({ id, kind: "auth_scheme", parent_id: productId })
+  claims.push({
+    node_id: id,
+    field: "type",
+    value: "bearer",
+    span_path: "$.synthesized",
+    confidence: "inferred",
+  })
 }
 
 function emptyResult(sourceId: string): Extraction {

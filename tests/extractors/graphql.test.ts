@@ -250,8 +250,11 @@ describe("extractGraphql", () => {
       source: fakeSource(),
       productId: "prod-12",
     })
+    const opNodeIds = new Set(
+      result.nodes.filter(n => n.kind === "operation").map(n => n.id),
+    )
     for (const claim of result.claims) {
-      if (claim.field !== "extraction_error") {
+      if (opNodeIds.has(claim.node_id)) {
         expect(claim.confidence).toBe("attested")
       }
     }
@@ -270,5 +273,36 @@ describe("extractGraphql", () => {
     })
     const params = result.claims.find(c => c.field === "params")
     expect(params).toBeUndefined()
+  })
+
+  test("emits a synthetic Bearer auth_scheme node anchored to product", async () => {
+    const src = `
+      type Query { ping: String }
+    `
+    const result = await extractGraphql({
+      bytes: sdl(src),
+      source: fakeSource(),
+      productId: "prod-auth",
+    })
+    const auth = result.nodes.filter(n => n.kind === "auth_scheme")
+    expect(auth).toHaveLength(1)
+    expect(auth[0]?.parent_id).toBe("prod-auth")
+    const typeClaim = result.claims.find(
+      c => c.node_id === auth[0]?.id && c.field === "type",
+    )
+    expect(typeClaim?.value).toBe("bearer")
+    expect(typeClaim?.confidence).toBe("inferred")
+  })
+
+  test("does not emit auth_scheme when SDL has no operations", async () => {
+    const src = `
+      type Foo { x: String }
+    `
+    const result = await extractGraphql({
+      bytes: sdl(src),
+      source: fakeSource(),
+      productId: "prod-noop",
+    })
+    expect(result.nodes.filter(n => n.kind === "auth_scheme")).toHaveLength(0)
   })
 })

@@ -5,6 +5,22 @@ import { describe, expect, test } from "vitest";
 import { extractDocsMd } from "../../src/extractors/docsMd.js";
 import type { SourceNode } from "../../src/graph/types.js";
 
+const BEARER_DOC = readFileSync(
+  join(process.cwd(), "tests/fixtures/docs-md/auth-bearer.md"),
+);
+const OAUTH2_DOC = readFileSync(
+  join(process.cwd(), "tests/fixtures/docs-md/auth-oauth2.md"),
+);
+const APIKEY_DOC = readFileSync(
+  join(process.cwd(), "tests/fixtures/docs-md/auth-apikey.md"),
+);
+const NO_AUTH_HEADING_DOC = readFileSync(
+  join(process.cwd(), "tests/fixtures/docs-md/no-auth-heading.md"),
+);
+const AUTH_HEADING_NO_SCHEME_DOC = readFileSync(
+  join(process.cwd(), "tests/fixtures/docs-md/auth-heading-no-scheme.md"),
+);
+
 const GUIDE = readFileSync(
   join(process.cwd(), "tests/fixtures/docs-md/guide-auth.md"),
 );
@@ -138,5 +154,119 @@ describe("extractDocsMd", () => {
       expect(typeof c.span_path).toBe("string");
       expect(["attested", "derived"]).toContain(c.confidence);
     }
+  });
+});
+
+describe("extractDocsMd — auth_scheme heuristic (Part B)", () => {
+  test("bearer-only doc emits 1 auth_scheme node of type=bearer", () => {
+    const result = extractDocsMd({
+      bytes: BEARER_DOC,
+      source: fakeSource(
+        "https://api.example.com/docs/authentication.md",
+        "text/markdown",
+      ),
+      productId: "product-bearer",
+    });
+    const authNodes = result.nodes.filter((n) => n.kind === "auth_scheme");
+    expect(authNodes).toHaveLength(1);
+    const node = authNodes[0];
+    expect(node).toBeDefined();
+    expect(node?.parent_id).toBe("product-bearer");
+
+    const typeClaim = result.claims.find(
+      (c) => c.node_id === node?.id && c.field === "type",
+    );
+    expect(typeClaim?.value).toBe("bearer");
+    expect(typeClaim?.confidence).toBe("derived");
+    expect(typeClaim?.span_path).toMatch(/\$\.body/);
+  });
+
+  test("OAuth2 doc with scopes emits 1 auth_scheme node of type=oauth2 with scopes claim", () => {
+    const result = extractDocsMd({
+      bytes: OAUTH2_DOC,
+      source: fakeSource(
+        "https://linear.app/developers/oauth-2-0-authentication.md",
+        "text/markdown",
+      ),
+      productId: "product-linear",
+    });
+    const authNodes = result.nodes.filter((n) => n.kind === "auth_scheme");
+    expect(authNodes).toHaveLength(1);
+    const node = authNodes[0];
+    expect(node).toBeDefined();
+
+    const typeClaim = result.claims.find(
+      (c) => c.node_id === node?.id && c.field === "type",
+    );
+    expect(typeClaim?.value).toBe("oauth2");
+    expect(typeClaim?.confidence).toBe("derived");
+
+    const scopesClaim = result.claims.find(
+      (c) => c.node_id === node?.id && c.field === "scopes",
+    );
+    expect(scopesClaim).toBeDefined();
+    const scopes = scopesClaim?.value as string[];
+    expect(Array.isArray(scopes)).toBe(true);
+    expect(scopes).toContain("read");
+    expect(scopes).toContain("write");
+    expect(scopes).toContain("admin");
+  });
+
+  test("API key doc emits 1 auth_scheme node of type=apiKey with param_name extracted", () => {
+    const result = extractDocsMd({
+      bytes: APIKEY_DOC,
+      source: fakeSource(
+        "https://api.example.com/docs/api-key-auth.md",
+        "text/markdown",
+      ),
+      productId: "product-apikey",
+    });
+    const authNodes = result.nodes.filter((n) => n.kind === "auth_scheme");
+    expect(authNodes).toHaveLength(1);
+    const node = authNodes[0];
+    expect(node).toBeDefined();
+
+    const typeClaim = result.claims.find(
+      (c) => c.node_id === node?.id && c.field === "type",
+    );
+    expect(typeClaim?.value).toBe("apiKey");
+    expect(typeClaim?.confidence).toBe("derived");
+
+    const paramClaim = result.claims.find(
+      (c) => c.node_id === node?.id && c.field === "param_name",
+    );
+    expect(paramClaim?.value).toBe("X-API-Key");
+    expect(paramClaim?.confidence).toBe("derived");
+
+    const locClaim = result.claims.find(
+      (c) => c.node_id === node?.id && c.field === "location",
+    );
+    expect(locClaim?.value).toBe("header");
+  });
+
+  test("doc with no auth heading emits no auth_scheme nodes", () => {
+    const result = extractDocsMd({
+      bytes: NO_AUTH_HEADING_DOC,
+      source: fakeSource(
+        "https://api.example.com/docs/getting-started.md",
+        "text/markdown",
+      ),
+      productId: "product-noauth",
+    });
+    const authNodes = result.nodes.filter((n) => n.kind === "auth_scheme");
+    expect(authNodes).toHaveLength(0);
+  });
+
+  test("doc with auth heading but no scheme keywords emits no auth_scheme nodes", () => {
+    const result = extractDocsMd({
+      bytes: AUTH_HEADING_NO_SCHEME_DOC,
+      source: fakeSource(
+        "https://api.example.com/docs/security.md",
+        "text/markdown",
+      ),
+      productId: "product-noscheme",
+    });
+    const authNodes = result.nodes.filter((n) => n.kind === "auth_scheme");
+    expect(authNodes).toHaveLength(0);
   });
 });
