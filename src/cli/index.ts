@@ -3,6 +3,7 @@ import { Command } from "commander";
 import { join } from "node:path";
 import { runInit } from "./init.js";
 import { runBuild } from "./build.js";
+import { fetchGithubRepoBlobs } from "../resolvers/githubFetcher.js";
 
 function printConfigSummary(
   configPath: string,
@@ -42,6 +43,7 @@ function makeProgram(): Command {
       const r = await runInit({
         domain: opts.domain,
         github: opts.github ?? null,
+        githubRepoFetcher: (url) => fetchGithubRepoBlobs(url),
         ...(opts.out !== undefined ? { out: opts.out } : {}),
         ...(opts.timeoutMs !== undefined ? { timeoutMs: opts.timeoutMs } : {}),
       });

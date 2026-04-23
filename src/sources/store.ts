@@ -19,6 +19,12 @@ const EXTENSION_MAP: Readonly<Record<string, string>> = {
   "text/html": "html",
   "application/javascript": "js",
   "application/typescript": "ts",
+  "application/openapi+yaml": "yaml",
+  "application/openapi+json": "json",
+  "application/swagger+yaml": "yaml",
+  "application/swagger+json": "json",
+  "application/x-openref-cli+yaml": "yaml",
+  "application/x-openref-sdk+yaml": "yaml",
 };
 
 export function extensionFor(contentType: string): string {

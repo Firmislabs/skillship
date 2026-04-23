@@ -2,9 +2,11 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { parse as parseYaml } from "yaml";
+import { createHash } from "node:crypto";
 import { runInit } from "../../src/cli/init.js";
 import type { GithubRepo } from "../../src/discovery/github.js";
 import type { SkillshipConfig } from "../../src/discovery/config.js";
+import type { GithubBlob } from "../../src/resolvers/githubSpecs.js";
 import { makeTmpCtx, type TmpCtx } from "../helpers.js";
 import {
   startTestServer,
@@ -114,6 +116,51 @@ describe("runInit (CLI smoke)", () => {
     // supabase-js matches the -js suffix heuristic.
     expect(urls).toContain("https://github.com/supabase/supabase-js");
     expect(urls).not.toContain("https://github.com/supabase/supabase");
+  });
+
+  it("expands github.repo placeholders via injected fetcher + stores bytes", async () => {
+    const baseUrl = await start({
+      "/llms.txt": { status: 200, contentType: "text/plain", body: "# x\n" },
+    });
+    const openapiBytes = Buffer.from(
+      "openapi: 3.0.0\ninfo:\n  title: Acme\n  version: 1.0.0\n",
+    );
+    const openapiSha = createHash("sha256").update(openapiBytes).digest("hex");
+    const ghLister = async (): Promise<GithubRepo[]> => [
+      { name: "openapi", html_url: "https://github.com/acme/openapi" },
+    ];
+    const fetcher = async (
+      repoUrl: string,
+    ): Promise<readonly GithubBlob[]> => {
+      if (repoUrl !== "https://github.com/acme/openapi") return [];
+      return [{ path: "openapi.yaml", bytes: openapiBytes }];
+    };
+    const result = await runInit({
+      domain: baseUrl,
+      github: "acme",
+      out: ctx.dir,
+      timeoutMs: 2000,
+      githubLister: ghLister,
+      githubRepoFetcher: fetcher,
+    });
+    const parsed = parseYaml(
+      readFileSync(result.configPath, "utf8"),
+    ) as SkillshipConfig;
+    const placeholders = parsed.sources.filter(
+      (s) => s.content_type === "application/vnd.github.repo",
+    );
+    expect(placeholders).toEqual([]);
+    const rest = parsed.sources.find(
+      (s) => s.content_type === "application/openapi+yaml",
+    );
+    expect(rest).toBeDefined();
+    expect(rest?.sha256).toBe(openapiSha);
+    expect(rest?.url).toBe(
+      "https://github.com/acme/openapi/blob/HEAD/openapi.yaml",
+    );
+    const cached = join(ctx.dir, ".skillship", "sources", `${openapiSha}.yaml`);
+    expect(existsSync(cached)).toBe(true);
+    expect(readFileSync(cached)).toEqual(openapiBytes);
   });
 
   it("emits GOLD coverage when signals total >=10", async () => {

@@ -14,6 +14,14 @@ import {
   type GhRepoLister,
   type GithubRepo,
 } from "../discovery/github.js";
+import {
+  fetchGithubRepoBlobs,
+  type GhInvoker,
+} from "../resolvers/githubFetcher.js";
+import {
+  resolveGithubSpecs,
+  type GithubRepoFetcher,
+} from "../resolvers/githubSpecs.js";
 import { storeSource } from "../sources/store.js";
 import type { SurfaceKind } from "../graph/types.js";
 
@@ -23,6 +31,8 @@ export interface InitOptions {
   readonly out?: string;
   readonly timeoutMs?: number;
   readonly githubLister?: GhRepoLister;
+  readonly githubRepoFetcher?: GithubRepoFetcher;
+  readonly ghInvoker?: GhInvoker;
 }
 
 export interface InitResult {
@@ -93,15 +103,37 @@ export async function runInit(opts: InitOptions): Promise<InitResult> {
       const hits = await discoverGithubSignals(opts.github, lister);
       for (const repo of hits) entries.push(repoToEntry(repo));
     }
+    const fetcher = pickFetcher(opts);
+    const expanded =
+      fetcher === null
+        ? entries
+        : await resolveGithubSpecs(entries, fetcher, {
+            persist: (p) => {
+              storeSource(handle.db, sourcesDir, {
+                url: p.url,
+                bytes: p.bytes,
+                content_type: p.content_type,
+                surface: p.surface,
+              });
+            },
+          });
+    const config = buildConfig({
+      domain: opts.domain,
+      github_org: opts.github ?? null,
+      sources: expanded,
+    });
+    writeConfig(configPath, config);
+    return { configPath, config };
   } finally {
     handle.close();
   }
+}
 
-  const config = buildConfig({
-    domain: opts.domain,
-    github_org: opts.github ?? null,
-    sources: entries,
-  });
-  writeConfig(configPath, config);
-  return { configPath, config };
+function pickFetcher(opts: InitOptions): GithubRepoFetcher | null {
+  if (opts.githubRepoFetcher !== undefined) return opts.githubRepoFetcher;
+  if (opts.ghInvoker !== undefined) {
+    const invoker = opts.ghInvoker;
+    return (url) => fetchGithubRepoBlobs(url, invoker);
+  }
+  return null;
 }

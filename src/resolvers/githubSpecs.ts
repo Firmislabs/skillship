@@ -13,8 +13,18 @@ export type GithubRepoFetcher = (
   repoUrl: string,
 ) => Promise<readonly GithubBlob[]>;
 
+export interface PersistBlobInput {
+  readonly bytes: Buffer;
+  readonly surface: SurfaceKind;
+  readonly content_type: string;
+  readonly url: string;
+}
+
+export type PersistBlob = (input: PersistBlobInput) => void | Promise<void>;
+
 export interface ResolveGithubSpecsOptions {
   readonly now?: () => string;
+  readonly persist?: PersistBlob;
 }
 
 interface SpecClassification {
@@ -34,7 +44,7 @@ export async function resolveGithubSpecs(
       out.push(entry);
       continue;
     }
-    const expanded = await expandRepo(entry, fetcher, now);
+    const expanded = await expandRepo(entry, fetcher, now, opts.persist);
     for (const e of expanded) out.push(e);
   }
   return out;
@@ -44,6 +54,7 @@ async function expandRepo(
   entry: ConfigSourceEntry,
   fetcher: GithubRepoFetcher,
   now: () => string,
+  persist: PersistBlob | undefined,
 ): Promise<ConfigSourceEntry[]> {
   const blobs = await fetcher(entry.url);
   const fetchedAt = now();
@@ -51,9 +62,19 @@ async function expandRepo(
   for (const blob of blobs) {
     const cls = classifySpecPath(blob.path);
     if (cls === null) continue;
+    const surface = pickSurface(entry.surface, cls.surface);
+    const url = `${entry.url}/blob/HEAD/${blob.path}`;
+    if (persist !== undefined) {
+      await persist({
+        bytes: blob.bytes,
+        surface,
+        content_type: cls.content_type,
+        url,
+      });
+    }
     out.push({
-      surface: pickSurface(entry.surface, cls.surface),
-      url: `${entry.url}/blob/HEAD/${blob.path}`,
+      surface,
+      url,
       sha256: createHash("sha256").update(blob.bytes).digest("hex"),
       content_type: cls.content_type,
       fetched_at: fetchedAt,
