@@ -493,3 +493,31 @@ tests + exit codes / files changed / checkpoint tag or rollback reason.
   (78 LOC), +src/ingest/pipeline.ts (203 LOC),
   +tests/ingest/dispatch.test.ts, +tests/ingest/persist.test.ts,
   +tests/ingest/pipeline.test.ts, +tests/fixtures/openapi3/bulk-160.yaml.
+
+### T23 — SKILL.md renderer (TDD)
+- **Started:** 2026-04-23 15:43 local
+- **Status:** completed
+- **Pre-flight:** 146/146 tests EXIT=0, typecheck EXIT=0.
+- **RED:** `tests/renderers/skill.test.ts` — 6 tests (frontmatter, surface
+  list, operation index with ref links, index cap + "N more" line,
+  empty-graph minimal render, name-slug sanitisation). "Failed to load
+  url ../../src/renderers/skill.js" → RED verified.
+- **GREEN:** `renderSkillMd({db, productId, productName, allowedTools,
+  operationIndexCap?})` queries surfaces under the product, operations
+  under each surface, and reads the highest-precedence claim for each
+  field via `DEFAULT_PRECEDENCE.extractor` (openapi > swagger > mcp >
+  openref-cli > ...). Emits:
+  - Frontmatter: `name: <slug>`, `description`, `allowed-tools`.
+  - Body: `# <product>`, description, `## Surfaces` (kind + operation
+    count per surface), `## Operations` (`METHOD path — summary
+    ([details](references/<op-id>.md))`, capped at
+    `operationIndexCap` default 50, with "+ N more operations" tail).
+  - Empty product → "_No surfaces discovered._" / "_No operations..._".
+  - Name slug: lowercased, non-alphanumerics collapsed to `-`, trimmed.
+- **Tests:** 6 passed (one red→green fix: test regex expected
+  `op-[hex]` but stableId emits `op_[hex16]`; corrected test to match
+  actual ID format — the impl matches the architecture's
+  content-addressable node IDs).
+- **Full suite:** 152 passed / 23 files. EXIT=0. Typecheck EXIT=0.
+- **Files:** +src/renderers/skill.ts (176 LOC),
+  +tests/renderers/skill.test.ts (174 LOC).
