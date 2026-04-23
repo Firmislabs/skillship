@@ -1,0 +1,22 @@
+vendor: n8n
+tasks:
+  - id: list-workflows
+    goal: "List all workflows in the n8n instance."
+    expected_ops:
+      - method: GET
+        path: "/workflows"
+  - id: create-workflow
+    goal: "Create a new workflow from JSON."
+    expected_ops:
+      - method: POST
+        path: "/workflows"
+  - id: get-execution
+    goal: "Fetch a single workflow execution by id."
+    expected_ops:
+      - method: GET
+        path: "/executions/{id}"
+  - id: list-credentials
+    goal: "List stored credentials."
+    expected_ops:
+      - method: GET
+        path: "/credentials/schema/{credentialTypeName}"

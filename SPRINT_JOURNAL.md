@@ -706,3 +706,91 @@ tests + exit codes / files changed / checkpoint tag or rollback reason.
      common flows.
   4. No "Defaults" / "Before You Start" / "Subcommands" sections.
   These are Iter2+ targets.
+
+---
+
+### T24-26 — OSS expansion eval (n8n / directus / gitea / posthog)
+- **Started:** 2026-04-23 17:08 local
+- **Status:** completed
+- **Goal:** extend eval set from 5 original vendors to 9, adding 4 OSS
+  projects where GitHub is public and the pipeline's signals should be
+  broadly discoverable. Motivation: before investing in Iter2 structural
+  quality improvements (dedupe surface summary, group by tag, etc.),
+  confirm the pipeline works across a wider vendor shape than the
+  original 5.
+- **Pre-flight:** vitest 198/198 green after adding 2 new fetcher tests
+  for HTTP 404/409 error-swallow. `npm run build` EXIT=0.
+- **Changes in this attempt:**
+  - `src/resolvers/githubFetcher.ts`: wrap tree `gh` call in try/catch;
+    swallow errors matching `/HTTP 40[49]/` and return `[]`. Triggered
+    by PostHog org containing `posthog-vercel-flags-sdk-example` (empty
+    repo → HTTP 409 from the git trees endpoint), which previously
+    crashed the entire init for the org.
+  - `tests/resolvers/githubFetcher.test.ts`: +2 tests covering the
+    empty-repo 409 and the moved/private 404 cases.
+  - `eval/vendors.yaml`: gitea domain changed `gitea.com` →
+    `about.gitea.com` (real marketing site).
+  - Re-seeded `eval/projects/{n8n,directus,gitea,posthog}` from the
+    fixed fetcher.
+- **Eval after (all 9 vendors):**
+    | vendor   | ops   | cov  | grd  | fmt  | sources |
+    |----------|-------|------|------|------|---------|
+    | supabase |   276 | 100% | 100% | pass | 6       |
+    | stripe   |  1503 | 100% | 100% | pass | 4       |
+    | vercel   |   377 |  80% | 100% | pass | n/a     |
+    | linear   |     0 |   0% | 100% | pass | n/a     |
+    | anthropic|     0 |   0% | 100% | pass | n/a     |
+    | n8n      |     0 |   0% | 100% | pass | 2       |
+    | directus |     0 |   0% | 100% | pass | 4       |
+    | gitea    |     0 |   0% | 100% | pass | 0       |
+    | posthog  |     0 |   0% | 100% | pass | 5       |
+- **Failure analysis (why 0 ops on all 4 OSS vendors):**
+  1. **n8n**, **directus** — Multi-file OpenAPI with external `$ref`s.
+     n8n's `packages/cli/src/public-api/v1/openapi.yml` is 156 lines
+     with 47 `$ref`s to `./handlers/**/spec/paths/*.yml`. Directus's
+     `packages/specs/src/openapi.yaml` is 391 lines with 103 `$ref`s to
+     `./paths/**/*.yaml`. Our fetcher grabs the root but not the
+     referenced files, so the OpenAPI parser ingests ~0 ops. This is
+     the *dominant failure mode* for OSS: splitting specs per
+     path/resource is a common convention (Stripe is the outlier for
+     having a single monolithic YAML).
+  2. **posthog** — Spec classifier false positives. `classifySpecPath`
+     uses substring match on "openapi" and picked up
+     `.github/openapi-problem-matcher.json` (GHA matcher),
+     `.github/workflows/ci-openapi-codegen.yml` (CI workflow), and
+     `services/mcp/tests/unit/__snapshots__/.../endpoint-openapi-spec.json`
+     (test snapshot). None are real specs. Path filter needs to reject
+     paths under `.github/`, `**/__snapshots__/`, `**/tests/`.
+  3. **gitea** — Marketing-only domain (`about.gitea.com` has no API)
+     and the actual OpenAPI is generated at runtime by the Go server
+     (at `/swagger.v1.json` on any gitea instance). Our probe list
+     doesn't include `swagger.v1.json`, and we don't point at a live
+     instance. Coverage gap: self-hosted OSS where the canonical spec
+     URL is an instance, not a vendor domain.
+- **What went right:**
+  - GitHub monorepo heuristic fired for n8n (`n8n-io/n8n`), directus
+    (`directus/directus`), and posthog (`PostHog/posthog`) as
+    expected.
+  - Empty-repo 409 error handling kept posthog init from crashing.
+  - Grounding still 100% across the board — byte integrity preserved
+    even on specs we can't parse.
+- **Files:** ~src/resolvers/githubFetcher.ts,
+  ~tests/resolvers/githubFetcher.test.ts, ~eval/vendors.yaml,
+  +eval/projects/{n8n,directus,gitea,posthog}/.skillship/config.yaml.
+- **Checkpoint:** pending commit.
+- **Iter2 targets ranked by eval impact:**
+  1. **$ref resolution for split-file OpenAPI** — unblocks n8n,
+     directus, and likely most OSS that use go-swagger / swagger-cli
+     bundle conventions. Highest expected coverage delta.
+  2. **Tighter spec-path filter** — reject `.github/**`, `**/tests/**`,
+     `**/__snapshots__/**`, `**/ci-*`, `**-problem-matcher*`. Unblocks
+     posthog and protects future vendors from CI/test noise.
+  3. **Stainless indirection resolver** (`.stats.yml` → GCS URL) —
+     unblocks anthropic and any Stainless-generated SDK org.
+  4. **Self-hosted OSS probe list** — add `swagger.v1.json`,
+     `api/v3/openapi.json` (Gitea), `/api/docs/v3/swagger.json` (common
+     Go/Rails idioms). Unblocks gitea.
+  5. Structural quality improvements (dedupe surface summary, tag
+     grouping, richer description) — original Iter2 scope; now comes
+     after the content-quality fixes above, since producing a
+     well-structured 0-op skill is pointless.

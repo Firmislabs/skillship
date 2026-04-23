@@ -1,0 +1,17 @@
+vendor: posthog
+tasks:
+  - id: capture-event
+    goal: "Send a single event to the capture endpoint."
+    expected_ops:
+      - method: POST
+        path: "/capture"
+  - id: list-projects
+    goal: "List available projects."
+    expected_ops:
+      - method: GET
+        path: "/api/projects/"
+  - id: list-insights
+    goal: "List insights in a project."
+    expected_ops:
+      - method: GET
+        path: "/api/projects/{project_id}/insights/"

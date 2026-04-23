@@ -42,3 +42,38 @@ vendors:
       surfaces: [docs, llms_txt, rest]
       ops_min: 10
       baseline_path: vendor/anthropic-skills/skills/skill-creator
+
+  # --- Open-source vendors (added for perf comparison across OSS projects
+  # where GitHub repos are public and a docs-site + OpenAPI spec coexist).
+
+  - id: n8n
+    domain: n8n.io
+    github_org: n8n-io
+    expected:
+      surfaces: [rest, docs, llms_txt]
+      ops_min: 20
+      baseline_path: null
+
+  - id: directus
+    domain: directus.io
+    github_org: directus
+    expected:
+      surfaces: [rest, docs]
+      ops_min: 50
+      baseline_path: null
+
+  - id: gitea
+    domain: about.gitea.com
+    github_org: go-gitea
+    expected:
+      surfaces: [rest, docs]
+      ops_min: 100
+      baseline_path: null
+
+  - id: posthog
+    domain: posthog.com
+    github_org: PostHog
+    expected:
+      surfaces: [rest, docs, llms_txt, mcp]
+      ops_min: 20
+      baseline_path: null

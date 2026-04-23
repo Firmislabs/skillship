@@ -26,10 +26,19 @@ export async function fetchGithubRepoBlobs(
 ): Promise<GithubBlob[]> {
   const parsed = parseGithubRepoUrl(repoUrl);
   if (parsed === null) return [];
-  const treeRaw = await gh([
-    "api",
-    `repos/${parsed.owner}/${parsed.name}/git/trees/HEAD?recursive=1`,
-  ]);
+  let treeRaw: string;
+  try {
+    treeRaw = await gh([
+      "api",
+      `repos/${parsed.owner}/${parsed.name}/git/trees/HEAD?recursive=1`,
+    ]);
+  } catch (e) {
+    // HTTP 409 = empty repo, 404 = moved/private. Treat as "no specs found"
+    // so a single problem repo in an org doesn't sink the whole init.
+    const msg = e instanceof Error ? e.message : String(e);
+    if (/HTTP 40[49]/.test(msg)) return [];
+    throw e;
+  }
   const tree = JSON.parse(treeRaw) as TreeResponse;
   if (tree.truncated === true || !Array.isArray(tree.tree)) return [];
   const hits = tree.tree.filter(

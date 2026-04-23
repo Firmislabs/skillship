@@ -1,0 +1,22 @@
+vendor: directus
+tasks:
+  - id: list-items
+    goal: "List all items in a Directus collection."
+    expected_ops:
+      - method: GET
+        path: "/items/{collection}"
+  - id: create-item
+    goal: "Create an item in a collection."
+    expected_ops:
+      - method: POST
+        path: "/items/{collection}"
+  - id: get-me
+    goal: "Get the current authenticated user."
+    expected_ops:
+      - method: GET
+        path: "/users/me"
+  - id: list-users
+    goal: "List users."
+    expected_ops:
+      - method: GET
+        path: "/users"

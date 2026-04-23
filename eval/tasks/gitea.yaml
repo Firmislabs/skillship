@@ -1,0 +1,17 @@
+vendor: gitea
+tasks:
+  - id: list-repos
+    goal: "List public repos for the current user."
+    expected_ops:
+      - method: GET
+        path: "/repos/search"
+  - id: create-issue
+    goal: "Create an issue on a repo."
+    expected_ops:
+      - method: POST
+        path: "/repos/{owner}/{repo}/issues"
+  - id: get-user
+    goal: "Get a user by username."
+    expected_ops:
+      - method: GET
+        path: "/users/{username}"

@@ -83,9 +83,30 @@ export async function discoverGithubSignals(
 ): Promise<GithubRepo[]> {
   const repos = await lister(org);
   const signals = matchSignalRepos(repos);
-  const monorepo = repos.find((r) => r.name.toLowerCase() === org.toLowerCase());
+  const monorepo = pickMonorepo(repos, org);
   if (monorepo !== undefined && !signals.includes(monorepo)) {
     return [monorepo, ...signals];
   }
   return signals;
+}
+
+function pickMonorepo(
+  repos: readonly GithubRepo[],
+  org: string,
+): GithubRepo | undefined {
+  const target = normalizeOrg(org);
+  return repos.find((r) => r.name.toLowerCase() === target);
+}
+
+// Strip common org-name framing so n8n-io → n8n, go-gitea → gitea.
+function normalizeOrg(org: string): string {
+  const lower = org.toLowerCase();
+  const withoutPrefix = lower.replace(
+    /^(go-|rust-|py-|js-|node-|deno-|ts-)/,
+    "",
+  );
+  return withoutPrefix.replace(
+    /-(io|inc|labs|lab|lang|corp|org|ai|hq|team)$/,
+    "",
+  );
 }

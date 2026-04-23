@@ -87,6 +87,28 @@ describe("discoverGithubSignals (injected lister)", () => {
     expect(names).not.toContain("realtime");
   });
 
+  it("includes monorepo whose name is a prefix/suffix of the org (n8n-io/n8n)", async () => {
+    const results = await discoverGithubSignals("n8n-io", async () => [
+      { name: "n8n" },
+      { name: "n8n-docs" },
+      { name: "unrelated" },
+    ]);
+    const names = results.map((r) => r.name).sort();
+    expect(names).toContain("n8n");
+    // n8n-docs doesn't match signal regex nor monorepo, but it does match "-doc" no.
+    // Actually n8n-docs has no signal — verify it's excluded.
+    expect(names).not.toContain("unrelated");
+  });
+
+  it("includes monorepo where org name contains repo (go-gitea/gitea)", async () => {
+    const results = await discoverGithubSignals("go-gitea", async () => [
+      { name: "gitea" },
+      { name: "helm-gitea" },
+    ]);
+    const names = results.map((r) => r.name).sort();
+    expect(names).toContain("gitea");
+  });
+
   it("returns [] when lister returns []", async () => {
     const r = await discoverGithubSignals("empty", async () => []);
     expect(r).toEqual([]);

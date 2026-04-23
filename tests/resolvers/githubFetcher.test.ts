@@ -116,6 +116,32 @@ describe("fetchGithubRepoBlobs", () => {
     expect(blobs).toEqual([]);
   });
 
+  test("empty-repo 409 is swallowed (returns [])", async () => {
+    const gh = async (args: readonly string[]): Promise<string> => {
+      void args;
+      throw new Error(
+        "gh api repos/acme/empty/git/trees/HEAD?recursive=1 failed: gh: Git Repository is empty. (HTTP 409)",
+      );
+    };
+    const blobs = await fetchGithubRepoBlobs(
+      "https://github.com/acme/empty",
+      gh,
+    );
+    expect(blobs).toEqual([]);
+  });
+
+  test("moved/private 404 is swallowed (returns [])", async () => {
+    const gh = async (args: readonly string[]): Promise<string> => {
+      void args;
+      throw new Error("gh api failed: gh: Not Found (HTTP 404)");
+    };
+    const blobs = await fetchGithubRepoBlobs(
+      "https://github.com/acme/gone",
+      gh,
+    );
+    expect(blobs).toEqual([]);
+  });
+
   test("tree truncated: warns via return metadata", async () => {
     const gh = fakeGhFactory([
       {
