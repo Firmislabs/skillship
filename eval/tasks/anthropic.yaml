@@ -3,20 +3,25 @@ tasks:
   - id: create-message
     goal: "Send a message to claude-sonnet-4-6 and stream the response."
     expected_ops:
-      - { method: POST, path: /v1/messages }
+      - method: POST
+        path: "/v1/messages"
   - id: list-models
     goal: "List available Claude models."
     expected_ops:
-      - { method: GET, path: /v1/models }
+      - method: GET
+        path: "/v1/models"
   - id: count-tokens
     goal: "Count input tokens for a prompt without spending output tokens."
     expected_ops:
-      - { method: POST, path: /v1/messages/count_tokens }
+      - method: POST
+        path: "/v1/messages/count_tokens"
   - id: batch-create
     goal: "Submit a batch job of 100 messages."
     expected_ops:
-      - { method: POST, path: /v1/messages/batches }
+      - method: POST
+        path: "/v1/messages/batches"
   - id: batch-results
     goal: "Retrieve results for batch msgbatch_xyz."
     expected_ops:
-      - { method: GET, path: /v1/messages/batches/{message_batch_id}/results }
+      - method: GET
+        path: "/v1/messages/batches/{message_batch_id}/results"

@@ -103,7 +103,7 @@ export function classifySpecPath(path: string): SpecClassification | null {
 }
 
 function matchOpenapi(filename: string): SpecClassification | null {
-  if (!filename.startsWith("openapi.")) return null;
+  if (!filename.includes("openapi")) return null;
   if (filename.endsWith(".yaml") || filename.endsWith(".yml")) {
     return { surface: "rest", content_type: "application/openapi+yaml" };
   }
@@ -114,7 +114,7 @@ function matchOpenapi(filename: string): SpecClassification | null {
 }
 
 function matchSwagger(filename: string): SpecClassification | null {
-  if (!filename.startsWith("swagger.")) return null;
+  if (!filename.includes("swagger")) return null;
   if (filename.endsWith(".yaml") || filename.endsWith(".yml")) {
     return { surface: "rest", content_type: "application/swagger+yaml" };
   }

@@ -82,5 +82,10 @@ export async function discoverGithubSignals(
   lister: GhRepoLister = realGhRepoLister,
 ): Promise<GithubRepo[]> {
   const repos = await lister(org);
-  return matchSignalRepos(repos);
+  const signals = matchSignalRepos(repos);
+  const monorepo = repos.find((r) => r.name.toLowerCase() === org.toLowerCase());
+  if (monorepo !== undefined && !signals.includes(monorepo)) {
+    return [monorepo, ...signals];
+  }
+  return signals;
 }

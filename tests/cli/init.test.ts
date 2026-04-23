@@ -115,7 +115,9 @@ describe("runInit (CLI smoke)", () => {
     expect(urls).toContain("https://github.com/supabase/sdk-node");
     // supabase-js matches the -js suffix heuristic.
     expect(urls).toContain("https://github.com/supabase/supabase-js");
-    expect(urls).not.toContain("https://github.com/supabase/supabase");
+    // org-named monorepo (supabase/supabase) is included as a signal repo
+    // because vendors often house OpenAPI specs in the monorepo.
+    expect(urls).toContain("https://github.com/supabase/supabase");
   });
 
   it("expands github.repo placeholders via injected fetcher + stores bytes", async () => {

@@ -3,20 +3,25 @@ tasks:
   - id: create-customer
     goal: "Create a new Customer with email alice@example.com."
     expected_ops:
-      - { method: POST, path: /v1/customers }
+      - method: POST
+        path: "/v1/customers"
   - id: list-customers
     goal: "List the 10 most recent customers."
     expected_ops:
-      - { method: GET, path: /v1/customers }
+      - method: GET
+        path: "/v1/customers"
   - id: create-payment-intent
     goal: "Create a PaymentIntent for $25 USD on customer cus_xyz."
     expected_ops:
-      - { method: POST, path: /v1/payment_intents }
+      - method: POST
+        path: "/v1/payment_intents"
   - id: refund-charge
     goal: "Refund charge ch_xyz in full."
     expected_ops:
-      - { method: POST, path: /v1/refunds }
+      - method: POST
+        path: "/v1/refunds"
   - id: attach-payment-method
     goal: "Attach payment method pm_xyz to customer cus_xyz."
     expected_ops:
-      - { method: POST, path: /v1/payment_methods/{payment_method}/attach }
+      - method: POST
+        path: "/v1/payment_methods/{payment_method}/attach"

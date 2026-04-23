@@ -5,20 +5,25 @@ tasks:
   - id: list-issues
     goal: "List the 10 most recently updated issues assigned to me."
     expected_ops:
-      - { method: MCP, path: list_issues }
+      - method: MCP
+        path: "list_issues"
   - id: create-issue
     goal: "Create an issue titled 'Fix login bug' in team ENG."
     expected_ops:
-      - { method: MCP, path: create_issue }
+      - method: MCP
+        path: "create_issue"
   - id: update-issue-status
     goal: "Move issue LIN-123 to 'In Progress'."
     expected_ops:
-      - { method: MCP, path: update_issue }
+      - method: MCP
+        path: "update_issue"
   - id: list-projects
     goal: "List all projects in the workspace."
     expected_ops:
-      - { method: MCP, path: list_projects }
+      - method: MCP
+        path: "list_projects"
   - id: search-comments
     goal: "Search comments mentioning 'deploy'."
     expected_ops:
-      - { method: MCP, path: search_comments }
+      - method: MCP
+        path: "search_comments"

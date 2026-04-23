@@ -75,6 +75,18 @@ describe("discoverGithubSignals (injected lister)", () => {
     expect(names).toEqual(["acme-cli", "acme-mcp-server"]);
   });
 
+  it("includes org-named monorepo even without signal keywords", async () => {
+    const results = await discoverGithubSignals("supabase", async () => [
+      { name: "supabase" },
+      { name: "realtime" },
+      { name: "cli" },
+    ]);
+    const names = results.map((r) => r.name).sort();
+    expect(names).toContain("supabase");
+    expect(names).toContain("cli");
+    expect(names).not.toContain("realtime");
+  });
+
   it("returns [] when lister returns []", async () => {
     const r = await discoverGithubSignals("empty", async () => []);
     expect(r).toEqual([]);

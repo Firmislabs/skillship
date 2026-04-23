@@ -3,20 +3,25 @@ tasks:
   - id: list-deployments
     goal: "List the 20 most recent deployments for the authed user."
     expected_ops:
-      - { method: GET, path: /v6/deployments }
+      - method: GET
+        path: "/v6/deployments"
   - id: create-deployment
     goal: "Create a deployment from an existing Git repo."
     expected_ops:
-      - { method: POST, path: /v13/deployments }
+      - method: POST
+        path: "/v13/deployments"
   - id: list-projects
     goal: "List all projects in the current team."
     expected_ops:
-      - { method: GET, path: /v9/projects }
+      - method: GET
+        path: "/v9/projects"
   - id: add-env-var
     goal: "Add a production environment variable KEY=value to project <id>."
     expected_ops:
-      - { method: POST, path: /v10/projects/{idOrName}/env }
+      - method: POST
+        path: "/v10/projects/{idOrName}/env"
   - id: get-domains
     goal: "List all domains associated with project <id>."
     expected_ops:
-      - { method: GET, path: /v9/projects/{idOrName}/domains }
+      - method: GET
+        path: "/v9/projects/{idOrName}/domains"

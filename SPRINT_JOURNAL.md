@@ -643,3 +643,66 @@ tests + exit codes / files changed / checkpoint tag or rollback reason.
 - **Files:** +vendor/anthropic-skills/quick_validate.py (upstream
   copy), +tests/cli/acceptance-phase4.test.ts.
 - **Phase-4 acceptance:** PASSED.
+
+---
+
+## Session: 2026-04-23 — Real-World Eval + Iter1 (plumbing)
+
+### Iter1 — Wire GitHub repo fetcher + broaden signal discovery
+- **Started:** 2026-04-23 16:30 local
+- **Status:** completed
+- **Problem:** real-world eval showed 0 ops on stripe + supabase.
+  `application/vnd.github.repo` placeholders were emitted by `init`
+  but the ingest pipeline skipped them (no resolver wired).
+- **RED→GREEN #21:** `tests/resolvers/githubFetcher.test.ts` — 8 tests
+  for `parseGithubRepoUrl` + `fetchGithubRepoBlobs`. Mock `gh` invoker
+  matches on args via JSON equality. All 8 passed first run.
+- **RED→GREEN #22:** extended `resolveGithubSpecs` with an optional
+  `persist` callback so the caller can store bytes. Added
+  `InitOptions.githubRepoFetcher` + `ghInvoker`; `runInit` calls the
+  resolver with a `storeSource` persist hook, writes bytes to
+  `.skillship/sources/<sha>.<ext>`, and replaces placeholders with
+  expanded entries. CLI `src/cli/index.ts` wires `fetchGithubRepoBlobs`
+  as the default fetcher for the `init` command.
+- **Monorepo heuristic:** `discoverGithubSignals` now includes the
+  `<org>/<org>` repo (e.g., `supabase/supabase`) because SaaS vendors
+  frequently house OpenAPI specs in the monorepo (supabase does;
+  vercel does) rather than a separate `openapi` repo.
+- **Classifier broadened:** `classifySpecPath` matches filenames that
+  *contain* `openapi` or `swagger` (not just `startsWith`). Supabase's
+  specs live at `apps/docs/spec/api_v1_openapi.json` — the old regex
+  missed them entirely.
+- **Display name fix:** `runBuild` now strips protocol + trailing
+  slash from `config.product.domain` before using it as `productName`,
+  so the skill dir is `stripe-com` not `https-stripe-com`. Eval
+  harness switched to `resolveSkillDir` (read-first-child of
+  `dist/skills/`) so it no longer assumes a vendor-side slug.
+- **Extension map:** `storeSource` now maps
+  `application/openapi+{yaml,json}`, `application/swagger+{yaml,json}`,
+  and `application/x-openref-{cli,sdk}+yaml` to `.yaml`/`.json` so
+  cached files are readable, not `.bin`.
+- **Tests:** 194/194 EXIT=0. Typecheck EXIT=0.
+- **Real-world eval after:**
+    | vendor   | ops    | cov  | grd  | fmt  |
+    |----------|--------|------|------|------|
+    | supabase |    276 | 100% | 100% | pass |
+    | stripe   |   1503 | 100% | 100% | pass |
+  All three scorers now pass for both vendors that have been seeded.
+  Coverage vs expected ops: 5/5 hits for each.
+- **Files:** +src/resolvers/githubFetcher.ts,
+  +tests/resolvers/githubFetcher.test.ts, ~src/cli/index.ts,
+  ~src/cli/init.ts, ~src/cli/build.ts, ~src/resolvers/githubSpecs.ts,
+  ~src/discovery/github.ts, ~src/sources/store.ts, ~eval/run.ts,
+  ~tests/cli/init.test.ts, ~tests/discovery/github.test.ts,
+  ~tests/resolvers/githubSpecs.test.ts.
+- **Checkpoint:** `sprint/iter1-wiring` (commit 3df9926 + follow-ups).
+- **Remaining quality gaps vs `/tmp/claude-api-SKILL.md` baseline:**
+  1. `description` is "Agent onboarding skill for <domain>." — the
+     baseline has ~900 chars of trigger/skip heuristics.
+  2. Surface line is duplicated per spec file: "rest — 616", "rest —
+     0", "rest — 887", "rest — 0" (should dedupe + total).
+  3. Operation list is a flat 1503-line alphabetical dump; baseline
+     groups by capability, uses sub-pages for details, and elevates
+     common flows.
+  4. No "Defaults" / "Before You Start" / "Subcommands" sections.
+  These are Iter2+ targets.

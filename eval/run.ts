@@ -3,7 +3,13 @@
 // Vendors without a prepared eval/projects/<id>/.skillship dir are
 // skipped-with-reason, not errored, so the harness never blocks on a
 // partial seed.
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  readdirSync,
+  writeFileSync,
+} from "node:fs";
 import { join } from "node:path";
 import { parse as parseYaml } from "yaml";
 import Database from "better-sqlite3";
@@ -108,7 +114,7 @@ async function scoreVendor(v: VendorSpec): Promise<VendorReport> {
       join(skDir, "sources"),
       GROUNDING_SAMPLE,
     );
-    const skillDir = join(distDir, "skills", slug(v.domain));
+    const skillDir = resolveSkillDir(distDir);
     const format = scoreFormat(skillDir);
     return {
       vendor: v.id,
@@ -150,11 +156,14 @@ function pct(x: number): string {
   return `${Math.round(x * 100)}%`;
 }
 
-function slug(name: string): string {
-  return name
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "");
+function resolveSkillDir(distDir: string): string {
+  const skillsDir = join(distDir, "skills");
+  if (!existsSync(skillsDir)) return join(skillsDir, "missing");
+  const dirs = readdirSync(skillsDir);
+  const first = dirs[0];
+  return first !== undefined
+    ? join(skillsDir, first)
+    : join(skillsDir, "missing");
 }
 
 const entryHref = import.meta.url;

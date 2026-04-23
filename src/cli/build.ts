@@ -51,7 +51,7 @@ export async function runBuild(opts: RunBuildOptions): Promise<BuildResult> {
   const sourcesDir = join(skDir, "sources");
   const productId =
     opts.productId ?? derivedProductId(config.product.domain);
-  const productName = config.product.domain;
+  const productName = displayName(config.product.domain);
   const description = opts.description ?? defaultDescription(productName);
 
   const handle = openGraph(dbPath);
@@ -169,6 +169,10 @@ function bytesLoaderFrom(
 function derivedProductId(domain: string): string {
   const h = createHash("sha1").update(domain).digest("hex").slice(0, 12);
   return `p-${h}`;
+}
+
+function displayName(domain: string): string {
+  return domain.replace(/^https?:\/\//, "").replace(/\/+$/, "");
 }
 
 function defaultDescription(productName: string): string {

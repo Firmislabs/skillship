@@ -123,6 +123,33 @@ describe("resolveGithubSpecs", () => {
     expect(result).toEqual([]);
   });
 
+  test("recognises *openapi*.json and prefixed openapi files (monorepo layouts)", async () => {
+    const repoUrl = "https://github.com/supabase/supabase";
+    const ph = entry("rest", repoUrl, "application/vnd.github.repo");
+    const result = await resolveGithubSpecs(
+      [ph],
+      mockFetcher({
+        [repoUrl]: [
+          {
+            path: "apps/docs/spec/api_v1_openapi.json",
+            bytes: Buffer.from("{}"),
+          },
+          {
+            path: "apps/docs/spec/auth_v1_openapi.json",
+            bytes: Buffer.from("{}"),
+          },
+          { path: "apps/web/package.json", bytes: Buffer.from("{}") },
+        ],
+      }),
+      { now: () => FIXED_NOW },
+    );
+    expect(result).toHaveLength(2);
+    for (const r of result) {
+      expect(r.content_type).toBe("application/openapi+json");
+      expect(r.surface).toBe("rest");
+    }
+  });
+
   test("recognises openapi.json and swagger.yaml variants", async () => {
     const repoUrl = "https://github.com/supa/api";
     const ph = entry("rest", repoUrl, "application/vnd.github.repo");
