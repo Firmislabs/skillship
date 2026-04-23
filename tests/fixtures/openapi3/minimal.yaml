@@ -1,0 +1,61 @@
+openapi: 3.0.3
+info:
+  title: Minimal API
+  version: 1.0.0
+  description: Smallest valid OpenAPI 3.x fixture for extractor tests.
+servers:
+  - url: https://api.example.com/v1
+paths:
+  /projects:
+    get:
+      operationId: listProjects
+      summary: List projects
+      description: Returns every project visible to the caller.
+      parameters:
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+          description: Max rows to return.
+        - name: X-Trace-Id
+          in: header
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProjectList'
+        '401':
+          description: Unauthorized
+      security:
+        - bearerAuth: []
+    post:
+      operationId: createProject
+      summary: Create a project
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ProjectInput'
+      responses:
+        '201':
+          description: Created
+      security:
+        - bearerAuth: []
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  schemas:
+    ProjectList:
+      type: object
+    ProjectInput:
+      type: object

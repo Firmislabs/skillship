@@ -200,3 +200,41 @@ tests + exit codes / files changed / checkpoint tag or rollback reason.
     path to `postgrest/openapi.yaml` etc.).
 - **Acceptance met:** ≥10 sources ✓, coverage=gold ✓.
 - **Tag target:** `sprint/P2-complete` (next step).
+
+---
+
+## Session: 2026-04-23 — Phase 3 (Extractors)
+
+### T12 — src/extractors/openapi3.ts (TDD)
+- **Started:** 2026-04-23 12:39 local
+- **Status:** completed
+- **Pre-flight:** `npm run typecheck` EXIT=0; `npm test` EXIT=0 (51/51).
+- **RED:** `tests/extractors/openapi3.test.ts` — 10 tests. First run
+  failed with "Failed to load url ../../src/extractors/openapi3.js".
+  RED verified.
+- **GREEN:** pure-function extractor. Signature:
+  `extractOpenApi3({bytes, source, productId}) -> Extraction`.
+  Emits `surface`, `operation`, `parameter`, `response_shape`,
+  `auth_scheme` nodes and `exposes|has_operation|has_parameter|returns|
+  auth_requires` edges. Every claim carries `span_path` (JSONPath),
+  `source_id`, `extractor="openapi@3"`, and `confidence`.
+  `is_read_only` for GET/HEAD/OPTIONS is `confidence="derived"`;
+  all other claims are `attested`.
+  Node IDs are deterministic sha1(logical-key) so the same
+  `(productId, path, method)` from two sources merges cleanly.
+  Accepts YAML (default) or JSON (via content-type sniff).
+- **Cycle 2:** test-assertion fix — the "every claim attested" assertion
+  conflicted with the legitimate `derived` confidence on `is_read_only`.
+  Relaxed to `expect(["attested","derived"]).toContain(claim.confidence)`
+  and added `span_path` presence assertion. 10/10 passed.
+- **Refactor:** initial `openapi3.ts` was 442 lines — over the 300-line
+  cap. Split into three files:
+  - `openapi3.ts` (189 lines) — entry, parseDoc, surface+auth top-level
+  - `openapi3-ops.ts` (278 lines) — operation + parameters + responses
+  - `openapi3-util.ts` (13 lines) — `stableId`, `isObject`
+  Plus shared `src/extractors/types.ts` (36 lines) for
+  `Extraction/ExtractedNode/ExtractedClaim/ExtractedEdge`.
+- **Tests:** `npx vitest run tests/extractors/openapi3.test.ts` → 10
+  passed. Full suite: 61 passed / 0 failed across 10 test files. EXIT=0.
+- **Files:** +src/extractors/{openapi3.ts,openapi3-ops.ts,openapi3-util.ts,types.ts},
+  +tests/extractors/openapi3.test.ts, +tests/fixtures/openapi3/minimal.yaml.
