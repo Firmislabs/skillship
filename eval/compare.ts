@@ -31,28 +31,74 @@ interface ExternalSkillSpec {
 }
 
 const EXTERNAL_SKILLS: readonly ExternalSkillSpec[] = [
+  // Vendor-API skills with matching slugs to our generated skills.
   {
-    slug: 'discord',
+    slug: 'stripe',
+    repo: 'majiayu000/claude-skill-registry',
+    pathInRepo: 'skills/other/other/stripe',
+    note: 'Hand-authored stripe integration skill (community registry)',
+  },
+  {
+    slug: 'supabase',
+    repo: 'majiayu000/claude-skill-registry',
+    pathInRepo: 'skills/data/supabase-rest',
+    note: 'Hand-authored supabase REST skill (community registry)',
+  },
+  {
+    slug: 'vercel',
+    repo: 'majiayu000/claude-skill-registry',
+    pathInRepo: 'skills/data/vercel-github-actions',
+    note: 'Hand-authored vercel skill (community registry)',
+  },
+  {
+    slug: 'linear',
+    repo: 'majiayu000/claude-skill-registry',
+    pathInRepo: 'skills/other/other/linear-claude-skill',
+    note: 'Hand-authored linear skill (community registry)',
+  },
+  {
+    slug: 'gitea',
+    repo: 'majiayu000/claude-skill-registry',
+    pathInRepo: 'skills/data/gitea-tea',
+    note: 'Hand-authored gitea skill (community registry)',
+  },
+  {
+    slug: 'posthog',
+    repo: 'davepoon/buildwithclaude',
+    pathInRepo: 'plugins/all-skills/skills/posthog-automation',
+    note: 'Hand-authored posthog automation skill (community plugin)',
+  },
+  // Reference baselines: high-quality official Anthropic skills (not
+  // vendor-API skills — kept for context on hand-authored ceiling).
+  {
+    slug: 'discord-access',
     repo: 'anthropics/claude-plugins-official',
     pathInRepo: 'external_plugins/discord/skills/access',
-    note: 'Official discord access skill (has SKILL.md, no HTTP ops)',
+    note: '[reference] Official discord access skill (workflow, not API)',
   },
   {
     slug: 'mcp-server',
     repo: 'anthropics/claude-plugins-official',
     pathInRepo: 'plugins/mcp-server-dev/skills/build-mcp-server',
-    note: 'Official mcp-server-dev skill (has SKILL.md + references/)',
+    note: '[reference] Official mcp-server-dev skill',
   },
   {
     slug: 'claude-code-setup',
     repo: 'anthropics/claude-plugins-official',
     pathInRepo: 'plugins/claude-code-setup/skills/claude-automation-recommender',
-    note: 'Official claude-code-setup skill (has SKILL.md + references/)',
+    note: '[reference] Official claude-code-setup skill',
   },
 ]
 
 // Our vendors to score (must have projects/<slug> with dist/skills/ output)
-const OUR_VENDORS: readonly string[] = ['linear']
+const OUR_VENDORS: readonly string[] = [
+  'stripe',
+  'supabase',
+  'vercel',
+  'linear',
+  'gitea',
+  'posthog',
+]
 
 // ---- Fetch external skills -----------------------------------------
 
@@ -190,11 +236,11 @@ function resolveProductId(db: Database.Database): string | null {
 // ---- Score note about linear/github/figma --------------------------
 
 function printExternalNote(): void {
-  process.stdout.write('\nNote: The official claude-plugins-official repo does NOT contain\n')
-  process.stdout.write('SKILL.md files for linear, github, or figma external plugins.\n')
-  process.stdout.write('Those plugins only have plugin.json + .mcp.json (MCP server configs).\n')
-  process.stdout.write('Comparison uses discord, mcp-server, and claude-code-setup as\n')
-  process.stdout.write('representative hand-authored external skills.\n\n')
+  process.stdout.write('\nNote: hand-authored vendor-API skills sourced from community\n')
+  process.stdout.write('registries (majiayu000/claude-skill-registry, davepoon/buildwithclaude).\n')
+  process.stdout.write('These are integration-pattern skills, not API operation catalogs —\n')
+  process.stdout.write('different shape from ours. Three Anthropic official skills kept as\n')
+  process.stdout.write('reference baselines (workflow / dev tooling skills).\n\n')
 }
 
 // ---- Table rendering -----------------------------------------------
