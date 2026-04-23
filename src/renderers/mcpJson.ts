@@ -1,5 +1,5 @@
 import type { Database as Sqlite3Database } from "better-sqlite3";
-import { DEFAULT_PRECEDENCE } from "../graph/merge.js";
+import { readBestClaim } from "./claims.js";
 
 export interface RenderMcpJsonInput {
   readonly db: Sqlite3Database;
@@ -24,7 +24,7 @@ export function renderMcpJson(input: RenderMcpJsonInput): string {
     return serialise({ mcpServers });
   }
   mcpSurfaces.forEach((s, idx) => {
-    const baseUrl = readClaim(input.db, s.id, "base_url");
+    const baseUrl = readBestClaim(input.db, s.id, "base_url");
     if (baseUrl === undefined) return;
     const key = mcpSurfaces.length === 1 ? name : `${name}-${idx + 1}`;
     mcpServers[key] = { type: "http", url: baseUrl };
@@ -47,28 +47,6 @@ function listMcpSurfaces(
     )
     .all(productId) as { id: string }[];
   return rows;
-}
-
-function readClaim(
-  db: Sqlite3Database,
-  nodeId: string,
-  field: string,
-): string | undefined {
-  const rows = db
-    .prepare(
-      `SELECT value_json, extractor FROM claims
-       WHERE node_id=? AND field=? ORDER BY id`,
-    )
-    .all(nodeId, field) as { value_json: string; extractor: string }[];
-  if (rows.length === 0) return undefined;
-  const sorted = [...rows].sort(
-    (a, b) =>
-      (DEFAULT_PRECEDENCE.extractor[b.extractor] ?? 0) -
-      (DEFAULT_PRECEDENCE.extractor[a.extractor] ?? 0),
-  );
-  const first = sorted[0]!;
-  const v = JSON.parse(first.value_json);
-  return typeof v === "string" ? v : undefined;
 }
 
 function serialise(obj: McpJsonShape): string {

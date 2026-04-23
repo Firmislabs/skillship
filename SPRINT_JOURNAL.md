@@ -545,3 +545,31 @@ tests + exit codes / files changed / checkpoint tag or rollback reason.
 - **Full suite:** 158 passed / 24 files. EXIT=0. Typecheck EXIT=0.
 - **Files:** +src/renderers/mcpJson.ts (69 LOC),
   +tests/renderers/mcpJson.test.ts.
+
+### T25 — llms.txt / llms-full.txt renderer (TDD)
+- **Started:** 2026-04-23 15:49 local
+- **Status:** completed
+- **Pre-flight:** 158/158 tests EXIT=0, typecheck clean.
+- **RED:** `tests/renderers/llmsTxt.test.ts` — 7 tests (header format,
+  tier=core filter in llms.txt, full=core+optional in llms-full.txt,
+  H2 per category, link format, empty product minimal header,
+  default 'Docs' category when claim missing). Module-not-found RED
+  verified.
+- **GREEN:** `renderLlmsTxt` and `renderLlmsFullTxt` share a
+  filter-parameterised inner helper. Both emit:
+  - `# <productName>\n> <productDescription>\n`
+  - per-category `## <category>` sections with `- [title](url)` links
+  - categories ordered by first-appearance of their pages
+  - `tier` claim read per page; default 'core' when absent
+  - pages missing `url` or `title` skipped; missing `category` →
+    default 'Docs'.
+  `renderLlmsTxt` excludes `tier=optional`; `renderLlmsFullTxt`
+  includes all tiers. Empty product returns header only.
+- **Refactor:** Extracted duplicated `readBestClaim` helper into
+  `src/renderers/claims.ts`. Consumed by skill.ts, mcpJson.ts,
+  llmsTxt.ts. 25 files / 165 tests still EXIT=0.
+- **Tests:** 7 passed first run.
+- **Full suite:** 165 passed / 25 files. EXIT=0. Typecheck EXIT=0.
+- **Files:** +src/renderers/llmsTxt.ts (100 LOC),
+  +src/renderers/claims.ts (25 LOC, shared helper),
+  +tests/renderers/llmsTxt.test.ts.

@@ -1,5 +1,5 @@
 import type { Database as Sqlite3Database } from "better-sqlite3";
-import { DEFAULT_PRECEDENCE } from "../graph/merge.js";
+import { readBestClaim } from "./claims.js";
 import type { SurfaceKind } from "../graph/types.js";
 
 export interface RenderSkillMdInput {
@@ -96,32 +96,6 @@ function loadOperations(
     pathOrName: readBestClaim(db, r.id, "path_or_name"),
     summary: readBestClaim(db, r.id, "summary"),
   }));
-}
-
-function readBestClaim(
-  db: Sqlite3Database,
-  nodeId: string,
-  field: string,
-): string | undefined {
-  const rows = db
-    .prepare(
-      `SELECT value_json, extractor, confidence FROM claims
-       WHERE node_id=? AND field=? ORDER BY id`,
-    )
-    .all(nodeId, field) as {
-    value_json: string;
-    extractor: string;
-    confidence: string;
-  }[];
-  if (rows.length === 0) return undefined;
-  const scored = rows.map((r) => ({
-    r,
-    score: DEFAULT_PRECEDENCE.extractor[r.extractor] ?? 0,
-  }));
-  scored.sort((a, b) => b.score - a.score);
-  const best = scored[0]!.r;
-  const v = JSON.parse(best.value_json);
-  return typeof v === "string" ? v : undefined;
 }
 
 function renderFrontmatter(fm: {
