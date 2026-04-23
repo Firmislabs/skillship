@@ -153,6 +153,60 @@ describe('renderOpReference', () => {
     expect(md).toMatch(/## Authentication/)
   })
 
+  test('renders Request Example fenced JSON when requestBody example exists', async () => {
+    await ingestOpenapi(graph, 'tests/fixtures/openapi3/examples.yaml', 'p-ex1', 'ex1.example')
+    const opId = graph.db
+      .prepare(
+        `SELECT n.id FROM nodes n
+         JOIN nodes s ON s.id = n.parent_id
+         JOIN claims m ON m.node_id = n.id AND m.field = 'method' AND m.value_json = '"POST"'
+         WHERE n.kind = 'operation' AND s.parent_id = 'p-ex1'
+         LIMIT 1`,
+      )
+      .get() as { id: string } | undefined
+    if (opId === undefined) throw new Error('no POST op found')
+    const md = renderOpReference(graph.db, opId.id, 'p-ex1')
+    expect(md).toMatch(/## Request Example/)
+    expect(md).toMatch(/```json/)
+    expect(md).toMatch(/"name":\s*"gizmo"/)
+    expect(md).toMatch(/"count":\s*3/)
+  })
+
+  test('renders Response Example fenced JSON when response example exists', async () => {
+    await ingestOpenapi(graph, 'tests/fixtures/openapi3/examples.yaml', 'p-ex2', 'ex2.example')
+    const opId = graph.db
+      .prepare(
+        `SELECT n.id FROM nodes n
+         JOIN nodes s ON s.id = n.parent_id
+         JOIN claims m ON m.node_id = n.id AND m.field = 'method' AND m.value_json = '"GET"'
+         WHERE n.kind = 'operation' AND s.parent_id = 'p-ex2'
+         LIMIT 1`,
+      )
+      .get() as { id: string } | undefined
+    if (opId === undefined) throw new Error('no GET op found')
+    const md = renderOpReference(graph.db, opId.id, 'p-ex2')
+    expect(md).toMatch(/## Response Example/)
+    expect(md).toMatch(/```json/)
+    expect(md).toMatch(/"id":\s*"w_1"/)
+  })
+
+  test('renders enum values appended to type column for enum-constrained params', async () => {
+    await ingestOpenapi(graph, 'tests/fixtures/openapi3/examples.yaml', 'p-ex3', 'ex3.example')
+    const opId = graph.db
+      .prepare(
+        `SELECT n.id FROM nodes n
+         JOIN nodes s ON s.id = n.parent_id
+         JOIN claims m ON m.node_id = n.id AND m.field = 'method' AND m.value_json = '"GET"'
+         WHERE n.kind = 'operation' AND s.parent_id = 'p-ex3'
+         LIMIT 1`,
+      )
+      .get() as { id: string } | undefined
+    if (opId === undefined) throw new Error('no GET op found')
+    const md = renderOpReference(graph.db, opId.id, 'p-ex3')
+    // type column should show: string (open|closed|draft)
+    expect(md).toMatch(/string\s*\(open\|closed\|draft\)/)
+  })
+
   test('returns non-empty string for any valid opId', async () => {
     await ingestOpenapi(graph, 'tests/fixtures/openapi3/minimal.yaml', 'p-ref6', 'ref6.example')
     const opId = getFirstOpId(graph, 'p-ref6')

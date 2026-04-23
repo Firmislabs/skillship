@@ -7,12 +7,14 @@ interface ParameterView {
   readonly required: boolean
   readonly type: string
   readonly description: string | undefined
+  readonly enumValues: readonly string[] | undefined
 }
 
 interface ResponseView {
   readonly statusCode: string
   readonly contentType: string
   readonly schemaRef: string | undefined
+  readonly example: unknown | undefined
 }
 
 interface AuthView {
@@ -50,14 +52,51 @@ export function renderOpReference(
   if (params.length > 0) {
     sections.push(...renderParametersSection(params))
   }
+  const requestExample = readExampleClaim(db, opId, 'request_example')
+  if (requestExample !== undefined) {
+    sections.push(...renderExampleSection('Request Example', requestExample))
+  }
   if (responses.length > 0) {
     sections.push(...renderResponsesSection(responses))
+    const firstExample = responses.find(r => r.example !== undefined)?.example
+    if (firstExample !== undefined) {
+      sections.push(...renderExampleSection('Response Example', firstExample))
+    }
   }
   if (auths.length > 0) {
     sections.push(...renderAuthSection(auths))
   }
 
   return sections.join('\n')
+}
+
+function readExampleClaim(
+  db: Sqlite3Database,
+  nodeId: string,
+  field: string,
+): unknown | undefined {
+  const row = db
+    .prepare(
+      `SELECT value_json FROM claims WHERE node_id = ? AND field = ? ORDER BY id LIMIT 1`,
+    )
+    .get(nodeId, field) as { value_json: string } | undefined
+  if (row === undefined) return undefined
+  try {
+    return JSON.parse(row.value_json)
+  } catch {
+    return undefined
+  }
+}
+
+function renderExampleSection(heading: string, example: unknown): string[] {
+  return [
+    `## ${heading}`,
+    '',
+    '```json',
+    JSON.stringify(example, null, 2),
+    '```',
+    '',
+  ]
 }
 
 function loadParameters(
@@ -90,6 +129,26 @@ function buildParameterView(
     required,
     type: readBestClaim(db, paramId, 'type') ?? 'unknown',
     description: readBestClaim(db, paramId, 'description'),
+    enumValues: readEnumValues(db, paramId),
+  }
+}
+
+function readEnumValues(
+  db: Sqlite3Database,
+  paramId: string,
+): readonly string[] | undefined {
+  const row = db
+    .prepare(
+      `SELECT value_json FROM claims WHERE node_id = ? AND field = 'enum_values' ORDER BY id LIMIT 1`,
+    )
+    .get(paramId) as { value_json: string } | undefined
+  if (row === undefined) return undefined
+  try {
+    const parsed = JSON.parse(row.value_json)
+    if (!Array.isArray(parsed)) return undefined
+    return parsed.map(v => String(v))
+  } catch {
+    return undefined
   }
 }
 
@@ -99,7 +158,10 @@ function renderParametersSection(params: readonly ParameterView[]): string[] {
   lines.push('|------|----|----------|------|-------------|')
   for (const p of params) {
     const desc = p.description ?? ''
-    lines.push(`| ${p.name} | ${p.location} | ${p.required ? 'yes' : 'no'} | ${p.type} | ${desc} |`)
+    const typeCell = p.enumValues !== undefined && p.enumValues.length > 0
+      ? `${p.type} (${p.enumValues.join('|')})`
+      : p.type
+    lines.push(`| ${p.name} | ${p.location} | ${p.required ? 'yes' : 'no'} | ${typeCell} | ${desc} |`)
   }
   lines.push('')
   return lines
@@ -133,6 +195,7 @@ function buildResponseView(
     statusCode: status,
     contentType: readBestClaim(db, respId, 'content_type') ?? '*/*',
     schemaRef: readBestClaim(db, respId, 'schema_ref'),
+    example: readExampleClaim(db, respId, 'example'),
   }
 }
 

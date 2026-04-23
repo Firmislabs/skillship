@@ -1,0 +1,42 @@
+openapi: 3.0.3
+info:
+  title: Examples API
+  version: 1.0.0
+servers:
+  - url: https://api.example.com/v1
+paths:
+  /widgets:
+    get:
+      operationId: listWidgets
+      summary: List widgets
+      parameters:
+        - name: status
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [open, closed, draft]
+          description: Filter by status.
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              example:
+                data:
+                  - id: w_1
+                    name: gizmo
+                    status: open
+    post:
+      operationId: createWidget
+      summary: Create a widget
+      requestBody:
+        required: true
+        content:
+          application/json:
+            example:
+              name: gizmo
+              count: 3
+      responses:
+        '201':
+          description: Created
