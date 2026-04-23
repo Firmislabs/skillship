@@ -1,6 +1,11 @@
 node_modules/
 dist/
+dist-eval/
 coverage/
+
+# Eval harness working state (regenerable)
+eval/projects/
+eval/out/
 .DS_Store
 .env
 .env.local

@@ -1,0 +1,25 @@
+# Representative tasks an agent should be able to do given the
+# Skillship bundle for Supabase. `expected_ops` lists the operations
+# the skill must surface for the task to be doable without guessing.
+vendor: supabase
+tasks:
+  - id: list-projects
+    goal: "List all Supabase projects the authenticated user owns."
+    expected_ops:
+      - { method: GET, path: /v1/projects }
+  - id: create-project
+    goal: "Create a new Supabase project named 'demo' in region us-east-1."
+    expected_ops:
+      - { method: POST, path: /v1/projects }
+  - id: read-anon-key
+    goal: "Return the anon API key for project <ref>."
+    expected_ops:
+      - { method: GET, path: /v1/projects/{ref}/api-keys }
+  - id: run-sql
+    goal: "Execute a SQL query against the Postgres DB of project <ref>."
+    expected_ops:
+      - { method: POST, path: /v1/projects/{ref}/database/query }
+  - id: list-functions
+    goal: "List Edge Functions deployed to project <ref>."
+    expected_ops:
+      - { method: GET, path: /v1/projects/{ref}/functions }

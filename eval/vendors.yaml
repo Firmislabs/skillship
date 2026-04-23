@@ -1,0 +1,44 @@
+# Evaluation harness: five vendors picked for surface-mix diversity.
+# Each vendor's actual .skillship/ project lives under eval/projects/<id>/.
+# That directory is *not* created automatically — seed it by running
+# `skillship init --domain <domain>` (or handcraft one for air-gapped runs).
+vendors:
+  - id: supabase
+    domain: supabase.com
+    github_org: supabase
+    expected:
+      surfaces: [rest, mcp, llms_txt]
+      ops_min: 100
+      baseline_path: null
+
+  - id: stripe
+    domain: stripe.com
+    github_org: stripe
+    expected:
+      surfaces: [rest]
+      ops_min: 400
+      baseline_path: null
+
+  - id: vercel
+    domain: vercel.com
+    github_org: vercel
+    expected:
+      surfaces: [rest, sdk, cli]
+      ops_min: 80
+      baseline_path: null
+
+  - id: linear
+    domain: linear.app
+    github_org: linear
+    expected:
+      surfaces: [mcp]
+      ops_min: 30
+      baseline_path: null
+
+  - id: anthropic
+    domain: docs.anthropic.com
+    github_org: anthropics
+    expected:
+      surfaces: [docs, llms_txt, rest]
+      ops_min: 10
+      baseline_path: vendor/anthropic-skills/skills/skill-creator
