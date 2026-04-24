@@ -71,7 +71,7 @@ jobs:
       # treating the pin like a dependency version.
       - name: Install skillship
         env:
-          SKILLSHIP_SHA: main  # replace with a SHA like 0fe97be... for stability
+          SKILLSHIP_SHA: 708fc24924a8e0a1bceefaa4d5bff0a9281c2494  # pin; bump like a dep version
         run: |
           npm install -g "github:firmislabs/skillship#${SKILLSHIP_SHA}"
 
