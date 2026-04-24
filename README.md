@@ -33,6 +33,16 @@ npx skillship refresh
 #  → diffs sources, re-runs enrichment only for drifted sections
 ```
 
+## Continuous updates
+
+Generated skills are **committed source** in your repo. A scheduled workflow
+re-runs `init` + `build` and opens a PR when anything changed; humans review
+the diff and merge. No semver, no tags — git history is the audit trail. This
+mirrors how Anthropic maintains its own skills repos.
+
+Copy-paste template: [examples/github-actions/update-skills.yml](examples/github-actions/update-skills.yml)
+Setup + review playbook: [examples/github-actions/README.md](examples/github-actions/README.md)
+
 ## License
 
 MIT (pending).
