@@ -26,3 +26,39 @@ jobs:
       - run: npm run typecheck
       - run: npm test
       - run: npm run build
+
+  # Catches bugs the full-deps test job misses: runtime imports that live in
+  # devDependencies, and CLI entry-point detection under the bin symlink.
+  # Must mirror how `npx github:firmislabs/skillship` actually runs for users.
+  smoke-install:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    needs: test
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - run: npm ci
+      - run: npm run build
+
+      - name: Pack tarball
+        run: npm pack --pack-destination /tmp/pkg
+
+      - name: Install into isolated prefix without devDeps
+        run: |
+          mkdir -p /tmp/smoke
+          npm install --omit=dev --prefix /tmp/smoke /tmp/pkg/skillship-*.tgz
+
+      - name: Direct node invocation should print help
+        run: |
+          node /tmp/smoke/node_modules/skillship/dist/cli/index.js --help \
+            | grep -q "Ingest vendor signals"
+
+      - name: Bin-symlink invocation should print help (tests realpath entry check)
+        run: |
+          /tmp/smoke/node_modules/.bin/skillship --help \
+            | grep -q "Ingest vendor signals"

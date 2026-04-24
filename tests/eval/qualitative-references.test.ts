@@ -109,7 +109,7 @@ describe('scoreStructureWithRefs', () => {
     )
     const outDir = join(ctx.dir, 'dist')
     await runBuild({ in: ctx.dir, out: outDir })
-    const skillDir = join(outDir, 'skills', 'acme-example')
+    const skillDir = join(outDir, 'acme-example')
     // With references dir present (2 files), score should be > 0
     const score = scoreStructureWithRefs(skillDir, 2)
     expect(score).toBeGreaterThan(0)
@@ -144,7 +144,7 @@ describe('scoreStructureWithRefs', () => {
     )
     const outDir = join(ctx.dir, 'dist')
     await runBuild({ in: ctx.dir, out: outDir })
-    const skillDir = join(outDir, 'skills', 'acme-example')
+    const skillDir = join(outDir, 'acme-example')
     // 2 ops → 2 ref files
     const score = scoreStructureWithRefs(skillDir, 2)
     expect(score).toBe(1.0)

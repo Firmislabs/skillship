@@ -187,13 +187,12 @@ function pct(x: number): string {
 }
 
 function resolveSkillDir(distDir: string): string {
-  const skillsDir = join(distDir, "skills");
-  if (!existsSync(skillsDir)) return join(skillsDir, "missing");
-  const dirs = readdirSync(skillsDir);
+  if (!existsSync(distDir)) return join(distDir, "missing");
+  const dirs = readdirSync(distDir);
   const first = dirs[0];
   return first !== undefined
-    ? join(skillsDir, first)
-    : join(skillsDir, "missing");
+    ? join(distDir, first)
+    : join(distDir, "missing");
 }
 
 const entryHref = import.meta.url;

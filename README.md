@@ -23,7 +23,7 @@ Run without cloning — npx installs straight from GitHub:
 npx github:firmislabs/skillship init --domain https://supabase.com --github supabase
 npx github:firmislabs/skillship build --in . --out skills
 
-ls skills/supabase.com/
+ls skills/supabase-com/
 # SKILL.md  references/  .mcp.json  llms.txt  llms-full.txt
 ```
 
@@ -39,12 +39,12 @@ skillship init: wrote .skillship/config.yaml (11 sources, coverage=gold)
 
 $ npx github:firmislabs/skillship build --in . --out skills
 skillship build: wrote 281 artifacts to skills
-  - skills/supabase.com/SKILL.md
-  - skills/supabase.com/.mcp.json
-  - skills/supabase.com/llms.txt
-  - skills/supabase.com/llms-full.txt
-  - skills/supabase.com/manifest.json
-  - skills/supabase.com/references/op_*.md  (276 files)
+  - skills/supabase-com/SKILL.md
+  - skills/supabase-com/.mcp.json
+  - skills/supabase-com/llms.txt
+  - skills/supabase-com/llms-full.txt
+  - skills/supabase-com/manifest.json
+  - skills/supabase-com/references/op_*.md  (276 files)
 ```
 
 A typical generated operation reference:
@@ -106,10 +106,9 @@ conventions.
 <details>
 <summary><strong>Use with different vendors</strong></summary>
 
-skillship auto-discovers whatever a vendor publishes. It works out of the
-box against vendors in our eval set (stripe, supabase, vercel, linear,
-gitea, posthog, anthropic, n8n, directus) and should handle anything with
-a discoverable OpenAPI spec, GraphQL SDL, or `llms.txt`.
+Works today against vendors that publish a machine-readable API surface —
+OpenAPI 3, Swagger 2, or GraphQL SDL. Our eval set covers stripe, supabase,
+vercel, linear, gitea, posthog, anthropic, n8n, directus.
 
 ```bash
 # GraphQL-first (Linear)
@@ -117,13 +116,13 @@ skillship init --domain https://linear.app --github linear
 
 # REST + OpenAPI (Stripe)
 skillship init --domain https://stripe.com --github stripe
-
-# Docs-only / sitemap fallback
-skillship init --domain https://example.com
 ```
 
-Coverage tier is reported at the end of `skillship init` (bronze / silver /
-gold) based on how many signals were found.
+`skillship init` prints a coverage tier (bronze / silver / gold) at the end.
+Gold means a full OpenAPI/GraphQL spec was found. Bronze means only a
+`llms.txt` or sitemap was found, and today the renderer produces an
+**empty placeholder skill** in that case — not yet distributable. Pure
+docs-only and CLI-first vendors fall into this bucket. See **Status** below.
 </details>
 
 ## How it compares
@@ -228,6 +227,10 @@ Works today:
 - 359 tests, 42 test files; CI runs typecheck + tests on every PR.
 
 Known gaps:
+- **Docs-only / CLI-first vendors produce empty placeholder skills.** The
+  `llms.txt` and docs extractors populate link nodes that the renderer
+  ignores; without an OpenAPI/GraphQL/MCP surface, `SKILL.md` comes out as
+  `_No surfaces discovered._`. Tracking a CLI-command extractor as the fix.
 - GraphQL argument nodes are rendered as a flat list, not individual
   parameter children — why `linear` density is 38% vs 100% for others.
 - `skillship review` / `skillship refresh` subcommands aren't implemented

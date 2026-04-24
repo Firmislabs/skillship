@@ -1,6 +1,8 @@
 #!/usr/bin/env node
 import { Command } from "commander";
+import { realpathSync } from "node:fs";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { runInit } from "./init.js";
 import { runBuild } from "./build.js";
 import { fetchGithubRepoBlobs } from "../resolvers/githubFetcher.js";
@@ -58,7 +60,7 @@ function makeProgram(): Command {
     .command("build")
     .description("Ingest sources into the graph and render skill artifacts")
     .option("--in <dir>", "project directory (defaults to cwd)")
-    .option("--out <dir>", "output directory (defaults to <in>/dist)")
+    .option("--out <dir>", "output directory (defaults to <in>/skills)")
     .option("--product-id <id>", "override product node id")
     .action(async (opts: {
       in?: string;
@@ -66,7 +68,7 @@ function makeProgram(): Command {
       productId?: string;
     }) => {
       const inDir = opts.in ?? process.cwd();
-      const outDir = opts.out ?? join(inDir, "dist");
+      const outDir = opts.out ?? join(inDir, "skills");
       const result = await runBuild({
         in: inDir,
         out: outDir,
@@ -90,11 +92,18 @@ export async function main(argv: readonly string[]): Promise<void> {
   await program.parseAsync([...argv]);
 }
 
-const entryHref = import.meta.url;
-const invokedAs = process.argv[1]
-  ? new URL(`file://${process.argv[1]}`).href
-  : "";
-if (entryHref === invokedAs) {
+function isDirectEntry(): boolean {
+  try {
+    const entryPath = realpathSync(fileURLToPath(import.meta.url));
+    const argv1 = process.argv[1];
+    if (argv1 === undefined) return false;
+    return entryPath === realpathSync(argv1);
+  } catch {
+    return false;
+  }
+}
+
+if (isDirectEntry()) {
   main(process.argv).catch((err: unknown) => {
     const message = err instanceof Error ? err.stack ?? err.message : String(err);
     process.stderr.write(`skillship: ${message}\n`);

@@ -219,11 +219,10 @@ function scoreOurVendor(slug: string): OurScore {
 }
 
 function resolveSkillDir(distDir: string): string | null {
-  const skillsDir = join(distDir, 'skills')
-  if (!existsSync(skillsDir)) return null
-  const dirs = readdirSync(skillsDir)
+  if (!existsSync(distDir)) return null
+  const dirs = readdirSync(distDir)
   const first = dirs[0]
-  return first !== undefined ? join(skillsDir, first) : null
+  return first !== undefined ? join(distDir, first) : null
 }
 
 function resolveProductId(db: Database.Database): string | null {

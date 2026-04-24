@@ -88,14 +88,14 @@ function writeAll(
   outDir: string,
   args: WriteArgs,
 ): BuildArtifact[] {
-  const skillDir = join(outDir, "skills", slug(args.productName));
+  const skillDir = join(outDir, slug(args.productName));
   mkdirSync(skillDir, { recursive: true });
   const topLevel: [string, string][] = [
     [join(skillDir, "SKILL.md"), renderSkill(db, args)],
-    [join(outDir, ".mcp.json"), renderMcp(db, args)],
-    [join(outDir, "llms.txt"), renderShortLlms(db, args)],
-    [join(outDir, "llms-full.txt"), renderFullLlms(db, args)],
-    [join(outDir, "manifest.json"), renderManifest(args)],
+    [join(skillDir, ".mcp.json"), renderMcp(db, args)],
+    [join(skillDir, "llms.txt"), renderShortLlms(db, args)],
+    [join(skillDir, "llms-full.txt"), renderFullLlms(db, args)],
+    [join(skillDir, "manifest.json"), renderManifest(args)],
   ];
   const topArtifacts = topLevel.map(([path, content]) => {
     writeFileSync(path, content, "utf8");

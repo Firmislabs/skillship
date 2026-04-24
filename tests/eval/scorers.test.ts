@@ -176,7 +176,7 @@ describe("scoreFormat", () => {
 
   test("ok=true when skill dir passes quick_validate.py", async () => {
     const { outDir } = await buildFixtureProject(ctx);
-    const skillDir = join(outDir, "skills", "acme-example");
+    const skillDir = join(outDir, "acme-example");
     const report = scoreFormat(skillDir);
     expect(report.ok).toBe(true);
     expect(report.message).toMatch(/valid/i);

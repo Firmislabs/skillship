@@ -81,15 +81,15 @@ describe("runBuild", () => {
       ],
       "supa.example",
     );
-    const outDir = join(ctx.dir, "dist");
+    const outDir = join(ctx.dir, "skills");
     const res = await runBuild({ in: ctx.dir, out: outDir });
     expect(res.ingest.sourcesProcessed).toBe(3);
-    expect(existsSync(join(outDir, ".mcp.json"))).toBe(true);
-    expect(existsSync(join(outDir, "llms.txt"))).toBe(true);
-    expect(existsSync(join(outDir, "llms-full.txt"))).toBe(true);
-    expect(
-      existsSync(join(outDir, "skills", "supa-example", "SKILL.md")),
-    ).toBe(true);
+    const skillDir = join(outDir, "supa-example");
+    expect(existsSync(join(skillDir, "SKILL.md"))).toBe(true);
+    expect(existsSync(join(skillDir, ".mcp.json"))).toBe(true);
+    expect(existsSync(join(skillDir, "llms.txt"))).toBe(true);
+    expect(existsSync(join(skillDir, "llms-full.txt"))).toBe(true);
+    expect(existsSync(join(skillDir, "manifest.json"))).toBe(true);
   });
 
   test("SKILL.md has frontmatter + operation index", async () => {
@@ -106,10 +106,10 @@ describe("runBuild", () => {
       ],
       "x.example",
     );
-    const outDir = join(ctx.dir, "dist");
+    const outDir = join(ctx.dir, "skills");
     await runBuild({ in: ctx.dir, out: outDir });
     const skillMd = readFileSync(
-      join(outDir, "skills", "x-example", "SKILL.md"),
+      join(outDir, "x-example", "SKILL.md"),
       "utf8",
     );
     expect(skillMd).toMatch(/^---\nname: x-example\n/);
@@ -131,9 +131,9 @@ describe("runBuild", () => {
       ],
       "x.example",
     );
-    const outDir = join(ctx.dir, "dist");
+    const outDir = join(ctx.dir, "skills");
     await runBuild({ in: ctx.dir, out: outDir });
-    const raw = readFileSync(join(outDir, ".mcp.json"), "utf8");
+    const raw = readFileSync(join(outDir, "x-example", ".mcp.json"), "utf8");
     const parsed = JSON.parse(raw);
     expect(parsed.mcpServers).toBeDefined();
     expect(Object.keys(parsed.mcpServers)).toHaveLength(1);
@@ -153,10 +153,11 @@ describe("runBuild", () => {
       ],
       "supa.example",
     );
-    const outDir = join(ctx.dir, "dist");
+    const outDir = join(ctx.dir, "skills");
     await runBuild({ in: ctx.dir, out: outDir });
-    const llms = readFileSync(join(outDir, "llms.txt"), "utf8");
-    const llmsFull = readFileSync(join(outDir, "llms-full.txt"), "utf8");
+    const skillDir = join(outDir, "supa-example");
+    const llms = readFileSync(join(skillDir, "llms.txt"), "utf8");
+    const llmsFull = readFileSync(join(skillDir, "llms-full.txt"), "utf8");
     expect(llms).not.toMatch(/\/advanced/);
     expect(llmsFull).toMatch(/\/advanced/);
   });
@@ -175,10 +176,10 @@ describe("runBuild", () => {
       ],
       "x.example",
     );
-    const outDir = join(ctx.dir, "dist");
+    const outDir = join(ctx.dir, "skills");
     await runBuild({ in: ctx.dir, out: outDir });
     const manifest = JSON.parse(
-      readFileSync(join(outDir, "manifest.json"), "utf8"),
+      readFileSync(join(outDir, "x-example", "manifest.json"), "utf8"),
     );
     expect(manifest.product.domain).toBe("x.example");
     expect(manifest.product.id).toMatch(/^p-/);

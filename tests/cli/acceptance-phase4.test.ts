@@ -93,7 +93,7 @@ describe("Phase 4 acceptance — skillship build passes quick_validate.py", () =
     );
     const outDir = join(ctx.dir, "dist");
     await runBuild({ in: ctx.dir, out: outDir });
-    const skillDir = join(outDir, "skills", "acme-example");
+    const skillDir = join(outDir, "acme-example");
     expect(existsSync(join(skillDir, "SKILL.md"))).toBe(true);
     const stdout = execFileSync("python3", [VALIDATOR, skillDir], {
       encoding: "utf8",
