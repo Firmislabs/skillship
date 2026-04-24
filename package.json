@@ -1,11 +1,39 @@
 {
   "name": "skillship",
-  "version": "0.0.0",
-  "description": "Ingest vendor signals, generate + maintain agent skills.",
+  "version": "0.1.0",
+  "description": "Generate and maintain Claude skills from a SaaS vendor's own API signals — OpenAPI, GraphQL, llms.txt, docs, MCP catalogs.",
+  "keywords": [
+    "claude",
+    "claude-code",
+    "claude-skills",
+    "skill",
+    "anthropic",
+    "openapi",
+    "graphql",
+    "mcp",
+    "llms-txt",
+    "agent",
+    "codegen"
+  ],
+  "homepage": "https://github.com/firmislabs/skillship",
+  "bugs": {
+    "url": "https://github.com/firmislabs/skillship/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/firmislabs/skillship.git"
+  },
+  "author": "Firmis Labs",
+  "license": "MIT",
   "type": "module",
   "bin": {
     "skillship": "./dist/cli/index.js"
   },
+  "files": [
+    "dist/",
+    "README.md",
+    "LICENSE"
+  ],
   "scripts": {
     "build": "tsc && cp src/graph/schema.sql dist/graph/schema.sql",
     "test": "vitest run",
@@ -14,7 +42,8 @@
     "lint": "tsc --noEmit",
     "eval:build": "tsc -p tsconfig.eval.json && cp src/graph/schema.sql dist-eval/src/graph/schema.sql",
     "eval": "npm run eval:build && node dist-eval/eval/run.js",
-    "eval:compare": "npm run eval:build && node dist-eval/eval/compare.js"
+    "eval:compare": "npm run eval:build && node dist-eval/eval/compare.js",
+    "prepublishOnly": "npm run typecheck && npm test && npm run build"
   },
   "engines": {
     "node": ">=20"
@@ -36,6 +65,5 @@
     "ts-morph": "^28.0.0",
     "typescript": "^5.6.2",
     "vitest": "^2.1.1"
-  },
-  "license": "MIT"
+  }
 }

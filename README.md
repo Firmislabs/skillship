@@ -2,9 +2,11 @@
 
 > Generate and maintain Claude skills from a SaaS vendor's own API signals.
 
+[![npm](https://img.shields.io/npm/v/skillship?color=crimson&logo=npm)](https://www.npmjs.com/package/skillship)
 [![CI](https://github.com/firmislabs/skillship/actions/workflows/ci.yml/badge.svg)](https://github.com/firmislabs/skillship/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Node](https://img.shields.io/badge/node-%3E%3D20-brightgreen.svg)](.nvmrc)
+[![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](CONTRIBUTING.md)
 
 Point it at a domain + GitHub org. It ingests `llms.txt`, OpenAPI, GraphQL
 SDL, MCP catalogs, docs, and sitemaps into a content-addressed graph, then
@@ -13,31 +15,73 @@ per-claim provenance. Re-runs produce a git diff you can review as a PR.
 
 OSS, MIT, no telemetry, no hosted service. Your API key, your machine.
 
-## Quickstart
+## Install
 
 ```bash
-git clone https://github.com/firmislabs/skillship.git
-cd skillship
-nvm use                         # Node 20 (from .nvmrc)
-npm install
-npm run build
-npm link                        # exposes the `skillship` CLI
+npm install -g skillship
+```
 
-# Generate a skill for any vendor you like:
+Or run without installing: `npx skillship ...`
+
+## Quick start
+
+```bash
+# 1. Discover a vendor's API signals
 skillship init --domain https://supabase.com --github supabase
+
+# 2. Render the skill
 skillship build --in . --out skills
 
+# 3. Inspect
 ls skills/supabase.com/
 # SKILL.md  references/  .mcp.json  llms.txt  llms-full.txt
 ```
 
-Once `skillship` is published to npm this shrinks to `npm install -g
-skillship && skillship init ...`. Until then the clone + link flow above is
-the fast path.
+That's the whole loop. Commit `skills/` to your repo — it's what Claude
+consumes.
+
+<details>
+<summary><strong>Install from source (for development)</strong></summary>
+
+```bash
+git clone https://github.com/firmislabs/skillship.git
+cd skillship
+nvm use            # Node 20 from .nvmrc
+npm install
+npm run build
+npm link           # exposes `skillship` from your local build
+npm test           # 359 tests should pass
+```
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for the full dev loop.
+</details>
+
+<details>
+<summary><strong>Use with different vendors</strong></summary>
+
+skillship auto-discovers whatever a vendor publishes. It works out of the
+box against vendors in our eval set (stripe, supabase, vercel, linear,
+gitea, posthog, anthropic, n8n, directus) and should handle anything with
+a discoverable OpenAPI spec, GraphQL SDL, or `llms.txt`.
+
+```bash
+# GraphQL-first (Linear)
+skillship init --domain https://linear.app --github linear
+
+# REST + OpenAPI (Stripe)
+skillship init --domain https://stripe.com --github stripe
+
+# Docs-only / sitemap fallback
+skillship init --domain https://example.com
+```
+
+Coverage tier is reported at the end of `skillship init` (bronze / silver /
+gold) based on how many signals were found.
+</details>
 
 ## What it generates
 
-For each detected operation, a reference file embedded into the skill:
+Per detected operation, a reference file embedded in the skill:
 
 ````markdown
 # POST /v1/projects
@@ -82,16 +126,17 @@ and [`davepoon/buildwithclaude`](https://github.com/davepoon/buildwithclaude):
 Composite is the mean across 5 dimensions: structure, density, freshness,
 schema fidelity, coverage. Freshness is 0% for hand-authored because they
 carry no `generated_at` stamp and go stale silently; skillship stamps every
-rebuild. See [eval/README.md](eval/README.md) for scorer definitions.
+rebuild.
 
-Reproduce locally: `npm run eval:compare`.
+Reproduce: `git clone ... && npm install && npm run eval:compare`. See
+[eval/README.md](eval/README.md) for scorer definitions.
 
 ## Continuous updates
 
 Commit generated skills to your repo, same as code. A scheduled GitHub
-Action re-runs `init` + `build` and opens a PR when anything changed; humans
-review the diff and merge. No semver, no tags — git history is the audit
-trail. This mirrors how
+Action re-runs `skillship init + build` and opens a PR when anything
+changed; humans review the diff and merge. No semver, no tags — git history
+is the audit trail. This mirrors how
 [`anthropics/skills`](https://github.com/anthropics/skills) is maintained.
 
 - Copy-paste workflow: [examples/github-actions/update-skills.yml](examples/github-actions/update-skills.yml)
@@ -134,15 +179,13 @@ Works today:
 Known gaps:
 - GraphQL argument nodes are rendered as a flat list, not individual
   parameter children — why `linear` density is 38% vs 100% for others.
-- `skillship review` and `skillship refresh` subcommands from the target UX
-  aren't implemented yet; `init` re-crawls every run (fine for most specs).
+- `skillship review` / `skillship refresh` subcommands aren't implemented
+  yet; `init` re-crawls every run (fine for most spec sets).
 
 ## Contributing
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) for the full dev loop, TDD
-expectations, and PR conventions. Issues tagged
-[`good first issue`](https://github.com/firmislabs/skillship/labels/good%20first%20issue)
-are the easiest way in.
+See [CONTRIBUTING.md](CONTRIBUTING.md) for the dev loop, TDD expectations,
+and PR conventions.
 
 ## License
 
