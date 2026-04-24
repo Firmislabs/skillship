@@ -46,7 +46,9 @@ jobs:
       - run: npm run build
 
       - name: Pack tarball
-        run: npm pack --pack-destination /tmp/pkg
+        run: |
+          mkdir -p /tmp/pkg
+          npm pack --pack-destination /tmp/pkg
 
       - name: Install into isolated prefix without devDeps
         run: |
