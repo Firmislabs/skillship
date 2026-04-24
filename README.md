@@ -29,6 +29,48 @@ ls skills/supabase.com/
 
 Commit `skills/` to your repo — it's what Claude consumes.
 
+## Demo
+
+A full run against Supabase's public API:
+
+```console
+$ npx github:firmislabs/skillship init --domain https://supabase.com --github supabase
+skillship init: wrote .skillship/config.yaml (11 sources, coverage=gold)
+
+$ npx github:firmislabs/skillship build --in . --out skills
+skillship build: wrote 281 artifacts to skills
+  - skills/supabase.com/SKILL.md
+  - skills/supabase.com/.mcp.json
+  - skills/supabase.com/llms.txt
+  - skills/supabase.com/llms-full.txt
+  - skills/supabase.com/manifest.json
+  - skills/supabase.com/references/op_*.md  (276 files)
+```
+
+A typical generated operation reference:
+
+```markdown
+# POST /v1/branches/{branch_id_or_ref}/push
+
+**Pushes a database branch**
+
+## Parameters
+| name | in | required | type |
+|------|----|----------|------|
+| branch_id_or_ref | path | yes | string |
+
+## Responses
+| status | content-type | schema |
+|--------|-------------|--------|
+| 201 | application/json | BranchUpdateResponse |
+
+## Authentication
+- bearer
+```
+
+Every field traces back to the source byte offset it came from; conflicts
+between sources surface as `conflicted` claims, not silent drops.
+
 <details>
 <summary><strong>Install globally (skip npx on every call)</strong></summary>
 
@@ -84,35 +126,6 @@ Coverage tier is reported at the end of `skillship init` (bronze / silver /
 gold) based on how many signals were found.
 </details>
 
-## What it generates
-
-Per detected operation, a reference file embedded in the skill:
-
-````markdown
-# POST /v1/projects
-
-Create a project.
-
-## Parameters
-| Name | In | Type | Required | Description |
-|---|---|---|---|---|
-| name | body | string | yes | Project name |
-| region | body | string (us-east-1\|us-west-2\|eu-west-1) | yes | … |
-
-## Request Example
-```json
-{ "name": "my-app", "region": "us-east-1" }
-```
-
-## Response Example
-```json
-{ "id": "proj_abc", "status": "ACTIVE_HEALTHY" }
-```
-````
-
-Every field carries provenance back to the source byte offset it came from.
-Conflicts between sources surface as `conflicted` claims, not silent drops.
-
 ## How it compares
 
 Evaluated against community hand-authored skills from
@@ -149,26 +162,59 @@ is the audit trail. This mirrors how
 
 ## How it works
 
-```
-vendor signals               content-addressed graph        rendered artifacts
-─────────────────            ──────────────────────        ──────────────────
-llms.txt          ──┐                                   ┌─→ SKILL.md
-OpenAPI / Swagger ──┤                                   ├─→ references/op_*.md
-GraphQL SDL       ──┼─→  sources (sha256) ──→ nodes, ───┼─→ .mcp.json
-sitemap / docs    ──┤    extractors         claims,     ├─→ llms.txt
-MCP tool catalog  ──┤                        edges      └─→ llms-full.txt
-GitHub repo scan  ──┘                       (SQLite)
-                                              │
-                                              └─→ human overlays
-                                                  (.skillship/overlays/)
+```mermaid
+flowchart LR
+    subgraph vendor[Vendor signals]
+        direction TB
+        A1[llms.txt]
+        A2[OpenAPI / Swagger]
+        A3[GraphQL SDL]
+        A4[sitemap + docs]
+        A5[MCP catalog]
+        A6[GitHub repos]
+    end
+
+    subgraph graph[Content-addressed graph]
+        direction TB
+        B1[sources<br/>sha256 cache]
+        B2[nodes / claims / edges<br/>SQLite]
+        B3[human overlays]
+    end
+
+    subgraph output[Rendered artifacts]
+        direction TB
+        C1[SKILL.md]
+        C2[references/op_*.md]
+        C3[.mcp.json]
+        C4[llms.txt / llms-full.txt]
+    end
+
+    vendor -->|discover + fetch| B1
+    B1 -->|extractors| B2
+    B3 --> B2
+    B2 -->|renderers| C1
+    B2 --> C2
+    B2 --> C3
+    B2 --> C4
 ```
 
-Every claim carries provenance (`source_id` + `span_path`) and a confidence
-tier (`attested` / `derived` / `inferred` / `conflicted`). Overlays are
-human-reviewed overrides that win on conflict.
+**Three stages:**
+
+1. **Discover + fetch.** Domain crawler probes for `llms.txt`, OpenAPI,
+   GraphQL SDL, sitemap; GitHub org scanner finds spec repos; Stainless SDK
+   resolver unpacks vendor SDKs. Every fetched byte is content-addressed by
+   sha256 and cached in `.skillship/sources/`.
+2. **Extract → graph.** Per-surface extractors (`openapi3`, `swagger2`,
+   `graphql`, `llmsTxt`, `docsMd`, `sitemap`) emit nodes, claims, and edges
+   into SQLite. Every claim carries `source_id` + `span_path` (provenance)
+   and a confidence tier (`attested` / `derived` / `inferred` /
+   `conflicted`). Human overlays in `.skillship/overlays/` win on conflict.
+3. **Render.** Pure functions over the graph produce `SKILL.md`, per-op
+   reference files, `.mcp.json`, and `llms.txt`. Deterministic — same graph
+   + same overlays = byte-identical output.
 
 See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) and
-[docs/SCHEMA.md](docs/SCHEMA.md) for the graph model.
+[docs/SCHEMA.md](docs/SCHEMA.md) for the full graph model.
 
 ## Status
 
