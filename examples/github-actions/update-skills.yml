@@ -71,7 +71,7 @@ jobs:
       # Once published, replace with:  npm install -g skillship@^0.1.0
       - name: Install skillship
         run: |
-          npm install -g https://github.com/anthropics/skillship.git#main
+          npm install -g https://github.com/firmislabs/skillship.git#main
 
       - name: Re-discover sources
         run: |

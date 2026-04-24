@@ -9,8 +9,8 @@ Generated skills are **committed source** in your repo, same as code. Every
 refresh is a PR. Humans review the diff and merge. No semver, no tags — git
 history is the audit trail.
 
-This mirrors how [anthropics/skills](https://github.com/anthropics/skills) and
-[anthropics/claude-plugins-official](https://github.com/anthropics/claude-plugins-official)
+This mirrors how [`anthropics/skills`](https://github.com/anthropics/skills) and
+[`anthropics/claude-plugins-official`](https://github.com/anthropics/claude-plugins-official)
 are maintained today: PR-driven commits, no version bumps.
 
 ## Setup (one time, locally)
