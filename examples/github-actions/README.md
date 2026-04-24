@@ -17,7 +17,7 @@ are maintained today: PR-driven commits, no version bumps.
 
 ```bash
 # In your product repo:
-npm install -g skillship
+npm install -g github:firmislabs/skillship
 skillship init --domain https://your-vendor.com --github your-vendor
 skillship build --in . --out skills
 

@@ -66,9 +66,14 @@ jobs:
         with:
           node-version: "20"
 
+      # Pin to a specific commit SHA (not a branch) so CI is reproducible.
+      # Update the SHA when you want to pick up upstream improvements —
+      # treating the pin like a dependency version.
       - name: Install skillship
+        env:
+          SKILLSHIP_SHA: main  # replace with a SHA like 0fe97be... for stability
         run: |
-          npm install -g skillship@^0.1.0
+          npm install -g "github:firmislabs/skillship#${SKILLSHIP_SHA}"
 
       - name: Re-discover sources
         run: |

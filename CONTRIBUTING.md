@@ -12,13 +12,12 @@ cd skillship
 # 2. Use the pinned Node version (see .nvmrc):
 nvm use          # Node 20
 
-# 3. Install + verify:
+# 3. Install + verify (build runs automatically via `prepare`):
 npm install
 npm test         # 359 tests should pass
 npm run typecheck
 
-# 4. Build and link for local CLI use:
-npm run build
+# 4. Link for local CLI use:
 npm link         # makes `skillship` available in your PATH
 
 # 5. Try it end-to-end:
@@ -27,8 +26,9 @@ skillship build --in . --out /tmp/skills
 ls /tmp/skills
 ```
 
-`npm link` is the fastest way to iterate; re-running `npm run build` after a
-code change updates the linked binary.
+`npm link` is the fastest way to iterate. After a code change, re-run
+`npm run build` (or use `npx tsc --watch` in a separate terminal) to
+update the linked binary.
 
 ## Running the eval
 

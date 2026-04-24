@@ -2,10 +2,10 @@
 
 > Generate and maintain Claude skills from a SaaS vendor's own API signals.
 
-[![npm](https://img.shields.io/npm/v/skillship?color=crimson&logo=npm)](https://www.npmjs.com/package/skillship)
 [![CI](https://github.com/firmislabs/skillship/actions/workflows/ci.yml/badge.svg)](https://github.com/firmislabs/skillship/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Node](https://img.shields.io/badge/node-%3E%3D20-brightgreen.svg)](.nvmrc)
+[![GitHub stars](https://img.shields.io/github/stars/firmislabs/skillship?style=social)](https://github.com/firmislabs/skillship/stargazers)
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](CONTRIBUTING.md)
 
 Point it at a domain + GitHub org. It ingests `llms.txt`, OpenAPI, GraphQL
@@ -15,45 +15,50 @@ per-claim provenance. Re-runs produce a git diff you can review as a PR.
 
 OSS, MIT, no telemetry, no hosted service. Your API key, your machine.
 
-## Install
-
-```bash
-npm install -g skillship
-```
-
-Or run without installing: `npx skillship ...`
-
 ## Quick start
 
+Run without cloning — npx installs straight from GitHub:
+
 ```bash
-# 1. Discover a vendor's API signals
-skillship init --domain https://supabase.com --github supabase
+npx github:firmislabs/skillship init --domain https://supabase.com --github supabase
+npx github:firmislabs/skillship build --in . --out skills
 
-# 2. Render the skill
-skillship build --in . --out skills
-
-# 3. Inspect
 ls skills/supabase.com/
 # SKILL.md  references/  .mcp.json  llms.txt  llms-full.txt
 ```
 
-That's the whole loop. Commit `skills/` to your repo — it's what Claude
-consumes.
+Commit `skills/` to your repo — it's what Claude consumes.
 
 <details>
-<summary><strong>Install from source (for development)</strong></summary>
+<summary><strong>Install globally (skip npx on every call)</strong></summary>
 
 ```bash
-git clone https://github.com/firmislabs/skillship.git
+npm install -g github:firmislabs/skillship
+skillship init --domain https://supabase.com --github supabase
+skillship build --in . --out skills
+```
+</details>
+
+<details>
+<summary><strong>Fork and run from source (to contribute)</strong></summary>
+
+```bash
+# 1. Click "Fork" on GitHub, then clone your fork:
+git clone https://github.com/YOUR_USERNAME/skillship.git
 cd skillship
+
+# 2. Use pinned Node, install, build, link:
 nvm use            # Node 20 from .nvmrc
-npm install
-npm run build
+npm install        # auto-builds via `prepare` script
 npm link           # exposes `skillship` from your local build
 npm test           # 359 tests should pass
+
+# 3. Try it:
+skillship init --domain https://supabase.com --github supabase
 ```
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) for the full dev loop.
+See [CONTRIBUTING.md](CONTRIBUTING.md) for the full dev loop and PR
+conventions.
 </details>
 
 <details>
