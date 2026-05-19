@@ -53,7 +53,7 @@ describe("runBuild", () => {
     ctx.cleanup();
   });
 
-  test("produces SKILL.md, .mcp.json, llms.txt, llms-full.txt artifacts", async () => {
+  test("produces SKILL.md, .mcp.json, openapi.json, llms.txt, llms-full.txt artifacts", async () => {
     seedProject(
       ctx.dir,
       [
@@ -87,6 +87,7 @@ describe("runBuild", () => {
     const skillDir = join(outDir, "supa-example");
     expect(existsSync(join(skillDir, "SKILL.md"))).toBe(true);
     expect(existsSync(join(skillDir, ".mcp.json"))).toBe(true);
+    expect(existsSync(join(skillDir, "openapi.json"))).toBe(true);
     expect(existsSync(join(skillDir, "llms.txt"))).toBe(true);
     expect(existsSync(join(skillDir, "llms-full.txt"))).toBe(true);
     expect(existsSync(join(skillDir, "manifest.json"))).toBe(true);

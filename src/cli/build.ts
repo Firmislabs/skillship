@@ -23,8 +23,7 @@ import type {
   SkillshipConfig,
 } from "../discovery/config.js";
 import { renderSyntheticOpenApi } from "../renderers/oas.js";
-import { loadCodegenOverlay } from "../overlays/codegen.js";
-import type { CodegenOverlay } from "../overlays/codegen.js";
+import { loadCodegenOverlay, type CodegenOverlay } from "../overlays/codegen.js";
 
 export interface RunBuildOptions {
   readonly in: string;
