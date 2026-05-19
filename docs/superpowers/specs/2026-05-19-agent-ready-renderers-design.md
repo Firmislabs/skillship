@@ -50,14 +50,24 @@ green:
    mechanism, extended schema) influences both R-SDK and R-MCP output
    (resource grouping, operation rename, pagination, retries, auth, streaming).
 3. **R-SDK:** produces a publishable TS npm package that passes `tsc --noEmit`
-   `strict` and an msw runtime conformance suite (pagination, retries +
-   `Retry-After` + idempotency, SSE streaming as typed async iterable, typed
-   error hierarchy).
+   `strict` and an msw runtime conformance suite. The suite must explicitly
+   assert **all seven** custom-plugin behaviors, none implicitly under-verified:
+   `resource-tree` (a nested-namespace call e.g. `client.users.list()` exists
+   and types), `pagination`, `retries` (+ `Retry-After` + idempotency-key
+   header), `streaming` (SSE as typed async iterable), `errors` (typed
+   hierarchy by status), `webhooks` (signature-verification helper validates a
+   known-good and rejects a tampered payload), and `runtime` (configured
+   timeout, base URL override, and a request interceptor are observably
+   applied).
 4. **R-MCP:** produces a runnable MCP server (TS, `@modelcontextprotocol/sdk`,
-   stdio + HTTP transports) where `tools/list` equals the operation set, tool
-   input schemas derive from params/body, auth passes through, and a
-   conformance test invokes representative tools against an msw-mocked upstream.
-   It also rewrites `.mcp.json` to point at the generated server.
+   stdio + HTTP transports). The R-MCP hard gate is **both**: (a) the server
+   process boots on each transport without error, **and** (b) `tools/list`
+   equals the **projected operation set** — i.e. operations successfully
+   emitted by R-OAS, *excluding* anything R-OAS marked `x-skillship-unmapped`
+   (unmapped items are not tools and not in the expected set). Tool input
+   schemas derive from params/body, auth passes through, and a conformance test
+   invokes representative tools against an msw-mocked upstream. It also rewrites
+   `.mcp.json` to point at the generated server.
 5. Determinism preserved: same graph + same overlays ⇒ byte-identical R-OAS,
    R-SDK, R-MCP output (skillship's existing renderer contract).
 6. MIT, no telemetry, no hosted service, no new ingest/config system.
@@ -139,8 +149,10 @@ Every renderer fails loud, fails fast, non-zero exit, actionable message
 graph-empty/bronze (emit explicit placeholder, not a broken artifact — matches
 skillship's documented bronze behavior), overlay-invalid (zod path), engine
 failure (Hey API / MCP SDK error surfaced verbatim), typecheck-failure (R-SDK
-quality gate), server-boot-failure (R-MCP quality gate). Atomic output: write to
-temp, move on full success only. No partial artifacts.
+quality gate), server-boot-failure or `tools/list`-mismatch (the R-MCP gate is both
+conditions per §2.4 — boot success AND projected-operation-set match; failing
+either fails the renderer). Atomic output: write to temp, move on full success
+only. No partial artifacts.
 
 ## 6. Testing (TDD: RED → GREEN → REFACTOR)
 
