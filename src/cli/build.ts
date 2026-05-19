@@ -22,6 +22,9 @@ import type {
   ConfigSourceEntry,
   SkillshipConfig,
 } from "../discovery/config.js";
+import { renderSyntheticOpenApi } from "../renderers/oas.js";
+import { loadCodegenOverlay } from "../overlays/codegen.js";
+import type { CodegenOverlay } from "../overlays/codegen.js";
 
 export interface RunBuildOptions {
   readonly in: string;
@@ -48,6 +51,7 @@ export async function runBuild(opts: RunBuildOptions): Promise<BuildResult> {
     throw new Error(`runBuild: missing ${configPath}`);
   }
   const config = parseYaml(readFileSync(configPath, "utf8")) as SkillshipConfig;
+  const codegenOverlay = loadCodegenOverlay(opts.in);
   const dbPath = join(skDir, "graph.sqlite");
   const sourcesDir = join(skDir, "sources");
   const productId =
@@ -69,6 +73,7 @@ export async function runBuild(opts: RunBuildOptions): Promise<BuildResult> {
       productName,
       description,
       sources: config.sources,
+      codegenOverlay,
     });
     return { productId, artifacts, ingest };
   } finally {
@@ -81,6 +86,7 @@ interface WriteArgs {
   readonly productName: string;
   readonly description: string;
   readonly sources: readonly ConfigSourceEntry[];
+  readonly codegenOverlay: CodegenOverlay;
 }
 
 function writeAll(
@@ -93,6 +99,7 @@ function writeAll(
   const topLevel: [string, string][] = [
     [join(skillDir, "SKILL.md"), renderSkill(db, args)],
     [join(skillDir, ".mcp.json"), renderMcp(db, args)],
+    [join(skillDir, "openapi.json"), renderOas(db, args)],
     [join(skillDir, "llms.txt"), renderShortLlms(db, args)],
     [join(skillDir, "llms-full.txt"), renderFullLlms(db, args)],
     [join(skillDir, "manifest.json"), renderManifest(args)],
@@ -148,6 +155,15 @@ function renderMcp(db: Sqlite3Database, args: WriteArgs): string {
     db,
     productId: args.productId,
     serverName: slug(args.productName),
+  });
+}
+
+function renderOas(db: Sqlite3Database, args: WriteArgs): string {
+  return renderSyntheticOpenApi({
+    db,
+    productId: args.productId,
+    productName: args.productName,
+    overlay: args.codegenOverlay,
   });
 }
 
