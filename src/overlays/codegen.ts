@@ -46,9 +46,9 @@ export const CodegenOverlaySchema = z.object({
 export type CodegenOverlay = z.infer<typeof CodegenOverlaySchema>;
 
 export function loadCodegenOverlay(inDir: string): CodegenOverlay {
-  const path = join(inDir, ".skillship", "overlays", "codegen.yaml");
-  if (!existsSync(path)) return CodegenOverlaySchema.parse({});
-  const raw = parseYaml(readFileSync(path, "utf8")) ?? {};
+  const overlayPath = join(inDir, ".skillship", "overlays", "codegen.yaml");
+  if (!existsSync(overlayPath)) return CodegenOverlaySchema.parse({});
+  const raw = parseYaml(readFileSync(overlayPath, "utf8")) ?? {};
   const result = CodegenOverlaySchema.safeParse(raw);
   if (!result.success) {
     const first = result.error.issues[0]!;

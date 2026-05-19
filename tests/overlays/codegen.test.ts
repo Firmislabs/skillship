@@ -15,6 +15,9 @@ describe("loadCodegenOverlay", () => {
     expect(ovl.resources).toEqual({});
     expect(ovl.pagination).toBeUndefined();
     expect(ovl.streaming).toEqual([]);
+    expect(ovl.retries).toBeUndefined();
+    expect(ovl.auth).toBeUndefined();
+    expect(ovl.webhooks).toBeUndefined();
   });
 
   test("parses a valid overlay file", () => {
@@ -37,6 +40,9 @@ describe("loadCodegenOverlay", () => {
     expect(ovl.pagination?.style).toBe("cursor");
     expect(ovl.retries?.maxRetries).toBe(3);
     expect(ovl.streaming).toEqual(["op_b"]);
+    expect(ovl.retries?.backoff).toBe("exponential-jitter");
+    expect(ovl.retries?.honorRetryAfter).toBe(true);
+    expect(ovl.retries?.retryableStatus).toEqual([408, 409, 429, 500, 502, 503, 504]);
   });
 
   test("throws a typed path error on invalid overlay", () => {
