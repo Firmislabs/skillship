@@ -93,9 +93,8 @@ describe("renderSyntheticOpenApi (GraphQL-sourced — no OpenAPI spec)", () => {
   test("produces operations from a GraphQL SDL graph (the differentiator gate)", async () => {
     const bytes = readFileSync(join(process.cwd(), "tests/fixtures/graphql/minimal.graphql"));
     const sha = createHash("sha256").update(bytes).digest("hex");
-    // surface: "rest" is the valid SurfaceKind token — the dispatcher routes purely on
-    // content_type ("application/graphql" → extractGraphql, dispatch.ts line 31).
-    // The renderer detects GraphQL via surfaceId.startsWith("srf_") (emitted by the extractor).
+    // "graphql" is not a SurfaceKind value; "rest" satisfies the type. The GraphQL extractor is
+    // selected purely by content_type "application/graphql" (src/ingest/dispatch.ts).
     const config: SkillshipConfig = {
       product: { domain: "gql.example", github_org: null },
       sources: [{ surface: "rest", url: "https://gql.example/graphql", sha256: sha, content_type: "application/graphql", fetched_at: NOW }],
@@ -104,9 +103,47 @@ describe("renderSyntheticOpenApi (GraphQL-sourced — no OpenAPI spec)", () => {
     await ingestConfig({ db: graph.db, config, productId: "p-gql", loadBytes: async () => bytes, now: () => NOW });
     const doc = JSON.parse(renderSyntheticOpenApi({ db: graph.db, productId: "p-gql", productName: "gql.example", overlay: CodegenOverlaySchema.parse({}) }));
     const pathKeys = Object.keys(doc.paths);
-    expect(pathKeys.some(k => k.includes("projects"))).toBe(true);
-    expect(pathKeys.some(k => k.includes("createProject"))).toBe(true);
+
+    // Exact path key assertions (verified against real render in Step 0 — do not weaken to substring).
+    expect(pathKeys).toContain("/graphql#projects");
+    expect(pathKeys).toContain("/graphql#createProject");
     for (const k of pathKeys) expect(doc.paths[k].post).toBeDefined();
+
+    // Argument→parameter projection: proves the GraphQL `limit` arg is projected as a query param.
+    // This is the behaviour Task 7 will golden-freeze; previously nothing verified it.
+    const projectsPost = doc.paths["/graphql#projects"].post;
+    const params = (projectsPost.parameters ?? []) as Array<{ name: string; in: string; required: boolean }>;
+    const limit = params.find(p => p.name === "limit");
+    expect(limit).toBeDefined();
+    expect(limit?.in).toBe("query");
+
+    // operationId presence: Task 7 freezes these hash-stable ids (format "op_<hex>").
+    expect(typeof projectsPost.operationId).toBe("string");
+    expect(projectsPost.operationId.length).toBeGreaterThan(0);
+
+    // KNOWN LIMITATION (out of scope for the substrate plan — tracked as a
+    // follow-up): src/extractors/graphql.ts emits a default bearer auth_scheme
+    // node but no auth_requires edges, so GraphQL-sourced operations project
+    // with no security. Asserted explicitly so Task 7 freezes this as a known,
+    // intentional state rather than an accidental one.
+    expect(doc.components.securitySchemes).toEqual({});
+    expect(projectsPost.security).toBeUndefined();
+  });
+
+  test("is deterministic for a GraphQL-sourced graph (byte-identical across two renders)", async () => {
+    const bytes = readFileSync(join(process.cwd(), "tests/fixtures/graphql/minimal.graphql"));
+    const sha = createHash("sha256").update(bytes).digest("hex");
+    // "graphql" is not a SurfaceKind value; "rest" satisfies the type. The GraphQL extractor is
+    // selected purely by content_type "application/graphql" (src/ingest/dispatch.ts).
+    const config: SkillshipConfig = {
+      product: { domain: "gql.example", github_org: null },
+      sources: [{ surface: "rest", url: "https://gql.example/graphql", sha256: sha, content_type: "application/graphql", fetched_at: NOW }],
+      coverage: "bronze",
+    };
+    await ingestConfig({ db: graph.db, config, productId: "p-gql", loadBytes: async () => bytes, now: () => NOW });
+    const a = renderSyntheticOpenApi({ db: graph.db, productId: "p-gql", productName: "gql.example", overlay: CodegenOverlaySchema.parse({}) });
+    const b = renderSyntheticOpenApi({ db: graph.db, productId: "p-gql", productName: "gql.example", overlay: CodegenOverlaySchema.parse({}) });
+    expect(a).toBe(b);
   });
 });
 
