@@ -117,9 +117,8 @@ describe("renderSyntheticOpenApi (GraphQL-sourced — no OpenAPI spec)", () => {
     expect(limit).toBeDefined();
     expect(limit?.in).toBe("query");
 
-    // operationId presence: Task 7 freezes these hash-stable ids (format "op_<hex>").
-    expect(typeof projectsPost.operationId).toBe("string");
-    expect(projectsPost.operationId.length).toBeGreaterThan(0);
+    // operationId format gate: Task 7 freezes these hash-stable ids (format "op_<hex>").
+    expect(projectsPost.operationId).toMatch(/^op_[0-9a-f]+$/);
 
     // KNOWN LIMITATION (out of scope for the substrate plan — tracked as a
     // follow-up): src/extractors/graphql.ts emits a default bearer auth_scheme
@@ -140,9 +139,9 @@ describe("renderSyntheticOpenApi (GraphQL-sourced — no OpenAPI spec)", () => {
       sources: [{ surface: "rest", url: "https://gql.example/graphql", sha256: sha, content_type: "application/graphql", fetched_at: NOW }],
       coverage: "bronze",
     };
-    await ingestConfig({ db: graph.db, config, productId: "p-gql", loadBytes: async () => bytes, now: () => NOW });
-    const a = renderSyntheticOpenApi({ db: graph.db, productId: "p-gql", productName: "gql.example", overlay: CodegenOverlaySchema.parse({}) });
-    const b = renderSyntheticOpenApi({ db: graph.db, productId: "p-gql", productName: "gql.example", overlay: CodegenOverlaySchema.parse({}) });
+    await ingestConfig({ db: graph.db, config, productId: "p-gql-det", loadBytes: async () => bytes, now: () => NOW });
+    const a = renderSyntheticOpenApi({ db: graph.db, productId: "p-gql-det", productName: "gql.example", overlay: CodegenOverlaySchema.parse({}) });
+    const b = renderSyntheticOpenApi({ db: graph.db, productId: "p-gql-det", productName: "gql.example", overlay: CodegenOverlaySchema.parse({}) });
     expect(a).toBe(b);
   });
 });
