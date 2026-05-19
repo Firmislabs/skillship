@@ -1,0 +1,108 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "min.example",
+    "version": "1.0.0"
+  },
+  "paths": {
+    "/projects": {
+      "get": {
+        "operationId": "op_4ce2f98e1f94162e",
+        "summary": "List projects",
+        "description": "Returns every project visible to the caller.",
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "X-Trace-Id",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "200",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/#/components/schemas/ProjectList"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "401",
+            "content": {
+              "*/*": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer_ath_4b34fd37d1e2db31": []
+          }
+        ],
+        "tags": [
+          "projects"
+        ]
+      },
+      "post": {
+        "operationId": "op_028f4be7615a5faf",
+        "summary": "Create a project",
+        "responses": {
+          "201": {
+            "description": "201",
+            "content": {
+              "*/*": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer_ath_4b34fd37d1e2db31": []
+          }
+        ],
+        "tags": [
+          "projects"
+        ]
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "#/components/schemas/ProjectList": {
+        "type": "object"
+      }
+    },
+    "securitySchemes": {
+      "bearer_ath_4b34fd37d1e2db31": {
+        "type": "http",
+        "scheme": "bearer"
+      }
+    }
+  },
+  "x-skillship-codegen": {
+    "pagination": null,
+    "retries": null,
+    "auth": null,
+    "streaming": [],
+    "webhooks": null
+  }
+}

@@ -1,0 +1,68 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "gql.example",
+    "version": "0.0.0"
+  },
+  "paths": {
+    "/graphql#createProject": {
+      "post": {
+        "operationId": "op_a407a3944801e8fb",
+        "summary": "Create a project",
+        "parameters": [
+          {
+            "name": "input",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "tags": [
+          "mutation"
+        ]
+      }
+    },
+    "/graphql#projects": {
+      "post": {
+        "operationId": "op_d3c34b8f2769d5ff",
+        "summary": "List all projects",
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "tags": [
+          "query"
+        ]
+      }
+    }
+  },
+  "components": {
+    "schemas": {},
+    "securitySchemes": {}
+  },
+  "x-skillship-codegen": {
+    "pagination": null,
+    "retries": null,
+    "auth": null,
+    "streaming": [],
+    "webhooks": null
+  }
+}
