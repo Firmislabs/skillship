@@ -84,3 +84,83 @@ describe("renderSyntheticOpenApi (OpenAPI-sourced)", () => {
     expect(doc.paths["/projects"].get.tags).toEqual(["projects"]);
   });
 });
+
+describe("renderSyntheticOpenApi — apiKey non-header location", () => {
+  let tmp: string; let graph: GraphDb;
+  beforeEach(() => { tmp = mkdtempSync(join(tmpdir(), "sk-oas-apikey-")); graph = openGraph(join(tmp, "g.db")); });
+  afterEach(() => { graph.close(); rmSync(tmp, { recursive: true, force: true }); });
+
+  test("projects apiKey with location=query into securitySchemes and operation security", () => {
+    const db = graph.db;
+    const NOW_TS = "2026-05-19T12:00:00.000Z";
+    const PRODUCT_ID = "p-apikey";
+    const SURFACE_ID = "sfc_test_surface";
+    const OP_ID = "op_test_keys";
+    const AUTH_ID = "ath_test_apikey";
+    // A fake source row is required because claims.source_id is NOT NULL REFERENCES sources(id).
+    const SOURCE_ID = "src_fake_apikey";
+    db.prepare(
+      `INSERT INTO sources (id, surface, url, content_type, fetched_at, bytes, cache_path)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+    ).run(SOURCE_ID, "rest", "https://apikey.example/openapi.yaml", "application/openapi+yaml", NOW_TS, 0, ".skillship/sources/fake.yaml");
+
+    // Insert surface node (kind='surface', parent_id=productId, id starts with 'sfc_' for REST)
+    db.prepare(
+      `INSERT INTO nodes (id, kind, parent_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?)`,
+    ).run(SURFACE_ID, "surface", PRODUCT_ID, NOW_TS, NOW_TS);
+
+    // Insert operation node (kind='operation', parent_id=surfaceId)
+    db.prepare(
+      `INSERT INTO nodes (id, kind, parent_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?)`,
+    ).run(OP_ID, "operation", SURFACE_ID, NOW_TS, NOW_TS);
+
+    // Insert auth_scheme node (kind='auth_scheme', parent_id=productId as the extractor does)
+    db.prepare(
+      `INSERT INTO nodes (id, kind, parent_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?)`,
+    ).run(AUTH_ID, "auth_scheme", PRODUCT_ID, NOW_TS, NOW_TS);
+
+    // Helper to insert a claim
+    const insertClaim = (nodeId: string, field: string, value: unknown, claimId: string): void => {
+      db.prepare(
+        `INSERT INTO claims
+           (id, node_id, field, value_json, source_id, extractor, extracted_at,
+            span_start, span_end, span_path, confidence, chosen, rejection_rationale)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      ).run(claimId, nodeId, field, JSON.stringify(value), SOURCE_ID, "openapi@3", NOW_TS, null, null, null, "attested", 0, null);
+    };
+
+    // Operation claims: method (UPPERCASE) and path_or_name
+    insertClaim(OP_ID, "method", "GET", "cl_op_method");
+    insertClaim(OP_ID, "path_or_name", "/keys", "cl_op_path");
+
+    // Auth scheme claims: type="apiKey", location="query", param_name="api_key"
+    insertClaim(AUTH_ID, "type", "apiKey", "cl_auth_type");
+    insertClaim(AUTH_ID, "location", "query", "cl_auth_location");
+    insertClaim(AUTH_ID, "param_name", "api_key", "cl_auth_param");
+
+    // Edge: op --auth_requires--> auth_scheme
+    db.prepare(
+      `INSERT INTO edges (id, kind, from_node_id, to_node_id, source_id, rationale, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+    ).run("edg_op_auth", "auth_requires", OP_ID, AUTH_ID, null, null, NOW_TS);
+
+    const doc = JSON.parse(
+      renderSyntheticOpenApi({ db, productId: PRODUCT_ID, productName: "apikey.example", overlay: CodegenOverlaySchema.parse({}) }),
+    );
+
+    // Exactly one securityScheme entry
+    const schemes = doc.components.securitySchemes as Record<string, unknown>;
+    const schemeEntries = Object.entries(schemes);
+    expect(schemeEntries).toHaveLength(1);
+
+    // The scheme must be { type: "apiKey", in: "query", name: "api_key" }
+    const [schemeKey, schemeValue] = schemeEntries[0]!;
+    expect(schemeValue).toEqual({ type: "apiKey", in: "query", name: "api_key" });
+
+    // The operation's security array must reference the same scheme key
+    const opSecurity = doc.paths["/keys"].get.security as Record<string, string[]>[];
+    expect(Array.isArray(opSecurity)).toBe(true);
+    expect(opSecurity).toHaveLength(1);
+    expect(opSecurity[0]).toHaveProperty(schemeKey);
+  });
+});
