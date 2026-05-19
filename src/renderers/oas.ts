@@ -1,6 +1,7 @@
 // src/renderers/oas.ts
 import type { Database as Sqlite3Database } from "better-sqlite3";
 import { readBestClaim } from "./claims.js";
+import { applyOverlayToDoc } from "../overlays/codegen.js";
 import type { CodegenOverlay } from "../overlays/codegen.js";
 
 export interface RenderOasInput {
@@ -53,6 +54,7 @@ export function renderSyntheticOpenApi(input: RenderOasInput): string {
     components: { schemas: sortKeys(schemas), securitySchemes: sortKeys(securitySchemes) },
   };
   if (unmapped.length > 0) doc["x-skillship-unmapped"] = unmapped.sort((a, b) => a.op.localeCompare(b.op));
+  applyOverlayToDoc(doc as Record<string, unknown>, input.overlay);
   return JSON.stringify(doc, null, 2);
 }
 

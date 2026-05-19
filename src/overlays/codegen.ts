@@ -58,3 +58,25 @@ export function loadCodegenOverlay(inDir: string): CodegenOverlay {
   }
   return result.data;
 }
+
+export function applyOverlayToDoc(doc: Record<string, any>, overlay: CodegenOverlay): void {
+  const paths = (doc.paths ?? {}) as Record<string, Record<string, any>>;
+  for (const pathKey of Object.keys(paths).sort()) {
+    const item = paths[pathKey]!;
+    for (const method of Object.keys(item).sort()) {
+      const op = item[method];
+      if (op === null || typeof op !== "object") continue;
+      const rule = overlay.resources[op.operationId as string];
+      if (rule === undefined) continue;
+      if (rule.rename !== undefined) op.operationId = rule.rename;
+      op.tags = [rule.namespace];
+    }
+  }
+  doc["x-skillship-codegen"] = {
+    pagination: overlay.pagination ?? null,
+    retries: overlay.retries ?? null,
+    auth: overlay.auth ?? null,
+    streaming: [...overlay.streaming].sort(),
+    webhooks: overlay.webhooks ?? null,
+  };
+}

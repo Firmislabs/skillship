@@ -83,6 +83,20 @@ describe("renderSyntheticOpenApi (OpenAPI-sourced)", () => {
     const doc = JSON.parse(renderSyntheticOpenApi({ db: graph.db, productId: "p-min", productName: "min.example", overlay: CodegenOverlaySchema.parse({}) }));
     expect(doc.paths["/projects"].get.tags).toEqual(["projects"]);
   });
+
+  test("applies an O-SHAPE resources overlay (operationId rename + tag) and stays deterministic", async () => {
+    await ingestOpenapi(graph);
+    const base = JSON.parse(renderSyntheticOpenApi({ db: graph.db, productId: "p-min", productName: "min.example", overlay: CodegenOverlaySchema.parse({}) }));
+    const realOpId = base.paths["/projects"].get.operationId as string;
+    const overlay = CodegenOverlaySchema.parse({ resources: { [realOpId]: { namespace: "projects", rename: "listProjects" } } });
+    const a = renderSyntheticOpenApi({ db: graph.db, productId: "p-min", productName: "min.example", overlay });
+    const b = renderSyntheticOpenApi({ db: graph.db, productId: "p-min", productName: "min.example", overlay });
+    expect(a).toBe(b);
+    const doc = JSON.parse(a);
+    expect(doc.paths["/projects"].get.operationId).toBe("listProjects");
+    expect(doc.paths["/projects"].get.tags).toEqual(["projects"]);
+    expect(doc["x-skillship-codegen"]).toBeDefined();
+  });
 });
 
 describe("renderSyntheticOpenApi (GraphQL-sourced — no OpenAPI spec)", () => {

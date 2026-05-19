@@ -3,7 +3,7 @@ import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, test } from "vitest";
-import { loadCodegenOverlay, type CodegenOverlay } from "../../src/overlays/codegen.js";
+import { loadCodegenOverlay, type CodegenOverlay, CodegenOverlaySchema, applyOverlayToDoc } from "../../src/overlays/codegen.js";
 
 describe("loadCodegenOverlay", () => {
   let dir: string;
@@ -54,4 +54,18 @@ describe("loadCodegenOverlay", () => {
     );
     expect(() => loadCodegenOverlay(dir)).toThrow(/pagination\.style/);
   });
+});
+
+test("applyOverlayToDoc renames operationId and overrides tags", () => {
+  const doc: any = { paths: { "/p": { get: { operationId: "op_a", tags: ["old"] } } } };
+  applyOverlayToDoc(doc, CodegenOverlaySchema.parse({ resources: { op_a: { namespace: "users", rename: "list" } } }));
+  expect(doc.paths["/p"].get.operationId).toBe("list");
+  expect(doc.paths["/p"].get.tags).toEqual(["users"]);
+});
+
+test("applyOverlayToDoc stamps document-level x-skillship-codegen", () => {
+  const doc: any = { paths: {} };
+  applyOverlayToDoc(doc, CodegenOverlaySchema.parse({ pagination: { style: "cursor" }, streaming: ["op_b"] }));
+  expect(doc["x-skillship-codegen"].pagination.style).toBe("cursor");
+  expect(doc["x-skillship-codegen"].streaming).toEqual(["op_b"]);
 });
