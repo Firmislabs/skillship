@@ -833,22 +833,16 @@ git tag substrate/frozen
 
 ---
 
-## Spec Amendment Required (surface to user before execution)
+## Spec Amendment (RESOLVED 2026-05-19 — user signed off)
 
-Spec §4.1 states tags come "from `resource` via `acts_on`". Verified against
-`src/extractors/*` + `src/graph/types.ts`: `acts_on` edges and `resource` nodes
-are declared in the type unions but **no extractor emits them**. The substrate
-therefore derives the tag from the REST path's first real segment (or
-`query`/`mutation`/`subscription` for GraphQL), with O-SHAPE's `resources`
-overlay as the authoritative override. Amend spec §4.1 to:
-
-> *"Tags: derived from the operation's first REST path segment (or GraphQL root
-> type), since `resource`/`acts_on` are not populated by current extractors;
-> O-SHAPE `resources` overlay is the authoritative resource-grouping override."*
-
-This is a faithful realization of §4.1's resource-grouping intent given the
-real graph, not a scope reduction — but it changes a spec'd mechanism, so it
-needs explicit sign-off.
+Spec §4.1 originally stated tags come "from `resource` via `acts_on`". Verified
+against `src/extractors/*` + `src/graph/types.ts`: `acts_on` edges and
+`resource` nodes are declared in the type unions but **no extractor emits
+them**. The substrate derives the tag from the REST path's first real segment
+(or `query`/`mutation`/`subscription` for GraphQL), with O-SHAPE's `resources`
+overlay as the authoritative override. **User approved this amendment on
+2026-05-19; spec §4.1 has been updated accordingly.** No further action — this
+note is retained for provenance.
 
 ## Definition of Done (Plan 1)
 

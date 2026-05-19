@@ -94,8 +94,14 @@ other and each is testable in isolation by one person.
 
 ### 4.1 R-OAS — graph → synthetic OpenAPI 3.1
 Pure renderer (`src/renderers/oas.ts`). Projects graph nodes/edges to OAS:
-- `operation` (+ `has_parameter`, `returns`, `acts_on`, `auth_requires`) →
-  `paths` + `operationId` + `tags` (from `resource` via `acts_on`).
+- `operation` (+ `has_parameter`, `returns`, `auth_requires`) →
+  `paths` + `operationId` + `tags`. Tags are derived (no extractor emits
+  `resource` nodes or `acts_on` edges): REST-sourced operations use the first
+  non-template path segment (e.g. `/users/{id}` → `users`); GraphQL-sourced
+  operations use the root type (`query`/`mutation`/`subscription`). O-SHAPE
+  `resources` overrides may rename or regroup any tag explicitly. *(Amended
+  2026-05-19: original "(from `resource` via `acts_on`)" was unrealizable —
+  skillship's graph contains no `resource` nodes or `acts_on` edges.)*
 - `parameter` → `parameters` / `requestBody` per `in`.
 - `response_shape` → `responses` + `components.schemas`.
 - `auth_scheme` → `components.securitySchemes` + `security`.
