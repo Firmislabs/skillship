@@ -63,4 +63,19 @@ describe("renderSyntheticOpenApi (OpenAPI-sourced)", () => {
     expect(methodKeys).toEqual([...methodKeys].sort());
     expect(methodKeys.length).toBeGreaterThanOrEqual(2);
   });
+
+  test("projects bearer auth into securitySchemes + operation security", async () => {
+    await ingestOpenapi(graph);
+    const doc = JSON.parse(renderSyntheticOpenApi({ db: graph.db, productId: "p-min", productName: "min.example", overlay: CodegenOverlaySchema.parse({}) }));
+    const schemes = doc.components.securitySchemes as Record<string, { type: string; scheme?: string }>;
+    const bearer = Object.values(schemes).find(s => s.type === "http" && s.scheme === "bearer");
+    expect(bearer).toBeDefined();
+    expect(Array.isArray(doc.paths["/projects"].get.security)).toBe(true);
+  });
+
+  test("derives a tag from the first REST path segment", async () => {
+    await ingestOpenapi(graph);
+    const doc = JSON.parse(renderSyntheticOpenApi({ db: graph.db, productId: "p-min", productName: "min.example", overlay: CodegenOverlaySchema.parse({}) }));
+    expect(doc.paths["/projects"].get.tags).toEqual(["projects"]);
+  });
 });

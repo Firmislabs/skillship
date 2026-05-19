@@ -19,6 +19,7 @@ export function renderSyntheticOpenApi(input: RenderOasInput): string {
   const ops = listOperations(input.db, input.productId);
   const paths: Record<string, Record<string, unknown>> = {};
   const schemas: Record<string, unknown> = {};
+  const securitySchemes: Record<string, unknown> = {};
   const unmapped: { op: string; reason: string }[] = [];
 
   for (const op of ops) {
@@ -27,7 +28,7 @@ export function renderSyntheticOpenApi(input: RenderOasInput): string {
     const httpMethod = rawMethod.toLowerCase();
     if (op.isGraphql || GQL_METHODS.includes(rawMethod.toUpperCase())) {
       const path = `/graphql#${name}`;
-      (paths[path] ??= {}).post = buildOperation(input.db, op.id, schemas, op.isGraphql);
+      (paths[path] ??= {}).post = buildOperation(input.db, op.id, schemas, op.isGraphql, securitySchemes);
       continue;
     }
     if (!HTTP_METHODS.includes(httpMethod)) {
@@ -35,7 +36,7 @@ export function renderSyntheticOpenApi(input: RenderOasInput): string {
       continue;
     }
     const path = name.startsWith("/") ? name : `/${name}`;
-    (paths[path] ??= {})[httpMethod] = buildOperation(input.db, op.id, schemas, false);
+    (paths[path] ??= {})[httpMethod] = buildOperation(input.db, op.id, schemas, false, securitySchemes);
   }
 
   const sortedPaths: Record<string, Record<string, unknown>> = {};
@@ -49,7 +50,7 @@ export function renderSyntheticOpenApi(input: RenderOasInput): string {
     openapi: "3.1.0",
     info: { title: input.productName, version: surfaceVersion(input.db, input.productId) },
     paths: sortedPaths,
-    components: { schemas: sortKeys(schemas) },
+    components: { schemas: sortKeys(schemas), securitySchemes: sortKeys(securitySchemes) },
   };
   if (unmapped.length > 0) doc["x-skillship-unmapped"] = unmapped.sort((a, b) => a.op.localeCompare(b.op));
   return JSON.stringify(doc, null, 2);
@@ -79,7 +80,7 @@ function surfaceVersion(db: Sqlite3Database, productId: string): string {
   return "0.0.0";
 }
 
-function buildOperation(db: Sqlite3Database, opId: string, schemas: Record<string, unknown>, isGraphql: boolean): Record<string, unknown> {
+function buildOperation(db: Sqlite3Database, opId: string, schemas: Record<string, unknown>, isGraphql: boolean, securitySchemes: Record<string, unknown>): Record<string, unknown> {
   const op: Record<string, unknown> = { operationId: opId };
   const summary = readBestClaim(db, opId, "summary");
   if (summary !== undefined) op.summary = summary;
@@ -89,6 +90,10 @@ function buildOperation(db: Sqlite3Database, opId: string, schemas: Record<strin
   if (parameters.length > 0) op.parameters = parameters;
   if (requestBody !== undefined) op.requestBody = requestBody;
   op.responses = buildResponses(db, opId, schemas);
+  const sec = buildSecurity(db, opId, securitySchemes);
+  if (sec.length > 0) op.security = sec;
+  const tags = buildTags(db, opId, isGraphql);
+  if (tags.length > 0) op.tags = tags;
   return op;
 }
 
@@ -141,6 +146,35 @@ function buildResponses(db: Sqlite3Database, opId: string, schemas: Record<strin
   }
   if (Object.keys(responses).length === 0) responses["200"] = { description: "OK" };
   return sortKeys(responses);
+}
+
+function buildSecurity(db: Sqlite3Database, opId: string, sink: Record<string, unknown>): Record<string, string[]>[] {
+  const rows = db.prepare(
+    `SELECT DISTINCT to_node_id AS authId FROM edges WHERE from_node_id = ? AND kind = 'auth_requires'`,
+  ).all(opId) as { authId: string }[];
+  const out: Record<string, string[]>[] = [];
+  for (const r of rows.sort((a, b) => a.authId.localeCompare(b.authId))) {
+    const type = (readBestClaim(db, r.authId, "type") ?? "bearer").toLowerCase();
+    const key = `${type}_${r.authId}`;
+    if (type === "bearer" || type === "http") sink[key] = { type: "http", scheme: "bearer" };
+    else if (type === "apikey") sink[key] = { type: "apiKey", in: "header", name: readBestClaim(db, r.authId, "param_name") ?? "Authorization" };
+    else sink[key] = { type: "http", scheme: "bearer" };
+    out.push({ [key]: [] });
+  }
+  return out;
+}
+
+function buildTags(db: Sqlite3Database, opId: string, isGraphql: boolean): string[] {
+  if (isGraphql) {
+    const m = (readBestClaim(db, opId, "method") ?? "QUERY").toLowerCase();
+    return [m];
+  }
+  const path = readBestClaim(db, opId, "path_or_name") ?? "";
+  const seg = path
+    .split("/")
+    .map(s => s.trim())
+    .find(s => s.length > 0 && !s.startsWith("{"));
+  return seg !== undefined ? [seg] : [];
 }
 
 function readBool(db: Sqlite3Database, nodeId: string, field: string): boolean {
