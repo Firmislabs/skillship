@@ -1,0 +1,11 @@
+# tests/fixtures/graphql/minimal.graphql
+type Query {
+  "List all projects"
+  projects(limit: Int): [Project!]!
+}
+type Mutation {
+  "Create a project"
+  createProject(input: ProjectInput!): Project!
+}
+type Project { id: ID!, name: String! }
+input ProjectInput { name: String! }

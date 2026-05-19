@@ -85,6 +85,31 @@ describe("renderSyntheticOpenApi (OpenAPI-sourced)", () => {
   });
 });
 
+describe("renderSyntheticOpenApi (GraphQL-sourced — no OpenAPI spec)", () => {
+  let tmp: string; let graph: GraphDb;
+  beforeEach(() => { tmp = mkdtempSync(join(tmpdir(), "sk-oas-gql-")); graph = openGraph(join(tmp, "g.db")); });
+  afterEach(() => { graph.close(); rmSync(tmp, { recursive: true, force: true }); });
+
+  test("produces operations from a GraphQL SDL graph (the differentiator gate)", async () => {
+    const bytes = readFileSync(join(process.cwd(), "tests/fixtures/graphql/minimal.graphql"));
+    const sha = createHash("sha256").update(bytes).digest("hex");
+    // surface: "rest" is the valid SurfaceKind token — the dispatcher routes purely on
+    // content_type ("application/graphql" → extractGraphql, dispatch.ts line 31).
+    // The renderer detects GraphQL via surfaceId.startsWith("srf_") (emitted by the extractor).
+    const config: SkillshipConfig = {
+      product: { domain: "gql.example", github_org: null },
+      sources: [{ surface: "rest", url: "https://gql.example/graphql", sha256: sha, content_type: "application/graphql", fetched_at: NOW }],
+      coverage: "bronze",
+    };
+    await ingestConfig({ db: graph.db, config, productId: "p-gql", loadBytes: async () => bytes, now: () => NOW });
+    const doc = JSON.parse(renderSyntheticOpenApi({ db: graph.db, productId: "p-gql", productName: "gql.example", overlay: CodegenOverlaySchema.parse({}) }));
+    const pathKeys = Object.keys(doc.paths);
+    expect(pathKeys.some(k => k.includes("projects"))).toBe(true);
+    expect(pathKeys.some(k => k.includes("createProject"))).toBe(true);
+    for (const k of pathKeys) expect(doc.paths[k].post).toBeDefined();
+  });
+});
+
 describe("renderSyntheticOpenApi — apiKey non-header location", () => {
   let tmp: string; let graph: GraphDb;
   beforeEach(() => { tmp = mkdtempSync(join(tmpdir(), "sk-oas-apikey-")); graph = openGraph(join(tmp, "g.db")); });
