@@ -496,7 +496,23 @@ Change `buildOperation`'s signature to `(db, opId, schemas, isGraphql, securityS
 
 Add (note: `buildTags` reads op claims — `path_or_name`/`method` — NOT `acts_on`/`resource`, which no extractor emits):
 
+> Corrected 2026-05-19 (code-quality review): full auth-type coverage; apiKey reads the location claim; no dead 'http' arm.
+
 ```ts
+function securitySchemeFor(db: Sqlite3Database, authId: string, type: string): Record<string, unknown> {
+  if (type === "bearer") return { type: "http", scheme: "bearer" };
+  if (type === "basic") return { type: "http", scheme: "basic" };
+  if (type === "apikey") {
+    const location = readBestClaim(db, authId, "location") ?? "header";
+    const name = readBestClaim(db, authId, "param_name") ?? "Authorization";
+    return { type: "apiKey", in: location, name };
+  }
+  if (type === "oauth2") return { type: "oauth2", flows: {} };
+  if (type === "mutualtls") return { type: "mutualTLS" };
+  // "custom" and any future unknown values: placeholder the overlay can correct
+  return { type: "http", scheme: "bearer" };
+}
+
 function buildSecurity(db: Sqlite3Database, opId: string, sink: Record<string, unknown>): Record<string, string[]>[] {
   const rows = db.prepare(
     `SELECT DISTINCT to_node_id AS authId FROM edges WHERE from_node_id = ? AND kind = 'auth_requires'`,
@@ -505,9 +521,7 @@ function buildSecurity(db: Sqlite3Database, opId: string, sink: Record<string, u
   for (const r of rows.sort((a, b) => a.authId.localeCompare(b.authId))) {
     const type = (readBestClaim(db, r.authId, "type") ?? "bearer").toLowerCase();
     const key = `${type}_${r.authId}`;
-    if (type === "bearer" || type === "http") sink[key] = { type: "http", scheme: "bearer" };
-    else if (type === "apikey") sink[key] = { type: "apiKey", in: "header", name: readBestClaim(db, r.authId, "param_name") ?? "Authorization" };
-    else sink[key] = { type: "http", scheme: "bearer" };
+    sink[key] = securitySchemeFor(db, r.authId, type);
     out.push({ [key]: [] });
   }
   return out;

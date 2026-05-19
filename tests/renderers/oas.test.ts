@@ -71,6 +71,11 @@ describe("renderSyntheticOpenApi (OpenAPI-sourced)", () => {
     const bearer = Object.values(schemes).find(s => s.type === "http" && s.scheme === "bearer");
     expect(bearer).toBeDefined();
     expect(Array.isArray(doc.paths["/projects"].get.security)).toBe(true);
+    const secKeys = Object.keys(schemes);
+    const opSec = doc.paths["/projects"].get.security as Record<string, string[]>[];
+    const opSecKeys = opSec.map(o => Object.keys(o)[0]);
+    expect(opSecKeys.length).toBeGreaterThan(0);
+    expect(opSecKeys.every(k => secKeys.includes(k!))).toBe(true);
   });
 
   test("derives a tag from the first REST path segment", async () => {
