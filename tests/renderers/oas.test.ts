@@ -55,4 +55,12 @@ describe("renderSyntheticOpenApi (OpenAPI-sourced)", () => {
     const b = renderSyntheticOpenApi({ db: graph.db, productId: "p-min", productName: "min.example", overlay: CodegenOverlaySchema.parse({}) });
     expect(a).toBe(b);
   });
+
+  test("path-item method keys are alphabetically sorted", async () => {
+    await ingestOpenapi(graph);
+    const doc = JSON.parse(renderSyntheticOpenApi({ db: graph.db, productId: "p-min", productName: "min.example", overlay: CodegenOverlaySchema.parse({}) }));
+    const methodKeys = Object.keys(doc.paths["/projects"]);
+    expect(methodKeys).toEqual([...methodKeys].sort());
+    expect(methodKeys.length).toBeGreaterThanOrEqual(2);
+  });
 });

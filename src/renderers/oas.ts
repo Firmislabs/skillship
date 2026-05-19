@@ -38,10 +38,17 @@ export function renderSyntheticOpenApi(input: RenderOasInput): string {
     (paths[path] ??= {})[httpMethod] = buildOperation(input.db, op.id, schemas, false);
   }
 
+  const sortedPaths: Record<string, Record<string, unknown>> = {};
+  for (const p of Object.keys(paths).sort()) sortedPaths[p] = sortKeys(paths[p]!);
+
+  // Top-level keys follow canonical OpenAPI document order (openapi, info,
+  // paths, components) by deliberate product decision, not alphabetical sort.
+  // Determinism (spec §2.5) is satisfied because this order is fixed across
+  // runs; nested data-derived objects ARE alphabetically sorted via sortKeys.
   const doc: Record<string, unknown> = {
     openapi: "3.1.0",
     info: { title: input.productName, version: surfaceVersion(input.db, input.productId) },
-    paths: sortKeys(paths),
+    paths: sortedPaths,
     components: { schemas: sortKeys(schemas) },
   };
   if (unmapped.length > 0) doc["x-skillship-unmapped"] = unmapped.sort((a, b) => a.op.localeCompare(b.op));
