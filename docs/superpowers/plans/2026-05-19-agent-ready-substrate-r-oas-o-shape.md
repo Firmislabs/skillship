@@ -29,7 +29,15 @@
 ## Conventions (read before starting)
 
 - Renderers are pure: read graph via `readBestClaim(db, nodeId, field)` (string fields) or raw `db.prepare("SELECT value_json FROM claims WHERE node_id=? AND field=? ORDER BY id LIMIT 1").get(...)` (non-string). Pattern reference: `src/renderers/opReference.ts`.
-- Graph shape: `nodes(id, kind, parent_id, ...)`; surfaces are `kind='surface'` with `parent_id=<productId>`; operations are `kind='operation'` with `parent_id=<surfaceId>`; parameters/response_shape are `parent_id=<opId>`. Edges: `edges(from_node_id, to_node_id, kind)` with kinds `auth_requires`, `acts_on`. Operation fields: `method`, `path_or_name`, `summary`, `description`. Parameter fields: `name`, `location`, `required`, `type`, `description`, `enum_values`. response_shape fields: `status_code`, `content_type`, `schema_ref`. auth_scheme fields: `type`, `param_name`.
+- Graph shape (VERIFIED against `src/extractors/*` + `src/graph/types.ts` on 2026-05-19 — trust this, not inference):
+  - `nodes(id, kind, parent_id)`; surfaces `kind='surface'` `parent_id=<productId>`; operations `kind='operation'` `parent_id=<surfaceId>`; parameters/response_shape `parent_id=<opId>`.
+  - **Surface discrimination has NO `surface` claim.** `stableId(prefix,parts)` returns `` `${prefix}_${hash}` ``. REST (openapi3/swagger2) surface id = `sfc_…`; GraphQL surface id = `srf_…`. Detect GraphQL by `surfaceId.startsWith("srf_")`, with a secondary check on the op `method` claim.
+  - Operation `method` claim is **UPPERCASE**: REST → HTTP verb (`GET`,`POST`,…); GraphQL → root type (`QUERY`,`MUTATION`,`SUBSCRIPTION`). `path_or_name`: REST → URL path; GraphQL → field name (e.g. `projects`).
+  - **Parameters differ by source.** REST: `kind='parameter'` child nodes with claims `name`,`location`,`required`,`type`,`description`,`enum_values`. GraphQL: NO parameter child nodes — args are a single `params` claim on the op = JSON string array of printed args (e.g. `["limit: Int"]`). `buildParams` MUST handle both.
+  - `response_shape` child nodes (REST only) have claims `status_code`,`content_type`,`schema_ref`.
+  - `version` claim lives on the **surface** node (`field='version'`), NOT the product node.
+  - Edges actually emitted: `has_operation`, `has_parameter`, `returns`, `auth_requires`. `acts_on` and the `resource` node kind are in the `EdgeKind`/`NodeKind` unions but **NO extractor emits them** — do not read them. auth_scheme claims: `type`, `param_name`.
+  - **Tags / resource grouping (spec deviation — flagged to user):** spec §4.1 says tags come "from `resource` via `acts_on`". Those do not exist in the graph. The substrate instead derives a tag from the REST path's first segment (or the GraphQL root type), and O-SHAPE's `resources` overlay is the authoritative override. This is the pragmatic equivalent of §4.1's intent; it requires a one-line spec amendment (see plan footer).
 - Determinism is a hard requirement (spec §2.5): iterate sorted by `id`, build objects by inserting keys in sorted order, `JSON.stringify(doc, null, 2)`.
 - Test harness pattern: `openGraph(path)` → `graph.db`; populate via `ingestConfig` from a fixture (see `tests/renderers/skill.test.ts:14-42`).
 - TDD strictly: write failing test → run (confirm RED) → minimal impl → run (GREEN) → commit. Each step 2-5 min. Commit after every GREEN.
@@ -273,9 +281,10 @@ export interface RenderOasInput {
   readonly overlay: CodegenOverlay;
 }
 
-interface OpRow { readonly id: string; readonly surfaceId: string; readonly surfaceKind: string; }
+interface OpRow { readonly id: string; readonly surfaceId: string; readonly isGraphql: boolean; }
 
 const HTTP_METHODS = ["get", "post", "put", "patch", "delete", "head", "options"];
+const GQL_METHODS = ["QUERY", "MUTATION", "SUBSCRIPTION"];
 
 export function renderSyntheticOpenApi(input: RenderOasInput): string {
   const ops = listOperations(input.db, input.productId);
@@ -284,19 +293,26 @@ export function renderSyntheticOpenApi(input: RenderOasInput): string {
   const unmapped: { op: string; reason: string }[] = [];
 
   for (const op of ops) {
-    const rawMethod = (readBestClaim(input.db, op.id, "method") ?? "").toLowerCase();
+    const rawMethod = readBestClaim(input.db, op.id, "method") ?? ""; // UPPERCASE in graph
     const name = readBestClaim(input.db, op.id, "path_or_name") ?? op.id;
-    const isGraphql = op.surfaceKind === "graphql";
-    const method = HTTP_METHODS.includes(rawMethod) ? rawMethod : isGraphql ? "post" : "";
-    if (method === "") { unmapped.push({ op: op.id, reason: "no HTTP method" }); continue; }
-    const path = isGraphql ? `/graphql#${name}` : name.startsWith("/") ? name : `/${name}`;
-    const item = (paths[path] ??= {});
-    item[method] = buildOperation(input.db, op.id, schemas);
+    const httpMethod = rawMethod.toLowerCase();
+    if (op.isGraphql || GQL_METHODS.includes(rawMethod.toUpperCase())) {
+      // GraphQL: one POST tool per field; field name carried in the path fragment
+      const path = `/graphql#${name}`;
+      (paths[path] ??= {}).post = buildOperation(input.db, op.id, schemas, op.isGraphql);
+      continue;
+    }
+    if (!HTTP_METHODS.includes(httpMethod)) {
+      unmapped.push({ op: op.id, reason: `unmappable method '${rawMethod}'` });
+      continue;
+    }
+    const path = name.startsWith("/") ? name : `/${name}`;
+    (paths[path] ??= {})[httpMethod] = buildOperation(input.db, op.id, schemas, false);
   }
 
   const doc: Record<string, unknown> = {
     openapi: "3.1.0",
-    info: { title: input.productName, version: readBestClaim(input.db, input.productId, "version") ?? "0.0.0" },
+    info: { title: input.productName, version: surfaceVersion(input.db, input.productId) },
     paths: sortKeys(paths),
     components: { schemas: sortKeys(schemas) },
   };
@@ -313,27 +329,50 @@ function listOperations(db: Sqlite3Database, productId: string): OpRow[] {
   return rows.map(r => ({
     id: r.id,
     surfaceId: r.surfaceId,
-    surfaceKind: readBestClaim(db, r.surfaceId, "surface") ?? "rest",
+    isGraphql: r.surfaceId.startsWith("srf_"), // sfc_ = REST, srf_ = GraphQL
   }));
 }
 
-function buildOperation(db: Sqlite3Database, opId: string, schemas: Record<string, unknown>): Record<string, unknown> {
+// version claim is written on the SURFACE node, not the product node
+function surfaceVersion(db: Sqlite3Database, productId: string): string {
+  const rows = db.prepare(
+    `SELECT id FROM nodes WHERE kind = 'surface' AND parent_id = ? ORDER BY id`,
+  ).all(productId) as { id: string }[];
+  for (const r of rows) {
+    const v = readBestClaim(db, r.id, "version");
+    if (v !== undefined) return v;
+  }
+  return "0.0.0";
+}
+
+function buildOperation(db: Sqlite3Database, opId: string, schemas: Record<string, unknown>, isGraphql: boolean): Record<string, unknown> {
   const op: Record<string, unknown> = { operationId: opId };
   const summary = readBestClaim(db, opId, "summary");
   if (summary !== undefined) op.summary = summary;
   const description = readBestClaim(db, opId, "description");
   if (description !== undefined) op.description = description;
-  const { parameters, requestBody } = buildParams(db, opId);
+  const { parameters, requestBody } = buildParams(db, opId, isGraphql);
   if (parameters.length > 0) op.parameters = parameters;
   if (requestBody !== undefined) op.requestBody = requestBody;
   op.responses = buildResponses(db, opId, schemas);
   return op;
 }
 
-function buildParams(db: Sqlite3Database, opId: string): {
+function buildParams(db: Sqlite3Database, opId: string, isGraphql: boolean): {
   parameters: Record<string, unknown>[];
   requestBody: Record<string, unknown> | undefined;
 } {
+  if (isGraphql) {
+    // GraphQL: args are a single `params` string-array claim on the op
+    // (e.g. ["limit: Int"]). Project each as a best-effort query parameter.
+    const raw = readJson(db, opId, "params");
+    const args = Array.isArray(raw) ? (raw as unknown[]).map(String) : [];
+    const parameters = args.map((a) => {
+      const pname = (a.split(":")[0] ?? a).trim();
+      return { name: pname, in: "query", required: false, schema: { type: "string" } };
+    });
+    return { parameters, requestBody: undefined };
+  }
   const rows = db.prepare(
     `SELECT id FROM nodes WHERE kind = 'parameter' AND parent_id = ? ORDER BY id`,
   ).all(opId) as { id: string }[];
@@ -412,7 +451,9 @@ git commit -m "feat(oas): R-OAS core projection — paths, params, responses, de
 
 ---
 
-### Task 3: R-OAS security schemes + tags
+### Task 3: R-OAS security schemes + derived tags
+
+> **Spec deviation (carry into Task review):** spec §4.1 specifies tags "from `resource` via `acts_on`". Verified: no extractor emits `acts_on` edges or `resource` nodes, so that path yields nothing. The substrate derives a tag from the REST path's first real segment, or `query`/`mutation`/`subscription` for GraphQL. O-SHAPE's `resources` overlay is the authoritative override (Task 5). This needs the one-line spec amendment in the plan footer.
 
 **Files:**
 - Modify: `src/renderers/oas.ts`
@@ -429,6 +470,12 @@ git commit -m "feat(oas): R-OAS core projection — paths, params, responses, de
     expect(bearer).toBeDefined();
     expect(Array.isArray(doc.paths["/projects"].get.security)).toBe(true);
   });
+
+  test("derives a tag from the first REST path segment", async () => {
+    await ingestOpenapi(graph);
+    const doc = JSON.parse(renderSyntheticOpenApi({ db: graph.db, productId: "p-min", productName: "min.example", overlay: CodegenOverlaySchema.parse({}) }));
+    expect(doc.paths["/projects"].get.tags).toEqual(["projects"]);
+  });
 ```
 
 - [ ] **Step 2: Run — confirm RED**
@@ -438,16 +485,16 @@ Expected: FAIL — `securitySchemes` undefined.
 
 - [ ] **Step 3: Implement — add to `src/renderers/oas.ts`**
 
-Add `securitySchemes` collection. In `buildOperation`, after `op.responses`:
+Change `buildOperation`'s signature to `(db, opId, schemas, isGraphql, securitySchemes)` and thread `securitySchemes` from `renderSyntheticOpenApi`: declare `const securitySchemes: Record<string, unknown> = {};` next to `schemas`, pass it into BOTH `buildOperation(...)` call sites (the GraphQL branch and the REST branch), and change the doc's `components` to `{ schemas: sortKeys(schemas), securitySchemes: sortKeys(securitySchemes) }`. In `buildOperation`, after `op.responses = buildResponses(...)`:
 
 ```ts
   const sec = buildSecurity(db, opId, securitySchemes);
   if (sec.length > 0) op.security = sec;
-  const tags = buildTags(db, opId);
+  const tags = buildTags(db, opId, isGraphql);
   if (tags.length > 0) op.tags = tags;
 ```
 
-Change `buildOperation` signature to accept `securitySchemes: Record<string, unknown>`, thread it from `renderSyntheticOpenApi` (declare `const securitySchemes: Record<string, unknown> = {};` next to `schemas`, pass into each `buildOperation` call, and add to the doc: `components: { schemas: sortKeys(schemas), securitySchemes: sortKeys(securitySchemes) }`). Add:
+Add (note: `buildTags` reads op claims — `path_or_name`/`method` — NOT `acts_on`/`resource`, which no extractor emits):
 
 ```ts
 function buildSecurity(db: Sqlite3Database, opId: string, sink: Record<string, unknown>): Record<string, string[]>[] {
@@ -466,13 +513,17 @@ function buildSecurity(db: Sqlite3Database, opId: string, sink: Record<string, u
   return out;
 }
 
-function buildTags(db: Sqlite3Database, opId: string): string[] {
-  const rows = db.prepare(
-    `SELECT DISTINCT to_node_id AS resId FROM edges WHERE from_node_id = ? AND kind = 'acts_on'`,
-  ).all(opId) as { resId: string }[];
-  return rows
-    .map(r => readBestClaim(db, r.resId, "name") ?? r.resId)
-    .sort((a, b) => a.localeCompare(b));
+function buildTags(db: Sqlite3Database, opId: string, isGraphql: boolean): string[] {
+  if (isGraphql) {
+    const m = (readBestClaim(db, opId, "method") ?? "QUERY").toLowerCase();
+    return [m]; // query | mutation | subscription
+  }
+  const path = readBestClaim(db, opId, "path_or_name") ?? "";
+  const seg = path
+    .split("/")
+    .map(s => s.trim())
+    .find(s => s.length > 0 && !s.startsWith("{"));
+  return seg !== undefined ? [seg] : [];
 }
 ```
 
@@ -486,7 +537,7 @@ Expected: PASS (all cases).
 ```bash
 npm run typecheck && npx vitest run tests/renderers/oas.test.ts; echo "EXIT=$?"
 git add src/renderers/oas.ts tests/renderers/oas.test.ts
-git commit -m "feat(oas): project securitySchemes + tags from auth/resource edges"
+git commit -m "feat(oas): securitySchemes from auth_requires + tags derived from path/type"
 ```
 
 ---
@@ -497,10 +548,10 @@ git commit -m "feat(oas): project securitySchemes + tags from auth/resource edge
 - Create: `tests/fixtures/graphql/minimal.graphql`
 - Test: `tests/renderers/oas.test.ts` (add GraphQL describe block)
 
-- [ ] **Step 1: Confirm the GraphQL surface enum + content_type the extractor expects**
+- [ ] **Step 1: Confirm the GraphQL `surface` config value + content_type the dispatcher routes on**
 
-Run: `grep -n "surface\|content_type\|application/graphql\|sdl" src/extractors/graphql.ts src/ingest/dispatch.ts | head -20`
-Record the exact `surface` value (e.g. `"graphql"`) and content type the dispatcher routes to the GraphQL extractor. Use those literal values in Step 3's config. (Do not guess — read the dispatcher.)
+Run: `grep -rn "graphql\|content_type\|application/graphql\|sdl\|surface:" src/ingest/pipeline.ts src/ingest/dispatch.ts src/extractors/graphql.ts src/discovery/config.ts 2>/dev/null | grep -i graphql | head -20`
+(The dispatcher may live in `src/ingest/pipeline.ts` or `dispatch.ts` — the grep covers both plus the config type and the extractor.) Record the exact `surface` config value and `content_type` that route bytes to `extractGraphql`. Use those literal values in Step 3's config. Note: GraphQL is detected downstream by the **surface node id prefix `srf_`** (set by `stableId("srf",[productId,"graphql"])` in `src/extractors/graphql.ts:57`) and the op `method` claim being `QUERY`/`MUTATION`/`SUBSCRIPTION` — there is NO `surface` claim to read. (Do not guess — read the dispatcher.)
 
 - [ ] **Step 2: Create the SDL fixture**
 
@@ -550,7 +601,7 @@ describe("renderSyntheticOpenApi (GraphQL-sourced — no OpenAPI spec)", () => {
 - [ ] **Step 4: Run — confirm RED then make GREEN**
 
 Run: `npx vitest run tests/renderers/oas.test.ts -t "GraphQL-sourced"`
-Expected first: FAIL. If failure is "no operations" the GraphQL surfaceKind branch in `listOperations`/`renderSyntheticOpenApi` needs the `op.surfaceKind === "graphql"` path (already implemented in Task 2 — verify the `surface` claim value for a GraphQL surface matches `"graphql"`; if the extractor stores a different token, extend the `isGraphql` check in `oas.ts` to match it and re-run). Iterate until PASS. Root-cause any mismatch in the extractor's stored surface token — do not weaken the assertion.
+Expected first: FAIL (ingest config surface/content_type not yet matching Step 1's confirmed literals). The GraphQL projection path is already implemented in Task 2 — `listOperations` sets `isGraphql = surfaceId.startsWith("srf_")` and the render loop also treats `method ∈ {QUERY,MUTATION,SUBSCRIPTION}` as GraphQL. If the test still yields zero paths after fixing the ingest config: confirm via `sqlite3`/a debug print that a `srf_…` surface node and `operation` children with `method=QUERY/MUTATION` claims were actually persisted (i.e. the GraphQL extractor ran). Root-cause in the ingest config (wrong `surface`/`content_type` literal) or the extractor — do NOT weaken the assertion and do NOT add a `surface`-claim read (none is written). Iterate until PASS.
 
 - [ ] **Step 5: Preflight + commit**
 
@@ -781,6 +832,23 @@ git tag substrate/frozen
 ```
 
 ---
+
+## Spec Amendment Required (surface to user before execution)
+
+Spec §4.1 states tags come "from `resource` via `acts_on`". Verified against
+`src/extractors/*` + `src/graph/types.ts`: `acts_on` edges and `resource` nodes
+are declared in the type unions but **no extractor emits them**. The substrate
+therefore derives the tag from the REST path's first real segment (or
+`query`/`mutation`/`subscription` for GraphQL), with O-SHAPE's `resources`
+overlay as the authoritative override. Amend spec §4.1 to:
+
+> *"Tags: derived from the operation's first REST path segment (or GraphQL root
+> type), since `resource`/`acts_on` are not populated by current extractors;
+> O-SHAPE `resources` overlay is the authoritative resource-grouping override."*
+
+This is a faithful realization of §4.1's resource-grouping intent given the
+real graph, not a scope reduction — but it changes a spec'd mechanism, so it
+needs explicit sign-off.
 
 ## Definition of Done (Plan 1)
 
