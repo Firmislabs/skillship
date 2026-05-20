@@ -149,13 +149,22 @@ describe("renderSyntheticOpenApi (GraphQL-sourced — no OpenAPI spec)", () => {
     // operationId format gate: Task 7 freezes these hash-stable ids (format "op_<hex>").
     expect(projectsPost.operationId).toMatch(/^op_[0-9a-f]+$/);
 
-    // KNOWN LIMITATION (out of scope for the substrate plan — tracked as a
-    // follow-up): src/extractors/graphql.ts emits a default bearer auth_scheme
-    // node but no auth_requires edges, so GraphQL-sourced operations project
-    // with no security. Asserted explicitly so Task 7 freezes this as a known,
-    // intentional state rather than an accidental one.
-    expect(doc.components.securitySchemes).toEqual({});
-    expect(projectsPost.security).toBeUndefined();
+    // Gap 1 closure: GraphQL ops now project the default bearer scheme into
+    // components.securitySchemes + per-op security (commit 62bf044).
+    // The scheme key is hash-stable: `bearer_${stableId("ath", [productId, "graphql-default"])}`,
+    // i.e. matches /^bearer_ath_[0-9a-f]+$/. We locate it by value shape rather
+    // than literal key so the assertion survives hash changes in the id algorithm.
+    const gqlSchemes = doc.components.securitySchemes as Record<string, { type: string; scheme?: string }>;
+    const gqlBearer = Object.values(gqlSchemes).find(s => s.type === "http" && s.scheme === "bearer");
+    expect(gqlBearer).toBeDefined();
+    const gqlSchemeKeys = Object.keys(gqlSchemes);
+    expect(gqlSchemeKeys.length).toBe(1);
+    expect(gqlSchemeKeys[0]).toMatch(/^bearer_ath_[0-9a-f]+$/);
+    const gqlSec = projectsPost.security as Record<string, string[]>[];
+    expect(Array.isArray(gqlSec)).toBe(true);
+    expect(gqlSec.length).toBe(1);
+    const gqlSecKey = Object.keys(gqlSec[0]!)[0];
+    expect(gqlSecKey).toBe(gqlSchemeKeys[0]);
   });
 
   test("is deterministic for a GraphQL-sourced graph (byte-identical across two renders)", async () => {
