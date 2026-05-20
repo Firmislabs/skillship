@@ -145,7 +145,9 @@ git commit -m "deps: add @hey-api/openapi-ts and prettier (Plan 2 prep)
 Both pinned exactly (no caret) per spec §5.9 R2-1 mitigation
 (Hey API plugin API drift risk).
 
-Licenses verified MIT for both. Repo stays fully permissive."
+Licenses verified MIT for both. Repo stays fully permissive.
+
+Co-Authored-By: Claude Opus 4.7 <noreply@anthropic.com>"
 ```
 
 ---
@@ -261,7 +263,9 @@ not-implemented body. Lets plugin tasks (T4-T6) import the types
 without circular blockers. Implementation lands in Task 7.
 
 outDir is contract-locked: fully-resolved final destination,
-NOT a prefix the renderer further qualifies."
+NOT a prefix the renderer further qualifies.
+
+Co-Authored-By: Claude Opus 4.7 <noreply@anthropic.com>"
 ```
 
 ---
@@ -570,7 +574,9 @@ exact-pinned engines.node>=20. The emitted tsconfig is strict:true
 with NodeNext resolution and exactOptionalPropertyTypes.
 
 Build script updated to copy .tpl files into dist/ alongside the
-existing schema.sql copy."
+existing schema.sql copy.
+
+Co-Authored-By: Claude Opus 4.7 <noreply@anthropic.com>"
 ```
 
 ---
@@ -756,7 +762,9 @@ statuses fall back to APIError.
 
 Plugin factory (errorsPlugin) is a thin wrapper around the
 generateErrorsModule pure function. Unit-testing the pure function
-keeps coverage decoupled from Hey API engine behavior."
+keeps coverage decoupled from Hey API engine behavior.
+
+Co-Authored-By: Claude Opus 4.7 <noreply@anthropic.com>"
 ```
 
 ---
@@ -995,7 +1003,9 @@ retries / no backoff / no idempotency in Plan 2 (deferred to Plan 2b
 with the retries plugin per spec §5.10).
 
 Non-2xx responses route through throwForResponse (errors.ts) carrying
-status + x-request-id + parsed body + code."
+status + x-request-id + parsed body + code.
+
+Co-Authored-By: Claude Opus 4.7 <noreply@anthropic.com>"
 ```
 
 ---
@@ -1204,7 +1214,9 @@ re-parsed by this plugin (locked in spec §5.3 data-source contract).
 
 Output reshapes flat SDK functions into nested client.namespace.method
 via Object.assign-based augmentation; the Client class stays the
-single canonical type."
+single canonical type.
+
+Co-Authored-By: Claude Opus 4.7 <noreply@anthropic.com>"
 ```
 
 ---
@@ -1570,7 +1582,9 @@ Functions split for the 50-line cap. The Hey API plugin contract
 matches the pinned version (see comment block); if upgrading the
 pin, verify against node_modules/@hey-api/openapi-ts/dist/index.d.ts.
 
-Atomic guarantee verified by test: tsc failure leaves outDir absent."
+Atomic guarantee verified by test: tsc failure leaves outDir absent.
+
+Co-Authored-By: Claude Opus 4.7 <noreply@anthropic.com>"
 ```
 
 ---
@@ -1786,7 +1800,9 @@ overlay, and outDir = join(skillDir, 'sdk').
 only consuming the OpenAPI/MCP artifacts).
 
 Renderer atomic guarantee preserved: tsc failure causes runBuild
-to reject and leaves {skillDir}/sdk untouched."
+to reject and leaves {skillDir}/sdk untouched.
+
+Co-Authored-By: Claude Opus 4.7 <noreply@anthropic.com>"
 ```
 
 ---
@@ -2105,7 +2121,9 @@ spec §5.9 R2-4 mitigation).
 
 Generator script (scripts/gen-sdk-goldens.mts) reuses the lock test's
 shared helpers (sdk-golden-helpers.ts) so the regen code path is
-byte-identical to the verification code path."
+byte-identical to the verification code path.
+
+Co-Authored-By: Claude Opus 4.7 <noreply@anthropic.com>"
 ```
 
 ---
