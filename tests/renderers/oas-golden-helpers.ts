@@ -4,8 +4,7 @@
 //   - scripts/gen-goldens.mts (the one-off generator that writes the golden files)
 // No vitest imports here — pure Node + project imports only, so the helpers can
 // be called from outside the vitest runtime.
-import { readFileSync } from "node:fs";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createHash } from "node:crypto";
