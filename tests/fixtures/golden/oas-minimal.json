@@ -62,6 +62,16 @@
       "post": {
         "operationId": "op_028f4be7615a5faf",
         "summary": "Create a project",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        },
         "responses": {
           "201": {
             "description": "201",
