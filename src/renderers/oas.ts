@@ -136,14 +136,18 @@ function buildResponses(db: Sqlite3Database, opId: string, schemas: Record<strin
     `SELECT id FROM nodes WHERE kind = 'response_shape' AND parent_id = ? ORDER BY id`,
   ).all(opId) as { id: string }[];
   const responses: Record<string, unknown> = {};
+  const REF_PREFIX = "#/components/schemas/";
   for (const r of rows) {
     const status = String(readJson(db, r.id, "status_code") ?? "default");
     const ct = readBestClaim(db, r.id, "content_type") ?? "application/json";
-    const ref = readBestClaim(db, r.id, "schema_ref");
-    if (ref !== undefined) schemas[ref] = { type: "object" };
+    const rawRef = readBestClaim(db, r.id, "schema_ref");
+    const refName = rawRef === undefined
+      ? undefined
+      : (rawRef.startsWith(REF_PREFIX) ? rawRef.slice(REF_PREFIX.length) : rawRef);
+    if (refName !== undefined) schemas[refName] = { type: "object" };
     responses[status] = {
       description: status,
-      content: { [ct]: { schema: ref !== undefined ? { $ref: `#/components/schemas/${ref}` } : { type: "object" } } },
+      content: { [ct]: { schema: refName !== undefined ? { $ref: `${REF_PREFIX}${refName}` } : { type: "object" } } },
     };
   }
   if (Object.keys(responses).length === 0) responses["200"] = { description: "OK" };

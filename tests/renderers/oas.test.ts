@@ -84,6 +84,21 @@ describe("renderSyntheticOpenApi (OpenAPI-sourced)", () => {
     expect(doc.paths["/projects"].get.tags).toEqual(["projects"]);
   });
 
+  test("schema_ref claim with full #/components/schemas/ prefix produces well-formed $ref and schemas key (regression: no double-prefix)", async () => {
+    await ingestOpenapi(graph);
+    const doc = JSON.parse(renderSyntheticOpenApi({ db: graph.db, productId: "p-min", productName: "min.example", overlay: CodegenOverlaySchema.parse({}) }));
+    const schema200 = doc.paths["/projects"].get.responses["200"].content["application/json"].schema as Record<string, string>;
+    const ref = schema200["$ref"];
+    // Must match a single #/components/schemas/ prefix followed by a bare name (no embedded #)
+    expect(ref).toMatch(/^#\/components\/schemas\/[^#]+$/);
+    // Extract the trailing segment after the prefix
+    const refName = ref.replace("#/components/schemas/", "");
+    // components.schemas must have that bare name as a key (not the full $ref string)
+    expect(doc.components.schemas).toHaveProperty(refName);
+    // The $ref must resolve: schemas[refName] must be defined
+    expect((doc.components.schemas as Record<string, unknown>)[refName]).toBeDefined();
+  });
+
   test("applies an O-SHAPE resources overlay (operationId rename + tag) and stays deterministic", async () => {
     await ingestOpenapi(graph);
     const base = JSON.parse(renderSyntheticOpenApi({ db: graph.db, productId: "p-min", productName: "min.example", overlay: CodegenOverlaySchema.parse({}) }));

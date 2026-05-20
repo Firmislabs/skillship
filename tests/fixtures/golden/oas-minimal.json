@@ -34,7 +34,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/#/components/schemas/ProjectList"
+                  "$ref": "#/components/schemas/ProjectList"
                 }
               }
             }
@@ -87,7 +87,7 @@
   },
   "components": {
     "schemas": {
-      "#/components/schemas/ProjectList": {
+      "ProjectList": {
         "type": "object"
       }
     },
