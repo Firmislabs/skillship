@@ -67,7 +67,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "type": "object"
+                "$ref": "#/components/schemas/ProjectInput"
               }
             }
           }
@@ -97,6 +97,9 @@
   },
   "components": {
     "schemas": {
+      "ProjectInput": {
+        "type": "object"
+      },
       "ProjectList": {
         "type": "object"
       }

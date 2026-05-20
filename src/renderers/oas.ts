@@ -88,7 +88,7 @@ function buildOperation(db: Sqlite3Database, opId: string, schemas: Record<strin
   if (summary !== undefined) op.summary = summary;
   const description = readBestClaim(db, opId, "description");
   if (description !== undefined) op.description = description;
-  const { parameters, requestBody } = buildParams(db, opId, isGraphql);
+  const { parameters, requestBody } = buildParams(db, opId, isGraphql, schemas);
   if (parameters.length > 0) op.parameters = parameters;
   if (requestBody !== undefined) op.requestBody = requestBody;
   op.responses = buildResponses(db, opId, schemas);
@@ -99,7 +99,7 @@ function buildOperation(db: Sqlite3Database, opId: string, schemas: Record<strin
   return op;
 }
 
-function buildParams(db: Sqlite3Database, opId: string, isGraphql: boolean): {
+function buildParams(db: Sqlite3Database, opId: string, isGraphql: boolean, schemas: Record<string, unknown>): {
   parameters: Record<string, unknown>[];
   requestBody: Record<string, unknown> | undefined;
 } {
@@ -123,7 +123,17 @@ function buildParams(db: Sqlite3Database, opId: string, isGraphql: boolean): {
     const required = readBool(db, r.id, "required");
     const type = readBestClaim(db, r.id, "type") ?? "string";
     if (location === "body") {
-      requestBody = { required: true, content: { "application/json": { schema: { type: "object" } } } };
+      const REF_PREFIX = "#/components/schemas/";
+      const rawRef = readBestClaim(db, r.id, "schema_ref");
+      const refName = rawRef === undefined
+        ? undefined
+        : (rawRef.startsWith(REF_PREFIX) ? rawRef.slice(REF_PREFIX.length) : rawRef);
+      if (refName !== undefined) schemas[refName] = { type: "object" };
+      const ct = readBestClaim(db, r.id, "content_type") ?? "application/json";
+      const schema: Record<string, unknown> = refName !== undefined
+        ? { $ref: `${REF_PREFIX}${refName}` }
+        : { type: "object" };
+      requestBody = { required, content: { [ct]: { schema } } };
       continue;
     }
     parameters.push({ name: pname, in: location, required, schema: { type: mapType(type) } });

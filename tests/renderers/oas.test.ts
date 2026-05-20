@@ -184,6 +184,32 @@ describe("renderSyntheticOpenApi (GraphQL-sourced — no OpenAPI spec)", () => {
   });
 });
 
+describe("renderSyntheticOpenApi — requestBody schema_ref projects as $ref (regression: Gap 2 renderer fix)", () => {
+  let tmp: string; let graph: GraphDb;
+  beforeEach(() => { tmp = mkdtempSync(join(tmpdir(), "sk-oas-bodyref-")); graph = openGraph(join(tmp, "g.db")); });
+  afterEach(() => { graph.close(); rmSync(tmp, { recursive: true, force: true }); });
+
+  test("body parameter with schema_ref claim produces $ref in requestBody schema and registers component schema", async () => {
+    await ingestOpenapi(graph);
+    const doc = JSON.parse(renderSyntheticOpenApi({ db: graph.db, productId: "p-min", productName: "min.example", overlay: CodegenOverlaySchema.parse({}) }));
+    const post = doc.paths["/projects"].post;
+    const schema = post.requestBody.content["application/json"].schema as Record<string, unknown>;
+    expect(schema["$ref"]).toBe("#/components/schemas/ProjectInput");
+    expect(schema).not.toHaveProperty("type");
+    expect(doc.components.schemas).toHaveProperty("ProjectInput");
+    expect((doc.components.schemas as Record<string, unknown>)["ProjectInput"]).toEqual({ type: "object" });
+  });
+
+  test("components.schemas has ProjectInput before ProjectList (alphabetical order)", async () => {
+    await ingestOpenapi(graph);
+    const doc = JSON.parse(renderSyntheticOpenApi({ db: graph.db, productId: "p-min", productName: "min.example", overlay: CodegenOverlaySchema.parse({}) }));
+    const schemaKeys = Object.keys(doc.components.schemas as Record<string, unknown>);
+    expect(schemaKeys).toContain("ProjectInput");
+    expect(schemaKeys).toContain("ProjectList");
+    expect(schemaKeys.indexOf("ProjectInput")).toBeLessThan(schemaKeys.indexOf("ProjectList"));
+  });
+});
+
 describe("renderSyntheticOpenApi — apiKey non-header location", () => {
   let tmp: string; let graph: GraphDb;
   beforeEach(() => { tmp = mkdtempSync(join(tmpdir(), "sk-oas-apikey-")); graph = openGraph(join(tmp, "g.db")); });
