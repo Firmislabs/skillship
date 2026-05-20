@@ -64,6 +64,7 @@ export function emitOperation(a: EmitOperationArgs): void {
 
   emitRequestExample(opId, a.opDef, base, a.claims);
   emitParameters(opId, a.opDef, base, a.nodes, a.claims, a.edges);
+  emitRequestBodyParameter(opId, a.opDef, base, a.nodes, a.claims, a.edges);
   emitResponses(opId, a.opDef, base, a.nodes, a.claims, a.edges);
   emitOperationAuth(opId, a.opDef, base, a.authIds, a.edges);
 }
@@ -324,6 +325,76 @@ function pickExampleFromBody(body: Record<string, unknown>): unknown {
     if (ex?.value !== undefined) return ex.value;
   }
   return undefined;
+}
+
+function emitRequestBodyParameter(
+  opId: string,
+  opDef: Record<string, unknown>,
+  base: string,
+  nodes: ExtractedNode[],
+  claims: ExtractedClaim[],
+  edges: ExtractedEdge[],
+): void {
+  const requestBody = isObject(opDef.requestBody) ? opDef.requestBody : undefined;
+  if (requestBody === undefined) return;
+  const content = isObject(requestBody.content) ? requestBody.content : undefined;
+  if (content === undefined) return;
+  const jsonBody = isObject(content["application/json"])
+    ? content["application/json"]
+    : undefined;
+  if (jsonBody === undefined) return;
+
+  const paramId = stableId("par", [opId, "body", "body"]);
+  const paramBase = `${base}.requestBody`;
+  nodes.push({ id: paramId, kind: "parameter", parent_id: opId });
+  edges.push({
+    kind: "has_parameter",
+    from_node_id: opId,
+    to_node_id: paramId,
+  });
+
+  claims.push({
+    node_id: paramId,
+    field: "name",
+    value: "body",
+    span_path: paramBase,
+    confidence: "derived",
+  });
+  claims.push({
+    node_id: paramId,
+    field: "location",
+    value: "body",
+    span_path: paramBase,
+    confidence: "derived",
+  });
+  claims.push({
+    node_id: paramId,
+    field: "required",
+    value: requestBody.required === true,
+    span_path: `${paramBase}.required`,
+    confidence: "attested",
+  });
+  claims.push({
+    node_id: paramId,
+    field: "content_type",
+    value: "application/json",
+    span_path: `${paramBase}.content`,
+    confidence: "attested",
+  });
+  const schema = isObject(jsonBody.schema) ? jsonBody.schema : undefined;
+  const ref =
+    schema !== undefined && typeof schema.$ref === "string"
+      ? schema.$ref
+      : undefined;
+  if (ref !== undefined) {
+    claims.push({
+      node_id: paramId,
+      field: "schema_ref",
+      value: ref,
+      span_path: `${paramBase}.content["application/json"].schema.$ref`,
+      confidence: "attested",
+    });
+  }
 }
 
 function emitOperationAuth(

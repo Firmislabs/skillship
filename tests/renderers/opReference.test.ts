@@ -99,9 +99,10 @@ describe('renderOpReference', () => {
     expect(md).toMatch(/X-Trace-Id/)
   })
 
-  test('omits Parameters section when op has no params', async () => {
+  test('renders Parameters section with body param when op has a requestBody', async () => {
     await ingestOpenapi(graph, 'tests/fixtures/openapi3/minimal.yaml', 'p-ref3', 'ref3.example')
-    // POST /projects has no parameters (only requestBody, not modelled as params here)
+    // POST /projects has a requestBody with application/json — Gap 2 fix emits a
+    // kind:'parameter' node with location='body', so ## Parameters must appear.
     const opId = graph.db
       .prepare(
         `SELECT n.id FROM nodes n
@@ -113,7 +114,8 @@ describe('renderOpReference', () => {
       .get() as { id: string } | undefined
     if (opId === undefined) throw new Error('no POST op found')
     const md = renderOpReference(graph.db, opId.id, 'p-ref3')
-    expect(md).not.toMatch(/## Parameters/)
+    expect(md).toMatch(/## Parameters/)
+    expect(md).toMatch(/body/)
   })
 
   test('renders Responses section with table when responses exist', async () => {
