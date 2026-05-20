@@ -11,6 +11,7 @@ import {
 import type { SourceNode } from "../graph/types.js"
 import type {
   ExtractedClaim,
+  ExtractedEdge,
   ExtractedNode,
   Extraction,
 } from "./types.js"
@@ -74,14 +75,24 @@ export async function extractGraphql(
     claims.push(...fieldClaims(opId, entry))
   }
 
-  emitDefaultBearerAuth(input.productId, nodes, claims)
+  const edges: ExtractedEdge[] = []
+  const authId = emitDefaultBearerAuth(input.productId, nodes, claims)
+  for (const node of nodes) {
+    if (node.kind !== "operation") continue
+    edges.push({
+      kind: "auth_requires",
+      from_node_id: node.id,
+      to_node_id: authId,
+      rationale: "$.synthesized",
+    })
+  }
 
   return {
     extractor: GRAPHQL_EXTRACTOR,
     source_id: input.source.id,
     nodes,
     claims,
-    edges: [],
+    edges,
   }
 }
 
@@ -154,7 +165,7 @@ function emitDefaultBearerAuth(
   productId: string,
   nodes: ExtractedNode[],
   claims: ExtractedClaim[],
-): void {
+): string {
   const id = stableId("ath", [productId, "graphql-default"])
   nodes.push({ id, kind: "auth_scheme", parent_id: productId })
   claims.push({
@@ -164,6 +175,7 @@ function emitDefaultBearerAuth(
     span_path: "$.synthesized",
     confidence: "inferred",
   })
+  return id
 }
 
 function emptyResult(sourceId: string): Extraction {
