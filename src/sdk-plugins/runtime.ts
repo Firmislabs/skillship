@@ -91,10 +91,11 @@ function buildAuthUnion(schemes: readonly AuthSchemeDescriptor[]): string {
 }
 
 function buildInjectBody(schemes: readonly AuthSchemeDescriptor[]): string {
+  // All auth branches emit `headers[...] = ...` assignments for consistency.
   if (schemes.length === 0) return "    // no auth schemes projected";
   const lines: string[] = [];
   lines.push('    if (this.auth.kind === "bearer") {');
-  lines.push('      Object.assign(headers, { "Authorization": `Bearer ${this.auth.token}` });');
+  lines.push('      headers["Authorization"] = `Bearer ${this.auth.token}`;');
   lines.push('    }');
   if (schemes.some((s) => s.kind === "apiKey")) {
     lines.push('    if (this.auth.kind === "apiKey") {');

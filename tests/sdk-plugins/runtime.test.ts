@@ -34,7 +34,7 @@ describe("runtime plugin", () => {
 
   test("injects Authorization Bearer header when auth.kind === 'bearer'", () => {
     const code = generateRuntimeModule(bearerOnly);
-    expect(code).toMatch(/"Authorization":\s*`Bearer\s*\${[^}]+}`/);
+    expect(code).toMatch(/headers\["Authorization"\]\s*=\s*`Bearer\s*\${[^}]+}`/);
   });
 
   test("injects apiKey into header or query per the 'in' field", () => {
