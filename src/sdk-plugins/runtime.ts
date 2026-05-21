@@ -123,10 +123,3 @@ function buildInjectBody(schemes: readonly AuthSchemeDescriptor[]): string {
   return lines.join("\n");
 }
 
-export function runtimePlugin(schemes: readonly AuthSchemeDescriptor[]): unknown {
-  return {
-    name: "@skillship/sdk-runtime",
-    output: "runtime",
-    handler: () => generateRuntimeModule(schemes),
-  };
-}

@@ -29,3 +29,13 @@ Substrate freeze (`substrate/frozen`) gates Plans 2/3 (R-SDK, R-MCP). The follow
 ---
 
 **Plan 1.5 closure (2026-05-20):** Both gaps above resolved. `substrate/frozen` retagged forward at the Plan 1.5 final commit. R-OAS goldens regenerated and locked. The historical text (including the original "out of scope for the substrate plan" framing) is preserved for archaeological reference; the substrate now projects both gap shapes correctly. Plan 1.5 ended up touching `src/renderers/oas.ts` (originally listed Out of Scope in the plan header) because Gap 2 closure required projecting the new `schema_ref` claim through the renderer — see commit `4f4b430` and the plan's Task 3.5 follow-up section.
+
+## Wedge scope — unsupported security schemes (Plan 2b)
+
+**Status:** Deferred. `extractAuthSchemes` in `src/renderers/sdk-utils.ts` throws a hard error when it encounters an OAS `securitySchemes` entry with a type other than `http` (bearer/basic) or `apiKey`.
+
+**Unsupported types:** `oauth2`, `openIdConnect`, `mutualTLS`.
+
+**Symptom:** `renderSdkPackage` throws: `renderSdkPackage: unsupported security scheme '<id>' (type=<type>, scheme=<scheme>). Supported: http+bearer, http+basic, apiKey.` if the input OAS contains any of these scheme types.
+
+**Resolution path:** Plan 2b. Each scheme type requires a distinct auth-injection strategy in the emitted `Client` class (`runtime.ts` generator). oauth2 requires a token-refresh loop; openIdConnect requires OIDC discovery; mutualTLS requires certificate management. Implement as separate `AuthSchemeDescriptor` variants and new branches in `buildAuthUnion`/`buildInjectBody`.

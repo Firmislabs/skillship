@@ -1,5 +1,9 @@
 import { describe, expect, test } from "vitest";
-import { buildNamespaceTree, type OperationInfo } from "../../src/sdk-plugins/resource-tree.js";
+import {
+  buildNamespaceTree,
+  generateResourceTreeModule,
+  type OperationInfo,
+} from "../../src/sdk-plugins/resource-tree.js";
 import type { CodegenOverlay } from "../../src/overlays/codegen.js";
 
 const EMPTY_OVERLAY: CodegenOverlay = { resources: {}, streaming: [] };
@@ -107,5 +111,52 @@ describe("resource-tree plugin", () => {
     expect(() => buildNamespaceTree(ops, overlay)).toThrow(
       /duplicate method "projects\.list"/,
     );
+  });
+});
+
+describe("generateResourceTreeModule — wedge routing", () => {
+  test("emitted module routes calls through client.request (not flat SDK transport)", () => {
+    const ops: OperationInfo[] = [
+      {
+        operationId: "listProjects",
+        tags: ["projects"],
+        method: "GET",
+        path: "/projects",
+      },
+      {
+        operationId: "createProject",
+        tags: ["projects"],
+        method: "POST",
+        path: "/projects",
+      },
+    ];
+    const tree = buildNamespaceTree(ops, EMPTY_OVERLAY);
+    const source = generateResourceTreeModule(tree, ops, "./sdk.gen.js");
+    // Wedge transport must be invoked — the generated code must call client.request
+    expect(source).toContain("client.request(");
+    // Must NOT directly delegate to flat functions (would bypass wedge)
+    expect(source).not.toContain("flat.listProjects");
+    expect(source).not.toContain("flat.createProject");
+    // Must have correct HTTP method and path wired in
+    expect(source).toContain('"GET"');
+    expect(source).toContain('"/projects"');
+    expect(source).toContain('"POST"');
+  });
+
+  test("emitted module includes ResourceTree interface and attachResources export", () => {
+    const ops: OperationInfo[] = [
+      {
+        operationId: "listUsers",
+        tags: ["users"],
+        method: "GET",
+        path: "/users",
+      },
+    ];
+    const tree = buildNamespaceTree(ops, EMPTY_OVERLAY);
+    const source = generateResourceTreeModule(tree, ops, "./sdk.gen.js");
+    expect(source).toContain("ResourceTree");
+    expect(source).toContain("attachResources");
+    expect(source).toContain("users");
+    expect(source).toContain("listUsers");
   });
 });

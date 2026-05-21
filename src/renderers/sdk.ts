@@ -7,14 +7,17 @@
 //      (the 3 wedge plugins return { name, output, handler } which is NOT a
 //       valid Hey API 0.97.2 plugin shape — see DefinePlugin in @hey-api/shared.
 //       Manual emission is the documented Plan 2 R2-1 fallback.)
-//   3. emit errors.ts, runtime.ts, resources.ts manually into src/
-//   4. write package templates (package.json, tsconfig.json, README, LICENSE, .npmignore)
-//   5. format emitted TS with Prettier
-//   6. run tsc --noEmit against the temp package
-//   7. on exit 0, atomic-rename temp → input.outDir
+//   3. delete openapi.json from tempDir so it does not ship in the package
+//   4. emit errors.ts, runtime.ts, resources.ts manually into src/
+//   5. write package templates (package.json, tsconfig.json, README, LICENSE, .npmignore)
+//   6. format emitted TS with Prettier
+//   7. run tsc --noEmit against the temp package
+//   8. on exit 0, atomic-rename temp → input.outDir
 // On ANY failure the final outDir is left untouched (atomic guarantee).
 import { execFile } from "node:child_process";
 import {
+  cpSync,
+  existsSync,
   mkdirSync,
   mkdtempSync,
   readdirSync,
@@ -36,8 +39,10 @@ import {
 import {
   buildNamespaceTree,
   generateResourceTreeModule,
+  type OperationInfo,
 } from "../sdk-plugins/resource-tree.js";
 import { renderTemplates } from "./sdk-templates/render.js";
+import { extractAuthSchemes, extractOperations } from "./sdk-utils.js";
 
 const execFileP = promisify(execFile);
 
@@ -69,12 +74,18 @@ export async function renderSdkPackage(
     const schemes = extractAuthSchemes(input.oasJson);
     const ops = extractOperations(input.oasJson);
     await runHeyApiCodegen(oasPath, tempDir);
+    // Remove openapi.json immediately after codegen — Hey API has finished
+    // reading it. Without this, the file ships in the npm package and leaks
+    // customer paths and security-scheme metadata (Critical 1 fix).
+    rmSync(oasPath);
     writeWedgeModules(tempDir, schemes, ops, input.overlay);
     writePackageTemplates(tempDir, input);
     await formatWithPrettier(tempDir);
-    const exitCode = await runTypecheckGate(tempDir);
+    const { exitCode, stdout, stderr } = await runTypecheckGate(tempDir);
     if (exitCode !== 0) {
-      throw new Error(`renderSdkPackage: tsc --noEmit exited ${exitCode}`);
+      throw new Error(
+        `renderSdkPackage: tsc --noEmit exited ${exitCode}\n${stderr}\n${stdout}`,
+      );
     }
     atomicMove(tempDir, input.outDir);
     const files = listEmittedFiles(input.outDir);
@@ -91,72 +102,6 @@ function writeOasToTemp(oasJson: string, tempDir: string): string {
   return oasPath;
 }
 
-// ---- OAS extraction helpers ----
-
-interface OasSecurityScheme {
-  readonly type?: string;
-  readonly scheme?: string;
-  readonly in?: string;
-  readonly name?: string;
-}
-interface OasComponents {
-  readonly securitySchemes?: Record<string, OasSecurityScheme>;
-}
-interface OasOperation {
-  readonly operationId?: string;
-  readonly tags?: readonly string[];
-}
-type OasPathItem = Record<string, OasOperation>;
-interface OasDoc {
-  readonly components?: OasComponents;
-  readonly paths?: Record<string, OasPathItem>;
-}
-
-function extractAuthSchemes(oasJson: string): readonly AuthSchemeDescriptor[] {
-  const doc = JSON.parse(oasJson) as OasDoc;
-  const schemes = doc.components?.securitySchemes ?? {};
-  const out: AuthSchemeDescriptor[] = [];
-  for (const id of Object.keys(schemes).sort()) {
-    const s = schemes[id]!;
-    if (s.type === "http" && s.scheme === "bearer") {
-      out.push({ kind: "bearer", id });
-    } else if (s.type === "http" && s.scheme === "basic") {
-      out.push({ kind: "basic", id });
-    } else if (s.type === "apiKey") {
-      const loc: "header" | "query" = s.in === "query" ? "query" : "header";
-      const name = typeof s.name === "string" ? s.name : "Authorization";
-      out.push({ kind: "apiKey", id, in: loc, name });
-    }
-  }
-  return out;
-}
-
-const HTTP_METHODS = ["get", "post", "put", "patch", "delete", "head", "options", "trace"] as const;
-
-function extractOperations(oasJson: string): readonly OperationEntry[] {
-  const doc = JSON.parse(oasJson) as OasDoc;
-  const paths = doc.paths ?? {};
-  const out: OperationEntry[] = [];
-  for (const pathKey of Object.keys(paths).sort()) {
-    const item = paths[pathKey]!;
-    for (const method of HTTP_METHODS) {
-      const op = item[method];
-      if (!op || typeof op !== "object") continue;
-      if (!op.operationId) continue;
-      out.push({
-        operationId: op.operationId,
-        tags: Array.isArray(op.tags) ? [...op.tags] : [],
-      });
-    }
-  }
-  return out;
-}
-
-interface OperationEntry {
-  readonly operationId: string;
-  readonly tags: readonly string[];
-}
-
 // ---- Hey API codegen ----
 // Uses only ["@hey-api/typescript", "@hey-api/sdk"] — the wedge plugins
 // (errors, runtime, resource-tree) are emitted manually below.
@@ -170,12 +115,20 @@ async function runHeyApiCodegen(
   const { createClient } = await import("@hey-api/openapi-ts");
   const srcDir = join(tempDir, "src");
   mkdirSync(srcDir, { recursive: true });
-  await createClient({
+  // postProcess:[] avoids the deprecated format:false flag (Critical 3 fix).
+  // The cast is needed because Hey API 0.97.2 does not export its config type
+  // cleanly; the return type mismatch is benign (we only await completion).
+  await (createClient as unknown as (cfg: {
+    input: string;
+    output: { path: string; postProcess: string[] };
+    logs: { level: string };
+    plugins: string[];
+  }) => Promise<void>)({
     input: oasPath,
-    output: { path: srcDir, format: false },
+    output: { path: srcDir, postProcess: [] },
     logs: { level: "silent" },
     plugins: ["@hey-api/typescript", "@hey-api/sdk"],
-  } as unknown as Parameters<typeof createClient>[0]);
+  });
 }
 
 // ---- Manual wedge module emission ----
@@ -183,25 +136,40 @@ async function runHeyApiCodegen(
 function writeWedgeModules(
   tempDir: string,
   schemes: readonly AuthSchemeDescriptor[],
-  ops: readonly OperationEntry[],
+  ops: readonly OperationInfo[],
   overlay: CodegenOverlay,
 ): void {
   const srcDir = join(tempDir, "src");
   mkdirSync(srcDir, { recursive: true });
-  writeFileSync(join(srcDir, "errors.ts"), generateErrorsModule(), "utf8");
-  writeFileSync(join(srcDir, "runtime.ts"), generateRuntimeModule(schemes), "utf8");
+  writeWedgeFile(srcDir, "errors.ts", generateErrorsModule());
+  writeWedgeFile(srcDir, "runtime.ts", generateRuntimeModule(schemes));
   const tree = buildNamespaceTree(ops, overlay);
-  writeFileSync(
-    join(srcDir, "resources.ts"),
-    generateResourceTreeModule(tree, "./sdk.gen.js"),
-    "utf8",
+  writeWedgeFile(
+    srcDir,
+    "resources.ts",
+    generateResourceTreeModule(tree, ops, "./sdk.gen.js"),
   );
+}
+
+function writeWedgeFile(srcDir: string, name: string, content: string): void {
+  const target = join(srcDir, name);
+  if (existsSync(target)) {
+    throw new Error(
+      `renderSdkPackage: wedge module collision at ${target}; Hey API output already wrote a file here`,
+    );
+  }
+  writeFileSync(target, content, "utf8");
 }
 
 // ---- Package template emission ----
 
 function writePackageTemplates(tempDir: string, input: RenderSdkInput): void {
   const slug = slugify(input.productName);
+  if (!slug) {
+    throw new Error(
+      `renderSdkPackage: productName '${input.productName}' slugifies to empty`,
+    );
+  }
   const tplOut = renderTemplates({
     productName: input.productName,
     packageName: `@skillship/${slug}-sdk`,
@@ -216,6 +184,10 @@ function writePackageTemplates(tempDir: string, input: RenderSdkInput): void {
 // ---- Prettier formatting ----
 
 async function formatWithPrettier(tempDir: string): Promise<void> {
+  // Format ALL .ts including Hey API .gen.ts. This normalizes whitespace
+  // drift across Hey API minor versions, keeping the determinism contract
+  // stable; semantic drift (renamed symbols, import order) is NOT normalized
+  // and is caught at the byte-determinism test or tsc gate.
   const prettierMod = await import("prettier");
   const { format } = prettierMod;
   for (const file of walkTs(tempDir)) {
@@ -239,34 +211,66 @@ function* walkTs(dir: string): IterableIterator<string> {
 
 // ---- tsc gate ----
 
-async function runTypecheckGate(tempDir: string): Promise<number> {
+interface TypecheckResult {
+  readonly exitCode: number;
+  readonly stdout: string;
+  readonly stderr: string;
+}
+
+async function runTypecheckGate(tempDir: string): Promise<TypecheckResult> {
   const tscBin = join(process.cwd(), "node_modules", ".bin", "tsc");
   try {
     await execFileP(tscBin, ["--noEmit", "-p", tempDir]);
-    return 0;
+    return { exitCode: 0, stdout: "", stderr: "" };
   } catch (err: unknown) {
     const e = err as { code?: number; stdout?: string; stderr?: string };
-    process.stderr.write(
-      `renderSdkPackage tsc stdout:\n${e.stdout ?? ""}\nstderr:\n${e.stderr ?? ""}\n`,
-    );
-    return typeof e.code === "number" ? e.code : 1;
+    return {
+      exitCode: typeof e.code === "number" ? e.code : 1,
+      stdout: e.stdout ?? "",
+      stderr: e.stderr ?? "",
+    };
   }
 }
 
-// ---- Atomic rename ----
+// ---- Atomic rename (cross-filesystem-safe) ----
 
 function atomicMove(tempDir: string, outDir: string): void {
   mkdirSync(dirname(outDir), { recursive: true });
   if (statSyncSafe(outDir)) rmSync(outDir, { recursive: true, force: true });
-  renameSync(tempDir, outDir);
+  crossFsRename(tempDir, outDir);
+}
+
+/**
+ * Renames src → dst atomically where possible.
+ * Falls back to cpSync + rmSync when renameSync throws EXDEV (cross-device
+ * move — common in CI containers where /tmp is tmpfs and outDir is on the
+ * host filesystem). If cpSync itself fails, dst is removed before re-throwing
+ * to preserve the "dst absent on failure" invariant.
+ */
+function crossFsRename(src: string, dst: string): void {
+  try {
+    renameSync(src, dst);
+  } catch (err: unknown) {
+    const e = err as { code?: string };
+    if (e.code !== "EXDEV") throw err;
+    try {
+      cpSync(src, dst, { recursive: true });
+    } catch (copyErr) {
+      rmSync(dst, { recursive: true, force: true });
+      throw copyErr;
+    }
+    rmSync(src, { recursive: true, force: true });
+  }
 }
 
 function statSyncSafe(p: string): boolean {
   try {
     statSync(p);
     return true;
-  } catch {
-    return false;
+  } catch (err: unknown) {
+    const e = err as { code?: string };
+    if (e.code === "ENOENT") return false;
+    throw err;
   }
 }
 

@@ -1,4 +1,11 @@
-import { mkdtempSync, readFileSync, readdirSync, rmSync, statSync } from "node:fs";
+import {
+  mkdtempSync,
+  readFileSync,
+  readdirSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, test } from "vitest";
@@ -145,13 +152,128 @@ describe("renderSdkPackage — integration", () => {
   );
 
   test(
+    "emitted package tree does not contain openapi.json",
+    async () => {
+      const tmpA = mkdtempSync(join(tmpdir(), "sk-sdk-nooas-"));
+      try {
+        const result = await renderSdkPackage({
+          oasJson: MINIMAL_OAS,
+          productName: "min.example",
+          outDir: tmpA,
+          overlay: CodegenOverlaySchema.parse({}),
+        });
+        expect(result.files).not.toContain("openapi.json");
+        const allFiles = listFilesRecursive(tmpA);
+        expect(allFiles).not.toContain("openapi.json");
+      } finally {
+        rmSync(tmpA, { recursive: true, force: true });
+      }
+    },
+    60000,
+  );
+
+  test(
+    "throws with a clear error on unsupported security scheme (oauth2)",
+    async () => {
+      const oasWithOauth2 = JSON.stringify({
+        openapi: "3.1.0",
+        info: { title: "oauth-test", version: "1.0.0" },
+        paths: {},
+        components: {
+          schemas: {},
+          securitySchemes: {
+            myOauth: {
+              type: "oauth2",
+              flows: { clientCredentials: { tokenUrl: "https://example.com/token", scopes: {} } },
+            },
+          },
+        },
+      });
+      await expect(
+        renderSdkPackage({
+          oasJson: oasWithOauth2,
+          productName: "oauth-test",
+          outDir: join(tmpdir(), "sk-sdk-oauth2-test"),
+          overlay: CodegenOverlaySchema.parse({}),
+        }),
+      ).rejects.toThrow(/unsupported security scheme/);
+    },
+    30000,
+  );
+
+  test(
+    "throws when productName slugifies to empty",
+    async () => {
+      await expect(
+        renderSdkPackage({
+          oasJson: MINIMAL_OAS,
+          productName: "!!!",
+          outDir: join(tmpdir(), "sk-sdk-slug-test"),
+          overlay: CodegenOverlaySchema.parse({}),
+        }),
+      ).rejects.toThrow(/slugifies to empty/);
+    },
+    30000,
+  );
+
+  test(
+    "leaves outDir untouched on typecheck failure WITH pre-existing sentinel file",
+    async () => {
+      const tmp = mkdtempSync(join(tmpdir(), "sk-sdk-sentinel-"));
+      const outDir = join(tmp, "sdk");
+      // Pre-create outDir with a sentinel file
+      const { mkdirSync } = await import("node:fs");
+      mkdirSync(outDir, { recursive: true });
+      writeFileSync(join(outDir, "sentinel.txt"), "DO NOT DELETE", "utf8");
+      const brokenOas = JSON.stringify(
+        {
+          openapi: "3.1.0",
+          info: { title: "broken", version: "1.0.0" },
+          paths: {
+            "/x": {
+              get: {
+                operationId: "x",
+                responses: {
+                  "200": {
+                    description: "OK",
+                    content: {
+                      "application/json": {
+                        schema: { $ref: "#/components/schemas/Missing" },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          },
+          components: { schemas: {}, securitySchemes: {} },
+        },
+        null,
+        2,
+      );
+      try {
+        await expect(
+          renderSdkPackage({
+            oasJson: brokenOas,
+            productName: "broken",
+            outDir,
+            overlay: CodegenOverlaySchema.parse({}),
+          }),
+        ).rejects.toThrow();
+        // Sentinel must survive
+        expect(readFileSync(join(outDir, "sentinel.txt"), "utf8")).toBe("DO NOT DELETE");
+      } finally {
+        rmSync(tmp, { recursive: true, force: true });
+      }
+    },
+    60000,
+  );
+
+  test(
     "leaves outDir untouched on typecheck failure (atomic guarantee)",
     async () => {
       const tmp = mkdtempSync(join(tmpdir(), "sk-sdk-fail-"));
       const outDir = join(tmp, "sdk");
-      // OAS that references a missing schema — will cause tsc errors in emitted code
-      // if Hey API emits any type assertions. We also inject a synthetic tsc-breaking
-      // file via a plugin hook to guarantee the failure regardless of Hey API behavior.
       const brokenOas = JSON.stringify(
         {
           openapi: "3.1.0",

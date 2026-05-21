@@ -59,21 +59,3 @@ export function dispatchClassForStatus(status: number): string {
   return "APIError";
 }
 
-/**
- * Hey API plugin factory. The exact return shape is dictated by
- * @hey-api/openapi-ts's plugin authoring API at the pinned version.
- * Returns a plugin object the engine consumes during codegen.
- *
- * Implementation note: the factory just hands the engine the
- * `generateErrorsModule()` string and a single output filename
- * (`errors.ts`). The plugin contributes no other emit; the SDK
- * transport (emitted by `src/sdk-plugins/runtime.ts`) imports
- * `throwForResponse` from this file when handling non-2xx responses.
- */
-export function errorsPlugin(): unknown {
-  return {
-    name: "@skillship/sdk-errors",
-    output: "errors",
-    handler: () => generateErrorsModule(),
-  };
-}
