@@ -60,4 +60,52 @@ describe("resource-tree plugin", () => {
     expect(Object.keys(tree)).toEqual(["alpha", "zulu"]);
     expect(tree.alpha).toEqual(["a_second", "a_first"]);
   });
+
+  test("rejects namespace that is not a valid JS identifier", () => {
+    const ops: OperationInfo[] = [
+      { operationId: "doSomething", tags: ["my-bad-tag"] },
+    ];
+    expect(() => buildNamespaceTree(ops, EMPTY_OVERLAY)).toThrow(
+      /namespace "my-bad-tag".*not a valid JS identifier/,
+    );
+  });
+
+  test("rejects rename that is not a valid JS identifier", () => {
+    const ops: OperationInfo[] = [
+      { operationId: "doSomething", tags: ["alpha"] },
+    ];
+    const overlay: CodegenOverlay = {
+      resources: { doSomething: { namespace: "alpha", rename: "1bad" } },
+      streaming: [],
+    };
+    expect(() => buildNamespaceTree(ops, overlay)).toThrow(
+      /method "1bad".*not a valid JS identifier/,
+    );
+  });
+
+  test("rejects namespace that collides with a Client member", () => {
+    const ops: OperationInfo[] = [
+      { operationId: "ping", tags: ["request"] },
+    ];
+    expect(() => buildNamespaceTree(ops, EMPTY_OVERLAY)).toThrow(
+      /namespace "request".*collides with a Client member/,
+    );
+  });
+
+  test("rejects duplicate (namespace, method) pairs", () => {
+    const ops: OperationInfo[] = [
+      { operationId: "listProjectsV1", tags: ["projects"] },
+      { operationId: "listProjectsV2", tags: ["projects"] },
+    ];
+    const overlay: CodegenOverlay = {
+      resources: {
+        listProjectsV1: { namespace: "projects", rename: "list" },
+        listProjectsV2: { namespace: "projects", rename: "list" },
+      },
+      streaming: [],
+    };
+    expect(() => buildNamespaceTree(ops, overlay)).toThrow(
+      /duplicate method "projects\.list"/,
+    );
+  });
 });

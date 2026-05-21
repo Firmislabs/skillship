@@ -19,20 +19,62 @@ export interface OperationInfo {
   readonly tags: readonly string[];
 }
 
+// JS identifier shape: must start with letter/$/_ then any combination of those plus digits.
+// Intentionally narrower than the ECMAScript spec's Unicode allowance — keeps emitted code
+// readable and avoids escaping headaches in interface declarations.
+const IDENTIFIER_RE = /^[A-Za-z_$][A-Za-z0-9_$]*$/;
+
+// Reserved names: instance properties/methods on the emitted Client class
+// (see src/sdk-plugins/runtime.ts). Namespacing onto any of these would silently
+// clobber the Client surface via Object.assign.
+const RESERVED_NAMESPACES: ReadonlySet<string> = new Set([
+  "baseUrl",
+  "auth",
+  "defaultHeaders",
+  "fetchImpl",
+  "timeout",
+  "onRequest",
+  "onResponse",
+  "request",
+]);
+
 export function buildNamespaceTree(
   ops: readonly OperationInfo[],
   overlay: CodegenOverlay,
 ): Record<string, string[]> {
   const tree: Record<string, string[]> = {};
+  const seen: Record<string, Set<string>> = {};
   for (const op of ops) {
     const rule = overlay.resources[op.operationId];
     const namespace = rule?.namespace ?? op.tags[0] ?? "default";
     const methodName = rule?.rename ?? op.operationId;
+    assertValidName("namespace", namespace, op.operationId);
+    assertValidName("method", methodName, op.operationId);
+    if (RESERVED_NAMESPACES.has(namespace)) {
+      throw new Error(
+        `resource-tree: namespace "${namespace}" (for operation "${op.operationId}") collides with a Client member; rename the namespace in the overlay`,
+      );
+    }
+    const seenInNs = seen[namespace] ??= new Set();
+    if (seenInNs.has(methodName)) {
+      throw new Error(
+        `resource-tree: duplicate method "${namespace}.${methodName}" (operation "${op.operationId}"); two ops cannot map to the same namespace.method pair`,
+      );
+    }
+    seenInNs.add(methodName);
     (tree[namespace] ??= []).push(methodName);
   }
   const sorted: Record<string, string[]> = {};
   for (const k of Object.keys(tree).sort()) sorted[k] = tree[k]!;
   return sorted;
+}
+
+function assertValidName(kind: "namespace" | "method", name: string, opId: string): void {
+  if (!IDENTIFIER_RE.test(name)) {
+    throw new Error(
+      `resource-tree: ${kind} "${name}" (for operation "${opId}") is not a valid JS identifier; must match /^[A-Za-z_$][A-Za-z0-9_$]*$/`,
+    );
+  }
 }
 
 /**
