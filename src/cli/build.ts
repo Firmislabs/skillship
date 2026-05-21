@@ -4,6 +4,7 @@ import {
   mkdirSync,
   readFileSync,
   readdirSync,
+  statSync,
   writeFileSync,
 } from "node:fs";
 import { join } from "node:path";
@@ -24,12 +25,14 @@ import type {
 } from "../discovery/config.js";
 import { renderSyntheticOpenApi } from "../renderers/oas.js";
 import { loadCodegenOverlay, type CodegenOverlay } from "../overlays/codegen.js";
+import { renderSdkPackage } from "../renderers/sdk.js";
 
 export interface RunBuildOptions {
   readonly in: string;
   readonly out: string;
   readonly productId?: string;
   readonly description?: string;
+  readonly skipSdk?: boolean;
 }
 
 export interface BuildArtifact {
@@ -67,13 +70,26 @@ export async function runBuild(opts: RunBuildOptions): Promise<BuildResult> {
       loadBytes: bytesLoaderFrom(sourcesDir),
     });
     mkdirSync(opts.out, { recursive: true });
-    const artifacts = writeAll(handle.db, opts.out, {
+    const { artifacts, oasJson, skillDir } = writeAll(handle.db, opts.out, {
       productId,
       productName,
       description,
       sources: config.sources,
       codegenOverlay,
     });
+    if (opts.skipSdk !== true) {
+      const sdkResult = await renderSdkPackage({
+        oasJson,
+        productName,
+        outDir: join(skillDir, "sdk"),
+        overlay: codegenOverlay,
+      });
+      const sdkArtifacts = sdkResult.files.map(relPath => {
+        const filePath = join(sdkResult.outDir, relPath);
+        return { path: filePath, bytes: statSync(filePath).size };
+      });
+      return { productId, artifacts: [...artifacts, ...sdkArtifacts], ingest };
+    }
     return { productId, artifacts, ingest };
   } finally {
     handle.close();
@@ -88,17 +104,24 @@ interface WriteArgs {
   readonly codegenOverlay: CodegenOverlay;
 }
 
+interface WriteAllResult {
+  readonly artifacts: BuildArtifact[];
+  readonly oasJson: string;
+  readonly skillDir: string;
+}
+
 function writeAll(
   db: Sqlite3Database,
   outDir: string,
   args: WriteArgs,
-): BuildArtifact[] {
+): WriteAllResult {
   const skillDir = join(outDir, slug(args.productName));
   mkdirSync(skillDir, { recursive: true });
+  const oasJson = renderOas(db, args);
   const topLevel: [string, string][] = [
     [join(skillDir, "SKILL.md"), renderSkill(db, args)],
     [join(skillDir, ".mcp.json"), renderMcp(db, args)],
-    [join(skillDir, "openapi.json"), renderOas(db, args)],
+    [join(skillDir, "openapi.json"), oasJson],
     [join(skillDir, "llms.txt"), renderShortLlms(db, args)],
     [join(skillDir, "llms-full.txt"), renderFullLlms(db, args)],
     [join(skillDir, "manifest.json"), renderManifest(args)],
@@ -108,7 +131,7 @@ function writeAll(
     return { path, bytes: Buffer.byteLength(content, "utf8") };
   });
   const refArtifacts = writeOpReferences(db, skillDir, args.productId);
-  return [...topArtifacts, ...refArtifacts];
+  return { artifacts: [...topArtifacts, ...refArtifacts], oasJson, skillDir };
 }
 
 function writeOpReferences(

@@ -62,10 +62,12 @@ function makeProgram(): Command {
     .option("--in <dir>", "project directory (defaults to cwd)")
     .option("--out <dir>", "output directory (defaults to <in>/skills)")
     .option("--product-id <id>", "override product node id")
+    .option("--skip-sdk", "skip SDK package emission (faster builds)")
     .action(async (opts: {
       in?: string;
       out?: string;
       productId?: string;
+      skipSdk?: boolean;
     }) => {
       const inDir = opts.in ?? process.cwd();
       const outDir = opts.out ?? join(inDir, "skills");
@@ -73,6 +75,7 @@ function makeProgram(): Command {
         in: inDir,
         out: outDir,
         ...(opts.productId !== undefined ? { productId: opts.productId } : {}),
+        ...(opts.skipSdk === true ? { skipSdk: true } : {}),
       });
       printBuildSummary(result.artifacts.map((a) => a.path), outDir);
     });
