@@ -51,4 +51,36 @@ describe("runtime plugin", () => {
     // AuthConfig must still type-check (use 'never' or an open union sentinel)
     expect(code).toMatch(/export type AuthConfig/);
   });
+
+  test("emit uses URL 2-arg form with trailing-slash baseUrl normalization (Fix 1)", () => {
+    const code = generateRuntimeModule(bearerOnly);
+    // baseUrl normalized to trail with "/"
+    expect(code).toMatch(/this\.baseUrl\s*=\s*opts\.baseUrl\.replace\(\/\\\/\+\$\/,\s*""\)\s*\+\s*"\/"/);
+    // request strips leading slash from input.path
+    expect(code).toMatch(/input\.path\.startsWith\("\/"\)/);
+    // URL constructed with 2-arg form
+    expect(code).toMatch(/new URL\(relPath,\s*this\.baseUrl\)/);
+  });
+
+  test("emit enforces timeout via AbortController (Fix 2)", () => {
+    const code = generateRuntimeModule(bearerOnly);
+    expect(code).toContain("AbortController");
+    expect(code).toContain("setTimeout");
+    expect(code).toContain("clearTimeout");
+    expect(code).toMatch(/init\.signal\s*=\s*controller\.signal/);
+  });
+
+  test("emit uses btoa (not Buffer) for basic-auth base64 encoding (Fix 3)", () => {
+    const code = generateRuntimeModule([{ kind: "basic", id: "ba1" }]);
+    expect(code).toContain("btoa(`${this.auth.username}:${this.auth.password}`)");
+    expect(code).not.toContain("Buffer.from");
+  });
+
+  test("empty schemes emit a satisfiable no-auth AuthConfig (Fix 4)", () => {
+    const code = generateRuntimeModule([]);
+    expect(code).toContain('export type AuthConfig = { readonly kind: "none" }');
+    // Sanity: no impossible `never` intersection sentinel
+    expect(code).not.toContain("__skillshipNoAuth");
+    expect(code).not.toMatch(/AuthConfig\s*=\s*never/);
+  });
 });

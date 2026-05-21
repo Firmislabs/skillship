@@ -39,7 +39,8 @@ export class Client {
   readonly onResponse: ((res: Response) => Response | Promise<Response>) | undefined;
 
   constructor(opts: ClientOptions) {
-    this.baseUrl = opts.baseUrl.replace(/\/+$/, "");
+    // Normalize baseUrl to end with exactly one trailing slash for safe relative URL resolution.
+    this.baseUrl = opts.baseUrl.replace(/\\/+$/, "") + "/";
     this.auth = opts.auth;
     this.defaultHeaders = opts.defaultHeaders ?? {};
     this.fetchImpl = opts.fetch ?? globalThis.fetch;
@@ -49,7 +50,9 @@ export class Client {
   }
 
   async request(input: { path: string; method: string; query?: Record<string, string | number | boolean | undefined>; body?: unknown; headers?: Record<string, string> }): Promise<Response> {
-    const url = new URL(this.baseUrl + input.path);
+    // Strip a single leading slash from path so URL() resolves it as relative to baseUrl.
+    const relPath = input.path.startsWith("/") ? input.path.slice(1) : input.path;
+    const url = new URL(relPath, this.baseUrl);
     if (input.query) {
       for (const [k, v] of Object.entries(input.query)) {
         if (v !== undefined) url.searchParams.append(k, String(v));
@@ -63,24 +66,31 @@ ${injectBody}
       headers["Content-Type"] = headers["Content-Type"] ?? "application/json";
       init.body = JSON.stringify(input.body);
     }
+    const controller = new AbortController();
+    const timeoutId = this.timeout !== undefined ? setTimeout(() => controller.abort(), this.timeout) : null;
+    init.signal = controller.signal;
     let req = new Request(url.toString(), init);
-    if (this.onRequest) req = await this.onRequest(req);
-    let res = await this.fetchImpl(req);
-    if (this.onResponse) res = await this.onResponse(res);
-    if (!res.ok) {
-      const requestId = res.headers.get("x-request-id");
-      let body: unknown = null;
-      try { body = await res.clone().json(); } catch { try { body = await res.clone().text(); } catch { /* ignore */ } }
-      throwForResponse({ status: res.status, requestId, body, code: null });
+    try {
+      if (this.onRequest) req = await this.onRequest(req);
+      let res = await this.fetchImpl(req);
+      if (this.onResponse) res = await this.onResponse(res);
+      if (!res.ok) {
+        const requestId = res.headers.get("x-request-id");
+        let body: unknown = null;
+        try { body = await res.clone().json(); } catch { try { body = await res.clone().text(); } catch { /* ignore */ } }
+        throwForResponse({ status: res.status, requestId, body, code: null });
+      }
+      return res;
+    } finally {
+      if (timeoutId !== null) clearTimeout(timeoutId);
     }
-    return res;
   }
 }
 `;
 }
 
 function buildAuthUnion(schemes: readonly AuthSchemeDescriptor[]): string {
-  if (schemes.length === 0) return 'never & { __skillshipNoAuth: true }';
+  if (schemes.length === 0) return '{ readonly kind: "none" }';
   const parts = new Set<string>();
   for (const s of schemes) {
     if (s.kind === "bearer") parts.add('{ kind: "bearer"; token: string }');
@@ -106,7 +116,7 @@ function buildInjectBody(schemes: readonly AuthSchemeDescriptor[]): string {
   }
   if (schemes.some((s) => s.kind === "basic")) {
     lines.push('    if (this.auth.kind === "basic") {');
-    lines.push('      const encoded = Buffer.from(`${this.auth.username}:${this.auth.password}`).toString("base64");');
+    lines.push('      const encoded = btoa(`${this.auth.username}:${this.auth.password}`);');
     lines.push('      headers["Authorization"] = `Basic ${encoded}`;');
     lines.push('    }');
   }
