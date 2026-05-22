@@ -151,8 +151,13 @@ export function generateResourceTreeModule(
     lines.push(`    ${ns}: {`);
     for (const methodName of methods) {
       const info = opsByMethodName[methodName];
-      const httpMethod = info?.method ?? "GET";
-      const httpPath = info?.path ?? "/";
+      if (!info) {
+        throw new Error(
+          `resource-tree: no operation metadata for method "${methodName}"; tree leaf has no matching OperationInfo`,
+        );
+      }
+      const httpMethod = info.method;
+      const httpPath = info.path;
       lines.push(
         `      ${methodName}: (opts?: RequestOpts) => client.request({ method: "${httpMethod}", path: "${httpPath}", pathParams: opts?.pathParams, query: opts?.query, headers: opts?.headers, body: opts?.body }),`,
       );

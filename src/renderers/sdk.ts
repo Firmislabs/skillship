@@ -16,19 +16,17 @@
 // On ANY failure the final outDir is left untouched (atomic guarantee).
 import { execFile } from "node:child_process";
 import {
-  cpSync,
   existsSync,
   mkdirSync,
   mkdtempSync,
   readdirSync,
   readFileSync,
-  renameSync,
   rmSync,
   statSync,
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
-import { dirname, join, relative } from "node:path";
+import { join } from "node:path";
 import { promisify } from "node:util";
 import type { CodegenOverlay } from "../overlays/codegen.js";
 import { generateErrorsModule } from "../sdk-plugins/errors.js";
@@ -44,6 +42,10 @@ import {
 } from "../sdk-plugins/resource-tree.js";
 import { renderTemplates } from "./sdk-templates/render.js";
 import { extractAuthSchemes, extractOperations } from "./sdk-utils.js";
+import {
+  atomicMove,
+  listEmittedFiles,
+} from "./sdk-fs.js";
 
 const execFileP = promisify(execFile);
 
@@ -233,64 +235,6 @@ async function runTypecheckGate(tempDir: string): Promise<TypecheckResult> {
       stdout: e.stdout ?? "",
       stderr: e.stderr ?? "",
     };
-  }
-}
-
-// ---- Atomic rename (cross-filesystem-safe) ----
-
-function atomicMove(tempDir: string, outDir: string): void {
-  mkdirSync(dirname(outDir), { recursive: true });
-  if (statSyncSafe(outDir)) rmSync(outDir, { recursive: true, force: true });
-  crossFsRename(tempDir, outDir);
-}
-
-/**
- * Renames src → dst atomically where possible.
- * Falls back to cpSync + rmSync when renameSync throws EXDEV (cross-device
- * move — common in CI containers where /tmp is tmpfs and outDir is on the
- * host filesystem). If cpSync itself fails, dst is removed before re-throwing
- * to preserve the "dst absent on failure" invariant.
- */
-function crossFsRename(src: string, dst: string): void {
-  try {
-    renameSync(src, dst);
-  } catch (err: unknown) {
-    const e = err as { code?: string };
-    if (e.code !== "EXDEV") throw err;
-    try {
-      cpSync(src, dst, { recursive: true });
-    } catch (copyErr) {
-      rmSync(dst, { recursive: true, force: true });
-      throw copyErr;
-    }
-    rmSync(src, { recursive: true, force: true });
-  }
-}
-
-function statSyncSafe(p: string): boolean {
-  try {
-    statSync(p);
-    return true;
-  } catch (err: unknown) {
-    const e = err as { code?: string };
-    if (e.code === "ENOENT") return false;
-    throw err;
-  }
-}
-
-// ---- File listing ----
-
-function listEmittedFiles(outDir: string): readonly string[] {
-  const out: string[] = [];
-  for (const f of walkAll(outDir)) out.push(relative(outDir, f));
-  return out.sort();
-}
-
-function* walkAll(dir: string): IterableIterator<string> {
-  for (const name of readdirSync(dir).sort()) {
-    const full = join(dir, name);
-    if (statSync(full).isDirectory()) yield* walkAll(full);
-    else yield full;
   }
 }
 

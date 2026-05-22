@@ -49,7 +49,7 @@ export class Client {
     let resolvedPath = input.path;
     if (input.pathParams) {
       for (const [k, v] of Object.entries(input.pathParams)) {
-        resolvedPath = resolvedPath.replace(
+        resolvedPath = resolvedPath.replaceAll(
           `{${k}}`,
           encodeURIComponent(String(v)),
         );
@@ -105,6 +105,7 @@ export class Client {
       }
       return res;
     } catch (err) {
+      // Only the internal timeout aborts this controller, so an abort here means a timeout.
       if (controller.signal.aborted) {
         throw new TimeoutError({
           status: 0,

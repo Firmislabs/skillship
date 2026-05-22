@@ -47,13 +47,3 @@ export function throwForResponse(args: { status: number; requestId: string | nul
 export function generateErrorsModule(): string {
   return ERRORS_MODULE_SOURCE;
 }
-
-export function dispatchClassForStatus(status: number): string {
-  if (status === 400) return "BadRequestError";
-  if (status === 401) return "UnauthorizedError";
-  if (status === 403) return "ForbiddenError";
-  if (status === 404) return "NotFoundError";
-  if (status === 429) return "RateLimitError";
-  if (status >= 500 && status <= 599) return "InternalServerError";
-  return "APIError";
-}
