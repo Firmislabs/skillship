@@ -38,6 +38,7 @@
     "build": "tsc && cp src/graph/schema.sql dist/graph/schema.sql && mkdir -p dist/renderers/sdk-templates && cp src/renderers/sdk-templates/*.tpl dist/renderers/sdk-templates/",
     "test": "vitest run",
     "test:watch": "vitest",
+    "test:smoke": "SKILLSHIP_NETWORK_SMOKE=1 vitest run tests/sdk-runtime/httpbin-smoke.test.ts",
     "typecheck": "tsc --noEmit",
     "lint": "tsc --noEmit",
     "eval:build": "tsc -p tsconfig.eval.json && cp src/graph/schema.sql dist-eval/src/graph/schema.sql",
