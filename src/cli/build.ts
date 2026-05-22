@@ -77,6 +77,9 @@ export async function runBuild(opts: RunBuildOptions): Promise<BuildResult> {
       sources: config.sources,
       codegenOverlay,
     });
+    // Whole-build atomicity is NOT guaranteed: the top-level artifacts above
+    // are already on disk. If SDK rendering throws, those persist by design
+    // (the SDK subtree itself is atomic — see renderSdkPackage).
     if (opts.skipSdk !== true) {
       const sdkResult = await renderSdkPackage({
         oasJson,
