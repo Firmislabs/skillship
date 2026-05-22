@@ -57,6 +57,12 @@ export class InternalServerError extends APIError {
     this.name = "InternalServerError";
   }
 }
+export class TimeoutError extends APIError {
+  constructor(a: ConstructorParameters<typeof APIError>[0]) {
+    super(a);
+    this.name = "TimeoutError";
+  }
+}
 
 export function throwForResponse(args: {
   status: number;

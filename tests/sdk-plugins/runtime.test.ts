@@ -56,8 +56,8 @@ describe("runtime plugin", () => {
     const code = generateRuntimeModule(bearerOnly);
     // baseUrl normalized to trail with "/"
     expect(code).toMatch(/this\.baseUrl\s*=\s*opts\.baseUrl\.replace\(\/\\\/\+\$\/,\s*""\)\s*\+\s*"\/"/);
-    // request strips leading slash from input.path
-    expect(code).toMatch(/input\.path\.startsWith\("\/"\)/);
+    // request strips leading slash (from resolvedPath after pathParam substitution)
+    expect(code).toMatch(/resolvedPath\.startsWith\("\/"\)/);
     // URL constructed with 2-arg form
     expect(code).toMatch(/new URL\(relPath,\s*this\.baseUrl\)/);
   });
@@ -82,5 +82,44 @@ describe("runtime plugin", () => {
     // Sanity: no impossible `never` intersection sentinel
     expect(code).not.toContain("__skillshipNoAuth");
     expect(code).not.toMatch(/AuthConfig\s*=\s*never/);
+  });
+
+  // C2: bearer branch guard
+  test("apiKey-only spec does NOT emit bearer branch (C2)", () => {
+    const code = generateRuntimeModule([
+      { kind: "apiKey", id: "k1", in: "header", name: "X-Key" },
+    ]);
+    expect(code).not.toContain('kind === "bearer"');
+    expect(code).toContain('kind === "apiKey"');
+  });
+
+  test("basic-only spec does NOT emit bearer branch (C2)", () => {
+    const code = generateRuntimeModule([{ kind: "basic", id: "ba1" }]);
+    expect(code).not.toContain('kind === "bearer"');
+    expect(code).toContain('kind === "basic"');
+  });
+
+  // I2: pathParams substitution
+  test("emitted Client.request input type includes pathParams (I2)", () => {
+    const code = generateRuntimeModule(bearerOnly);
+    expect(code).toContain("pathParams");
+  });
+
+  test("emitted request method performs {key} substitution via replace (I2)", () => {
+    const code = generateRuntimeModule(bearerOnly);
+    expect(code).toContain(".replace(");
+  });
+
+  // I3: TimeoutError on abort
+  test("emitted runtime imports TimeoutError from errors.js (I3)", () => {
+    const code = generateRuntimeModule(bearerOnly);
+    expect(code).toContain("TimeoutError");
+    expect(code).toContain('from "./errors.js"');
+  });
+
+  test("emitted runtime catches abort and throws TimeoutError (I3)", () => {
+    const code = generateRuntimeModule(bearerOnly);
+    expect(code).toContain("controller.signal.aborted");
+    expect(code).toContain("new TimeoutError(");
   });
 });

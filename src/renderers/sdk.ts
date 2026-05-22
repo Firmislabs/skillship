@@ -32,6 +32,7 @@ import { dirname, join, relative } from "node:path";
 import { promisify } from "node:util";
 import type { CodegenOverlay } from "../overlays/codegen.js";
 import { generateErrorsModule } from "../sdk-plugins/errors.js";
+import { generateEntryModule } from "../sdk-plugins/entry.js";
 import {
   generateRuntimeModule,
   type AuthSchemeDescriptor,
@@ -147,8 +148,11 @@ function writeWedgeModules(
   writeWedgeFile(
     srcDir,
     "resources.ts",
-    generateResourceTreeModule(tree, ops, "./sdk.gen.js"),
+    generateResourceTreeModule(tree, ops, overlay),
   );
+  // Intentionally overwrite Hey API's generated index.ts with the wedge barrel so
+  // the package entry point exposes Client/attachResources/errors — not the raw flat ops.
+  writeFileSync(join(srcDir, "index.ts"), generateEntryModule(), "utf8");
 }
 
 function writeWedgeFile(srcDir: string, name: string, content: string): void {

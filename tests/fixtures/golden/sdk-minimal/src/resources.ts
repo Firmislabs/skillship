@@ -12,6 +12,7 @@ interface RequestOpts {
   query?: Record<string, string | number | boolean | undefined>;
   headers?: Record<string, string>;
   body?: unknown;
+  pathParams?: Record<string, string | number>;
 }
 
 export function attachResources(client: Client): Client & ResourceTree {
@@ -21,6 +22,7 @@ export function attachResources(client: Client): Client & ResourceTree {
         client.request({
           method: "GET",
           path: "/projects",
+          pathParams: opts?.pathParams,
           query: opts?.query,
           headers: opts?.headers,
           body: opts?.body,
@@ -29,6 +31,7 @@ export function attachResources(client: Client): Client & ResourceTree {
         client.request({
           method: "POST",
           path: "/projects",
+          pathParams: opts?.pathParams,
           query: opts?.query,
           headers: opts?.headers,
           body: opts?.body,

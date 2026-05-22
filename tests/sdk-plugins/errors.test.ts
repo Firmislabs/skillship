@@ -42,4 +42,16 @@ describe("errors plugin", () => {
     expect(dispatchClassForStatus(302)).toBe("APIError");
     expect(dispatchClassForStatus(700)).toBe("APIError");
   });
+
+  // I3: TimeoutError subclass
+  test("generated module declares TimeoutError as an 8th subclass of APIError", () => {
+    const code = generateErrorsModule();
+    expect(code).toContain("export class TimeoutError extends APIError");
+  });
+
+  test("generated module has accurate header comment (emits hierarchy, no transport patch)", () => {
+    const code = generateErrorsModule();
+    // Must NOT claim to patch transport
+    expect(code).not.toContain("patches");
+  });
 });

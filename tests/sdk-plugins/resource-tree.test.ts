@@ -131,7 +131,7 @@ describe("generateResourceTreeModule — wedge routing", () => {
       },
     ];
     const tree = buildNamespaceTree(ops, EMPTY_OVERLAY);
-    const source = generateResourceTreeModule(tree, ops, "./sdk.gen.js");
+    const source = generateResourceTreeModule(tree, ops, EMPTY_OVERLAY);
     // Wedge transport must be invoked — the generated code must call client.request
     expect(source).toContain("client.request(");
     // Must NOT directly delegate to flat functions (would bypass wedge)
@@ -153,10 +153,50 @@ describe("generateResourceTreeModule — wedge routing", () => {
       },
     ];
     const tree = buildNamespaceTree(ops, EMPTY_OVERLAY);
-    const source = generateResourceTreeModule(tree, ops, "./sdk.gen.js");
+    const source = generateResourceTreeModule(tree, ops, EMPTY_OVERLAY);
     expect(source).toContain("ResourceTree");
     expect(source).toContain("attachResources");
     expect(source).toContain("users");
     expect(source).toContain("listUsers");
+  });
+
+  // I1: renamed ops must use the real method+path, not GET /
+  test("renamed op emits real HTTP method+path, not GET / (I1)", () => {
+    const ops: OperationInfo[] = [
+      {
+        operationId: "listProjects",
+        tags: ["projects"],
+        method: "GET",
+        path: "/projects",
+      },
+    ];
+    const overlay: CodegenOverlay = {
+      resources: { listProjects: { namespace: "projects", rename: "list" } },
+      streaming: [],
+    };
+    const tree = buildNamespaceTree(ops, overlay);
+    const source = generateResourceTreeModule(tree, ops, overlay);
+    expect(source).toContain('path: "/projects"');
+    expect(source).toContain('method: "GET"');
+    // Must not fall back to the sentinel values
+    expect(source).not.toContain('path: "/"');
+    // The method name in the interface must be the renamed one
+    expect(source).toContain("list:");
+  });
+
+  // I2: RequestOpts must include pathParams
+  test("emitted RequestOpts interface includes pathParams (I2)", () => {
+    const ops: OperationInfo[] = [
+      {
+        operationId: "getProject",
+        tags: ["projects"],
+        method: "GET",
+        path: "/projects/{id}",
+      },
+    ];
+    const tree = buildNamespaceTree(ops, EMPTY_OVERLAY);
+    const source = generateResourceTreeModule(tree, ops, EMPTY_OVERLAY);
+    expect(source).toContain("pathParams");
+    expect(source).toContain("opts?.pathParams");
   });
 });
