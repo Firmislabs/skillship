@@ -39,3 +39,37 @@ Substrate freeze (`substrate/frozen`) gates Plans 2/3 (R-SDK, R-MCP). The follow
 **Symptom:** `renderSdkPackage` throws: `renderSdkPackage: unsupported security scheme '<id>' (type=<type>, scheme=<scheme>). Supported: http+bearer, http+basic, apiKey.` if the input OAS contains any of these scheme types.
 
 **Resolution path:** Plan 2b. Each scheme type requires a distinct auth-injection strategy in the emitted `Client` class (`runtime.ts` generator). oauth2 requires a token-refresh loop; openIdConnect requires OIDC discovery; mutualTLS requires certificate management. Implement as separate `AuthSchemeDescriptor` variants and new branches in `buildAuthUnion`/`buildInjectBody`.
+
+---
+
+## L1 real-world findings (2026-05-22, Resend `openapi.json`, 83 ops)
+
+Surfaced by the first end-to-end run against a real vendor spec (`init` discovery → `build` → skill + SDK). The synthetic goldens never exercised these shapes because they used a single clean namespace (`projects`), a per-operation `security` block, and human-curated operationIds.
+
+### Gap 3 — SDK namespace crash on non-identifier resource names
+
+**Status:** Resolved (2026-05-22, this run). Fix: `src/sdk-plugins/resource-tree.ts` `deriveNamespace` now auto-sanitizes *derived* namespaces to valid JS identifiers (`api-keys` → `apiKeys`, `contact-properties` → `contactProperties`); *explicit* overlay namespaces remain strictly validated. Already-valid names (incl. underscores) pass through verbatim, so goldens are byte-identical.
+
+**Symptom (pre-fix):** `renderSdkPackage` threw `resource-tree: namespace "api-keys" ... is not a valid JS identifier` and aborted the entire SDK emit. Any spec with a hyphenated top-level path segment (common: `api-keys`, `payment-methods`) hit this.
+
+**Root cause:** namespace was derived from the operation's first tag (= the path's first segment) and passed through `assertValidName`, which rejected non-`/^[A-Za-z_$][A-Za-z0-9_$]*$/` names with no sanitization fallback.
+
+### Gap 4 — SDK emits no auth when security is declared globally
+
+**Status:** OPEN. Critical/functional — the generated SDK does not authenticate.
+
+**Symptom:** For a spec that declares `security` at the top level (global) rather than per-operation, the emitted `runtime.ts` is `AuthConfig = { kind: "none" }` with `// no auth schemes projected`. Every request goes out unauthenticated (401 against the real API). The SKILL.md auth section is unaffected (it reads `auth_scheme` nodes directly via `src/renderers/skill-auth.ts`).
+
+**Root cause:** the OpenAPI extractor records the `auth_scheme` node (1 present for Resend) but emits **0 `auth_requires` edges** for globally-applied security. `src/renderers/oas.ts` `buildSecurity` only projects a scheme into `components.securitySchemes` when an operation has an `auth_requires` edge, so the synthetic OAS carries `securitySchemes: {}`, and `extractAuthSchemes` (`src/renderers/sdk-utils.ts`) returns `[]`. This is the OpenAPI analogue of Gap 1 (GraphQL `auth_requires`).
+
+**Resolution path:** in `src/extractors/openapi3.ts`/`openapi3-ops.ts`, when an operation inherits a top-level `security` requirement (no operation-level override), emit an `auth_requires` edge from the operation node to the corresponding `auth_scheme` node — mirroring the Gap 1 fix in `graphql.ts`. Will require golden regen for any OpenAPI fixture that uses global `security`.
+
+### Gap 5 — SDK method names are opaque content hashes
+
+**Status:** OPEN. Ergonomics.
+
+**Symptom:** emitted resource methods are named by content-addressed operationId, e.g. `client.emails.op_cbe40e616c22a3e5()` instead of `client.emails.send()`. The official `resend` SDK exposes readable verbs.
+
+**Root cause:** `resolveMethodName` falls back to the raw operationId (a graph hash) when no overlay `rename` is set; there is no human-readable naming pass (e.g., verb-from-HTTP-method + path-tail heuristic).
+
+**Resolution path:** add a derivation that maps (method, path) → a readable method name (e.g., `GET /emails/{id}` → `get`, `POST /emails` → `send`/`create`), with the overlay `rename` still taking precedence and a collision-resolution rule within each namespace. Affects `src/sdk-plugins/resource-tree.ts` and golden regen.

@@ -65,12 +65,45 @@ describe("resource-tree plugin", () => {
     expect(tree.alpha).toEqual(["a_second", "a_first"]);
   });
 
-  test("rejects namespace that is not a valid JS identifier", () => {
+  test("sanitizes a derived hyphenated namespace to a valid identifier", () => {
     const ops: OperationInfo[] = [
-      { operationId: "doSomething", tags: ["my-bad-tag"] },
+      { operationId: "op_a", tags: ["api-keys"] },
+      { operationId: "op_b", tags: ["contact-properties"] },
     ];
-    expect(() => buildNamespaceTree(ops, EMPTY_OVERLAY)).toThrow(
-      /namespace "my-bad-tag".*not a valid JS identifier/,
+    const tree = buildNamespaceTree(ops, EMPTY_OVERLAY);
+    expect(tree).toEqual({
+      apiKeys: ["op_a"],
+      contactProperties: ["op_b"],
+    });
+  });
+
+  test("preserves an already-valid derived namespace verbatim (incl. underscores)", () => {
+    const ops: OperationInfo[] = [
+      { operationId: "op_x", tags: ["my_resource"] },
+    ];
+    const tree = buildNamespaceTree(ops, EMPTY_OVERLAY);
+    expect(tree).toEqual({ my_resource: ["op_x"] });
+  });
+
+  test("groups multiple ops sharing a sanitized namespace", () => {
+    const ops: OperationInfo[] = [
+      { operationId: "op_create", tags: ["api-keys"] },
+      { operationId: "op_list", tags: ["api-keys"] },
+    ];
+    const tree = buildNamespaceTree(ops, EMPTY_OVERLAY);
+    expect(tree).toEqual({ apiKeys: ["op_create", "op_list"] });
+  });
+
+  test("rejects an EXPLICIT overlay namespace that is not a valid identifier", () => {
+    const ops: OperationInfo[] = [
+      { operationId: "doSomething", tags: ["alpha"] },
+    ];
+    const overlay: CodegenOverlay = {
+      resources: { doSomething: { namespace: "my-bad-ns" } },
+      streaming: [],
+    };
+    expect(() => buildNamespaceTree(ops, overlay)).toThrow(
+      /namespace "my-bad-ns".*not a valid JS identifier/,
     );
   });
 

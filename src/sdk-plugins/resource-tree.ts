@@ -69,9 +69,18 @@ export function buildNamespaceTree(
   const seen: Record<string, Set<string>> = {};
   for (const op of ops) {
     const rule = overlay.resources[op.operationId];
-    const namespace = rule?.namespace ?? op.tags[0] ?? "default";
+    // Explicit overlay namespaces are author intent and stay strict (invalid
+    // ones are an actionable config error). Derived namespaces come from the
+    // path's first segment and are auto-sanitized to a valid identifier so
+    // real specs (e.g. "api-keys") emit without requiring an overlay entry.
+    let namespace: string;
+    if (rule?.namespace !== undefined) {
+      assertValidName("namespace", rule.namespace, op.operationId);
+      namespace = rule.namespace;
+    } else {
+      namespace = deriveNamespace(op.tags[0] ?? "default");
+    }
     const methodName = resolveMethodName(op, overlay);
-    assertValidName("namespace", namespace, op.operationId);
     assertValidName("method", methodName, op.operationId);
     if (RESERVED_NAMESPACES.has(namespace)) {
       throw new Error(
@@ -90,6 +99,23 @@ export function buildNamespaceTree(
   const sorted: Record<string, string[]> = {};
   for (const k of Object.keys(tree).sort()) sorted[k] = tree[k]!;
   return sorted;
+}
+
+/**
+ * Maps a derived namespace (the path's first segment) to a valid JS identifier.
+ * Already-valid names (incl. underscores) pass through verbatim so emitted code
+ * is stable; otherwise non-alphanumeric runs are dropped and the remaining
+ * segments are camelCased (e.g. "api-keys" -> "apiKeys"). A leading digit is
+ * prefixed with "_"; an empty result falls back to "default".
+ */
+function deriveNamespace(raw: string): string {
+  if (IDENTIFIER_RE.test(raw)) return raw;
+  const parts = raw.split(/[^A-Za-z0-9]+/).filter((p) => p.length > 0);
+  if (parts.length === 0) return "default";
+  const camel =
+    parts[0]! +
+    parts.slice(1).map((p) => p.charAt(0).toUpperCase() + p.slice(1)).join("");
+  return /^[0-9]/.test(camel) ? `_${camel}` : camel;
 }
 
 function assertValidName(kind: "namespace" | "method", name: string, opId: string): void {
