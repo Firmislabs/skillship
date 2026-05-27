@@ -73,3 +73,54 @@ Surfaced by the first end-to-end run against a real vendor spec (`init` discover
 **Root cause:** `resolveMethodName` falls back to the raw operationId (a graph hash) when no overlay `rename` is set; there is no human-readable naming pass (e.g., verb-from-HTTP-method + path-tail heuristic).
 
 **Resolution path:** add a derivation that maps (method, path) → a readable method name (e.g., `GET /emails/{id}` → `get`, `POST /emails` → `send`/`create`), with the overlay `rename` still taking precedence and a collision-resolution rule within each namespace. Affects `src/sdk-plugins/resource-tree.ts` and golden regen.
+
+---
+
+## L1 real-world findings, batch 2 (2026-05-27, 7 vendor specs)
+
+Surfaced by a second L1 sweep through `build` against real vendor specs. Stress-test specs: OpenAI (242 ops), Stripe (414 paths). Target-audience specs (the production quality bar — SMB→mid-market dev tools, see the `feedback-skillship-test-audience` memory): dub (53 ops), resend (83), val.town (36), vercel (308), sentry (216). All seven build clean, type-check, project bearer auth (Gap 4 holds), and surface no raw `op_<hash>` method names (Gap 5 holds). Four new gaps were found.
+
+### Gap 6 — SDK namespaces are derived from the path, ignoring declared `tags`
+
+**Status:** Open.
+
+**Symptom:** version- or `api`-prefixed specs collapse into degenerate namespaces. The synthetic OAS derives each operation's namespace tag from the path's first non-template segment, so:
+- val.town (`/v1/...`, `/v2/...`) → namespaces `v1`, `v2`, `v3`
+- sentry (`/api/0/...`) → a single namespace `api`
+- vercel (`/v1/...` … `/v13/...`) → namespaces `v1` … `v13`
+
+The result is an SDK shaped like `client.v2.files()` / `client.api.something()` instead of `client.files()` / `client.projects()`. The vendor's *declared* OpenAPI `tags` (which carry the real resource grouping — `Projects`, `Files`, `Issues`) are never consulted. This cascades into Gap 7: collapsing many resources into one `v1`/`api` namespace forces large numbers of method-name collisions.
+
+**Root cause:** `src/extractors/openapi3-ops.ts` `emitOperation` never captures the operation's `tags` array — it emits `method`, `path_or_name`, `summary`, etc., but no `tags` claim. Downstream, `src/renderers/oas.ts` `buildTags` therefore has nothing to read and falls back to deriving the tag purely from the path's first segment. `src/renderers/sdk-utils.ts` `extractOperations` reads `op.tags` off the synthetic OAS, and `src/sdk-plugins/resource-tree.ts` `resolveNamespace` uses `op.tags[0]` — so the path-derived tag is the namespace.
+
+**Resolution path:** (1) `openapi3-ops.ts` emit a `tags` claim (JSON-encoded string array) from `opDef.tags` when present. (2) `oas.ts` `buildTags` read that declared-tags claim first and use the first declared tag; only when no declared tag exists, fall back to the path's first segment — and that fallback should skip a leading version segment (`/^v\d+$/`) and a leading `api` segment so version-prefixed specs degrade gracefully. Requires golden verification (`minimal.yaml` has no declared tags and a clean `/projects` path, so existing OAS/SDK goldens stay byte-identical) and likely a `substrate/frozen` retag forward because the extractor changes.
+
+### Gap 7 — method-name collisions within a collapsed namespace fall straight to op-hash suffixes
+
+**Status:** Open (largely subsumed by Gap 6).
+
+**Symptom:** inside a degenerate namespace (Gap 6), many operations derive the same readable verb (`list`, `get`, `create`), so the deterministic disambiguator appends the op-hash tail, producing names like `client.v2.files_f8d3f9c7()`. Readability regresses toward the very hashes Gap 5 removed, just one level down.
+
+**Root cause:** `src/sdk-plugins/resource-tree.ts` `resolveMethodName` disambiguates a collision by jumping directly to `${base}_${opHashTail(operationId)}` — there is no intermediate attempt to qualify the name with a distinguishing path segment (e.g. the resource the path acts on) before reaching for the hash.
+
+**Resolution path:** in `deriveMethodName`/`resolveMethodName`, before the op-hash fallback, try qualifying the colliding name with a distinguishing literal path segment (e.g. a preceding collection segment) to produce `getProject` / `listFiles`-style names; keep the op-hash tail only as the last resort. Note: fixing Gap 6 (correct namespaces) dissolves most of these collisions, so Gap 7 is a bounded readability improvement, not a correctness fix.
+
+### Gap 8 — `build` silently emits an empty SDK when a source extracts 0 operations
+
+**Status:** Open.
+
+**Symptom:** if a `rest`/`graphql` source contributes zero operations to the graph (e.g. the config `content_type` does not match any extractor, so `dispatchExtractor` returns `null`), `build` exits 0 and writes a structurally valid but empty SDK — no resource methods, no signal to the operator that anything went wrong. This is how the first OpenAI run produced an empty SDK (wrong `content_type` `application/yaml` → silent dispatch miss).
+
+**Root cause:** `src/ingest/dispatch.ts` returns `null` for an unrecognized `content_type` without surfacing it, and `src/cli/build.ts` `runBuild` never inspects `ingest.operations` (which is `0` in this case) before proceeding to render. The build has no "you asked me to ingest an API surface but I found no operations" guard.
+
+**Resolution path:** in `runBuild`, after `ingestConfig`, if the config contains at least one `rest` or `graphql` source and `ingest.operations === 0`, emit a clear warning to stderr (naming the likely cause: `content_type` mismatch / unsupported surface). Pure-docs/llms.txt products legitimately have 0 operations, so gate the warning on the presence of an API-surface source rather than warning unconditionally. Non-fatal (warn, don't throw) to preserve docs-only builds.
+
+### Gap 9 — SDK tsc gate resolves `tsc` from `process.cwd()`, not the package
+
+**Status:** Open.
+
+**Symptom:** `renderSdkPackage`'s type-check gate fails with a spurious non-zero exit (reported as `tsc --noEmit exited 1`) whenever `build` is invoked from a working directory that lacks a local `node_modules/.bin/tsc`. This produced a false "Stripe failed" result that disappeared when the same build ran from the repo root.
+
+**Root cause:** `src/renderers/sdk.ts` `runTypecheckGate` resolves the compiler as `join(process.cwd(), "node_modules", ".bin", "tsc")`. That couples the gate to the caller's CWD instead of to where `typescript` is actually installed (the skillship package's own dependency tree).
+
+**Resolution path:** resolve `tsc` relative to the installed `typescript` module, e.g. via `createRequire(import.meta.url).resolve("typescript/package.json")` then join to its `bin/tsc`, rather than `process.cwd()`. Add a regression test that runs `renderSdkPackage` with `process.cwd()` set to a directory lacking `node_modules` and asserts `typecheckExitCode === 0`. Affects `src/renderers/sdk.ts`; likely an `r-sdk-wedge/frozen` retag forward.
