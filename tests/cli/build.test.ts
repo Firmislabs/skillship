@@ -194,4 +194,66 @@ describe("runBuild", () => {
       runBuild({ in: ctx.dir, out: outDir }),
     ).rejects.toThrow(/config\.yaml/);
   });
+
+  test("warns (non-fatal) when a rest source extracts 0 operations", async () => {
+    seedProject(
+      ctx.dir,
+      [
+        {
+          surface: "rest",
+          url: "https://x.example/api",
+          contentType: "application/octet-stream",
+          bytes: Buffer.from("not a spec the extractor understands"),
+          ext: "bin",
+        },
+      ],
+      "x.example",
+    );
+    const outDir = join(ctx.dir, "skills");
+    const captured: string[] = [];
+    const original = process.stderr.write.bind(process.stderr);
+    process.stderr.write = ((chunk: string | Uint8Array): boolean => {
+      captured.push(typeof chunk === "string" ? chunk : chunk.toString());
+      return true;
+    }) as typeof process.stderr.write;
+    try {
+      const res = await runBuild({ in: ctx.dir, out: outDir });
+      expect(res.ingest.operations).toBe(0);
+    } finally {
+      process.stderr.write = original;
+    }
+    const stderr = captured.join("");
+    expect(stderr).toMatch(/content_type/);
+    expect(stderr).toMatch(/no operations/i);
+  });
+
+  test("does NOT warn for a docs-only config with 0 operations", async () => {
+    seedProject(
+      ctx.dir,
+      [
+        {
+          surface: "llms_txt",
+          url: "https://supa.example/llms.txt",
+          contentType: "text/plain",
+          bytes: loadFixture("tests/fixtures/llms-txt/supa.txt"),
+          ext: "txt",
+        },
+      ],
+      "supa.example",
+    );
+    const outDir = join(ctx.dir, "skills");
+    const captured: string[] = [];
+    const original = process.stderr.write.bind(process.stderr);
+    process.stderr.write = ((chunk: string | Uint8Array): boolean => {
+      captured.push(typeof chunk === "string" ? chunk : chunk.toString());
+      return true;
+    }) as typeof process.stderr.write;
+    try {
+      const res = await runBuild({ in: ctx.dir, out: outDir });
+      expect(res.ingest.operations).toBe(0);
+    } finally {
+      process.stderr.write = original;
+    }
+    expect(captured.join("")).not.toMatch(/no operations/i);
+  });
 });

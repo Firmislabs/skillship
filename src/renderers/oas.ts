@@ -197,12 +197,26 @@ function buildTags(db: Sqlite3Database, opId: string, isGraphql: boolean): strin
     const m = (readBestClaim(db, opId, "method") ?? "QUERY").toLowerCase();
     return [m];
   }
+  const declared = readJson(db, opId, "tags");
+  if (Array.isArray(declared) && declared.length > 0) {
+    const first = declared[0];
+    if (typeof first === "string" && first.length > 0) return [first.toLowerCase()];
+  }
   const path = readBestClaim(db, opId, "path_or_name") ?? "";
   const seg = path
     .split("/")
     .map(s => s.trim())
-    .find(s => s.length > 0 && !s.startsWith("{"));
+    .filter(s => s.length > 0)
+    .find(s => !isNoiseSegment(s) && !s.startsWith("{"));
   return seg !== undefined ? [seg.toLowerCase()] : [];
+}
+
+/**
+ * Leading "noise" segments that should not become a namespace: version markers
+ * (v1, v13), the literal "api", and bare-numeric segments (sentry's /api/0/).
+ */
+function isNoiseSegment(seg: string): boolean {
+  return /^v\d+$/i.test(seg) || seg.toLowerCase() === "api" || /^\d+$/.test(seg);
 }
 
 function readBool(db: Sqlite3Database, nodeId: string, field: string): boolean {

@@ -25,8 +25,9 @@ import {
   statSync,
   writeFileSync,
 } from "node:fs";
+import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { promisify } from "node:util";
 import type { CodegenOverlay } from "../overlays/codegen.js";
 import { generateErrorsModule } from "../sdk-plugins/errors.js";
@@ -224,7 +225,12 @@ interface TypecheckResult {
 }
 
 async function runTypecheckGate(tempDir: string): Promise<TypecheckResult> {
-  const tscBin = join(process.cwd(), "node_modules", ".bin", "tsc");
+  // Resolve tsc from the installed `typescript` module (skillship's own
+  // dependency tree), NOT from process.cwd(). Coupling to the caller's CWD
+  // caused spurious exit-1 failures when build ran outside the repo root.
+  const requireFn = createRequire(import.meta.url);
+  const tscPkgJson = requireFn.resolve("typescript/package.json");
+  const tscBin = join(dirname(tscPkgJson), "bin", "tsc");
   try {
     await execFileP(tscBin, ["--noEmit", "-p", tempDir]);
     return { exitCode: 0, stdout: "", stderr: "" };

@@ -348,6 +348,66 @@ describe("extractOpenApi3", () => {
     expect(enumClaim?.value).toEqual(["open", "closed", "draft"]);
   });
 
+  test("emits a tags claim when the operation declares tags (Gap 6)", () => {
+    const jsonBytes = Buffer.from(
+      JSON.stringify({
+        openapi: "3.0.3",
+        info: { title: "T", version: "1" },
+        paths: {
+          "/v1/projects": {
+            get: {
+              summary: "List projects",
+              tags: ["Projects"],
+              responses: { "200": { description: "ok" } },
+            },
+          },
+        },
+      }),
+    );
+    const result = extractOpenApi3({
+      bytes: jsonBytes,
+      source: fakeSource({ content_type: "application/json" }),
+      productId: "product-test",
+    });
+    const op = result.nodes.find((n) => n.kind === "operation");
+    expect(op).toBeDefined();
+    const tagsClaim = result.claims.find(
+      (c) => c.node_id === op?.id && c.field === "tags",
+    );
+    expect(tagsClaim).toBeDefined();
+    expect(tagsClaim?.value).toEqual(["Projects"]);
+    expect(tagsClaim?.span_path).toBe('$.paths["/v1/projects"].get.tags');
+    expect(tagsClaim?.confidence).toBe("attested");
+  });
+
+  test("emits no tags claim when the operation declares no tags (Gap 6)", () => {
+    const jsonBytes = Buffer.from(
+      JSON.stringify({
+        openapi: "3.0.3",
+        info: { title: "T", version: "1" },
+        paths: {
+          "/projects": {
+            get: {
+              summary: "List projects",
+              responses: { "200": { description: "ok" } },
+            },
+          },
+        },
+      }),
+    );
+    const result = extractOpenApi3({
+      bytes: jsonBytes,
+      source: fakeSource({ content_type: "application/json" }),
+      productId: "product-test",
+    });
+    const op = result.nodes.find((n) => n.kind === "operation");
+    expect(op).toBeDefined();
+    const tagsClaim = result.claims.find(
+      (c) => c.node_id === op?.id && c.field === "tags",
+    );
+    expect(tagsClaim).toBeUndefined();
+  });
+
   test("produces deterministic node IDs across calls", () => {
     const a = extractOpenApi3({
       bytes,

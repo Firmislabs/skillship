@@ -207,12 +207,36 @@ describe("method-name derivation (Gap 5)", () => {
     const tree = buildNamespaceTree(ops, EMPTY_OVERLAY);
     expect(tree.emails).toHaveLength(2);
     expect(tree.emails![0]).toBe("get");
-    // Second GET-single-item collides on "get" → suffixed with the op hash tail.
-    expect(tree.emails![1]).toMatch(/^get_/);
+    // Second GET-single-item collides on "get" → qualified with the deepest
+    // distinguishing literal segment ("attachments") rather than an op hash.
+    expect(tree.emails![1]).toBe("getAttachments");
     expect(tree.emails![1]).not.toBe("get");
     // Deterministic across calls.
     const again = buildNamespaceTree(ops, EMPTY_OVERLAY);
     expect(again.emails).toEqual(tree.emails);
+  });
+
+  test("Gap 7: a colliding GET on a deeper path gets a qualified name, not an op-hash suffix", () => {
+    const ops: OperationInfo[] = [
+      op("op_one", ["emails"], "GET", "/emails/{email_id}"),
+      op("op_two", ["emails"], "GET", "/emails/{email_id}/attachments/{attachment_id}"),
+    ];
+    const tree = buildNamespaceTree(ops, EMPTY_OVERLAY);
+    expect(tree.emails![1]).toBe("getAttachments");
+    expect(tree.emails![1]).not.toMatch(/^get_[0-9a-f]/);
+    const again = buildNamespaceTree(ops, EMPTY_OVERLAY);
+    expect(again.emails).toEqual(tree.emails);
+  });
+
+  test("Gap 7: falls back to op-hash suffix when no distinguishing segment exists", () => {
+    const ops: OperationInfo[] = [
+      op("op_aaaaaaaa", ["emails"], "GET", "/emails/{email_id}"),
+      op("op_bbbbbbbb", ["emails"], "GET", "/emails/{other_id}"),
+    ];
+    const tree = buildNamespaceTree(ops, EMPTY_OVERLAY);
+    expect(tree.emails![0]).toBe("get");
+    expect(tree.emails![1]).toMatch(/^get_/);
+    expect(tree.emails![1]).not.toBe("get");
   });
 });
 

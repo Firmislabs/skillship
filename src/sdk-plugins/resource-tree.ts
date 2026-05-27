@@ -151,12 +151,37 @@ function resolveMethodName(
   const base = deriveMethodName(op.method, op.path);
   if (!nsSeen.has(base)) return base;
   // Two operations derived the same readable name (e.g. two GET-by-id paths in
-  // one namespace). Disambiguate deterministically with the op-hash tail rather
-  // than failing the whole emit — overlay rename remains the way to get a clean
-  // name for the second one.
+  // one namespace). First try a readable qualifier from a distinguishing path
+  // segment (e.g. "getAttachments"); only if that is unavailable or itself taken
+  // do we fall back to the deterministic op-hash tail. Overlay rename remains the
+  // way to get a fully clean name.
+  const qualified = qualifyWithSegment(base, op.path);
+  if (qualified !== undefined && !nsSeen.has(qualified)) return qualified;
   const disambiguated = `${base}_${opHashTail(op.operationId)}`;
   if (nsSeen.has(disambiguated)) throw duplicateError(namespace, disambiguated, op.operationId);
   return disambiguated;
+}
+
+/**
+ * Qualifies a colliding base method name with a distinguishing literal path
+ * segment: the deepest non-template, non-leading segment whose camelCased form
+ * differs from the base. Returns `${base}${PascalCaseSegment}` (e.g. base "get"
+ * on "/emails/{id}/attachments/{attachment_id}" -> "getAttachments"), or
+ * undefined when no such segment exists.
+ */
+function qualifyWithSegment(base: string, path: string): string | undefined {
+  const p = path ?? "";
+  const hashIdx = p.lastIndexOf("#");
+  const usable = hashIdx >= 0 ? p.slice(0, hashIdx) : p;
+  const segs = usable.split("/").filter((s) => s.length > 0);
+  for (let i = segs.length - 1; i >= 1; i--) {
+    const seg = segs[i]!;
+    if (/^\{.+\}$/.test(seg)) continue;
+    const camel = camelCaseParts(seg);
+    if (camel.length === 0 || camel === base) continue;
+    return `${base}${camel.charAt(0).toUpperCase()}${camel.slice(1)}`;
+  }
+  return undefined;
 }
 
 function duplicateError(namespace: string, methodName: string, opId: string): Error {

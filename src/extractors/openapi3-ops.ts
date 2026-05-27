@@ -44,6 +44,7 @@ export function emitOperation(a: EmitOperationArgs): void {
     confidence: "attested",
   });
 
+  pushTagsClaim(a.claims, opId, a.opDef, base);
   pushStringClaim(a.claims, opId, a.opDef, "summary", `${base}.summary`);
   pushStringClaim(
     a.claims,
@@ -106,6 +107,25 @@ function pickFirstExample(content: Record<string, unknown>): unknown {
     }
   }
   return undefined;
+}
+
+function pushTagsClaim(
+  claims: ExtractedClaim[],
+  opId: string,
+  opDef: Record<string, unknown>,
+  base: string,
+): void {
+  const raw = opDef.tags;
+  if (!Array.isArray(raw)) return;
+  const tags = raw.filter((t): t is string => typeof t === "string");
+  if (tags.length === 0) return;
+  claims.push({
+    node_id: opId,
+    field: "tags",
+    value: tags,
+    span_path: `${base}.tags`,
+    confidence: "attested",
+  });
 }
 
 function pushStringClaim(

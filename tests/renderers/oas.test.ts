@@ -114,6 +114,70 @@ describe("renderSyntheticOpenApi (OpenAPI-sourced)", () => {
   });
 });
 
+describe("renderSyntheticOpenApi — buildTags (Gap 6 namespace tags)", () => {
+  let tmp: string; let graph: GraphDb;
+  beforeEach(() => { tmp = mkdtempSync(join(tmpdir(), "sk-oas-tags-")); graph = openGraph(join(tmp, "g.db")); });
+  afterEach(() => { graph.close(); rmSync(tmp, { recursive: true, force: true }); });
+
+  function seedOp(opSuffix: string, path: string, declaredTags?: string[]): void {
+    const db = graph.db;
+    const NOW_TS = "2026-05-19T12:00:00.000Z";
+    const PRODUCT_ID = "p-tags";
+    const SURFACE_ID = "sfc_tags_surface";
+    const OP_ID = `op_tags_${opSuffix}`;
+    const SOURCE_ID = "src_fake_tags";
+    db.prepare(
+      `INSERT OR IGNORE INTO sources (id, surface, url, content_type, fetched_at, bytes, cache_path)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+    ).run(SOURCE_ID, "rest", "https://tags.example/openapi.yaml", "application/openapi+yaml", NOW_TS, 0, ".skillship/sources/fake.yaml");
+    db.prepare(
+      `INSERT OR IGNORE INTO nodes (id, kind, parent_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?)`,
+    ).run(SURFACE_ID, "surface", PRODUCT_ID, NOW_TS, NOW_TS);
+    db.prepare(
+      `INSERT INTO nodes (id, kind, parent_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?)`,
+    ).run(OP_ID, "operation", SURFACE_ID, NOW_TS, NOW_TS);
+    const insertClaim = (field: string, value: unknown, claimId: string): void => {
+      db.prepare(
+        `INSERT INTO claims
+           (id, node_id, field, value_json, source_id, extractor, extracted_at,
+            span_start, span_end, span_path, confidence, chosen, rejection_rationale)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      ).run(claimId, OP_ID, field, JSON.stringify(value), SOURCE_ID, "openapi@3", NOW_TS, null, null, null, "attested", 0, null);
+    };
+    insertClaim("method", "GET", `cl_${opSuffix}_method`);
+    insertClaim("path_or_name", path, `cl_${opSuffix}_path`);
+    if (declaredTags !== undefined) insertClaim("tags", declaredTags, `cl_${opSuffix}_tags`);
+  }
+
+  function tagsFor(path: string): string[] | undefined {
+    const doc = JSON.parse(
+      renderSyntheticOpenApi({ db: graph.db, productId: "p-tags", productName: "tags.example", overlay: CodegenOverlaySchema.parse({}) }),
+    );
+    const renderPath = path.startsWith("/") ? path : `/${path}`;
+    return doc.paths[renderPath]?.get?.tags as string[] | undefined;
+  }
+
+  test("declared tag wins and is lowercased even with a version-prefixed path", () => {
+    seedOp("declared", "/v1/files/{id}", ["Files"]);
+    expect(tagsFor("/v1/files/{id}")).toEqual(["files"]);
+  });
+
+  test("fallback skips a leading version segment (/v1/files/{id} -> files)", () => {
+    seedOp("ver", "/v1/files/{id}");
+    expect(tagsFor("/v1/files/{id}")).toEqual(["files"]);
+  });
+
+  test("fallback skips leading api + numeric segments (/api/0/projects -> projects)", () => {
+    seedOp("api", "/api/0/projects");
+    expect(tagsFor("/api/0/projects")).toEqual(["projects"]);
+  });
+
+  test("clean path is unchanged (/projects -> projects)", () => {
+    seedOp("clean", "/projects");
+    expect(tagsFor("/projects")).toEqual(["projects"]);
+  });
+});
+
 describe("renderSyntheticOpenApi (GraphQL-sourced — no OpenAPI spec)", () => {
   let tmp: string; let graph: GraphDb;
   beforeEach(() => { tmp = mkdtempSync(join(tmpdir(), "sk-oas-gql-")); graph = openGraph(join(tmp, "g.db")); });

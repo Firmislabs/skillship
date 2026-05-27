@@ -23,6 +23,7 @@ import type {
   ConfigSourceEntry,
   SkillshipConfig,
 } from "../discovery/config.js";
+import { GITHUB_REPO_PLACEHOLDER } from "../resolvers/githubSpecs.js";
 import { renderSyntheticOpenApi } from "../renderers/oas.js";
 import { loadCodegenOverlay, type CodegenOverlay } from "../overlays/codegen.js";
 import { renderSdkPackage } from "../renderers/sdk.js";
@@ -69,6 +70,14 @@ export async function runBuild(opts: RunBuildOptions): Promise<BuildResult> {
       productId,
       loadBytes: bytesLoaderFrom(sourcesDir),
     });
+    if (ingest.operations === 0 && hasApiSurfaceSource(config.sources)) {
+      process.stderr.write(
+        "skillship build: an API-surface source (rest/grpc) produced 0 " +
+          "operations. This usually means a content_type mismatch or an " +
+          "unsupported surface, so no extractor ran. The emitted SDK will " +
+          "have no operations.\n",
+      );
+    }
     mkdirSync(opts.out, { recursive: true });
     const { artifacts, oasJson, skillDir } = writeAll(handle.db, opts.out, {
       productId,
@@ -97,6 +106,16 @@ export async function runBuild(opts: RunBuildOptions): Promise<BuildResult> {
   } finally {
     handle.close();
   }
+}
+
+function hasApiSurfaceSource(
+  sources: readonly ConfigSourceEntry[],
+): boolean {
+  return sources.some(
+    (s) =>
+      (s.surface === "rest" || s.surface === "grpc") &&
+      s.content_type !== GITHUB_REPO_PLACEHOLDER,
+  );
 }
 
 interface WriteArgs {

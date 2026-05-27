@@ -270,6 +270,33 @@ describe("renderSdkPackage — integration", () => {
   );
 
   test(
+    "tsc gate resolves tsc independent of process.cwd() (no local node_modules)",
+    async () => {
+      const cwdSandbox = mkdtempSync(join(tmpdir(), "sk-sdk-cwd-"));
+      const outA = mkdtempSync(join(tmpdir(), "sk-sdk-cwdout-"));
+      const originalCwd = process.cwd();
+      try {
+        // cwdSandbox has NO node_modules; chdir into it so a cwd-relative
+        // tsc resolution would fail. The gate must find tsc via the installed
+        // typescript module instead.
+        process.chdir(cwdSandbox);
+        const result = await renderSdkPackage({
+          oasJson: MINIMAL_OAS,
+          productName: "min.example",
+          outDir: outA,
+          overlay: CodegenOverlaySchema.parse({}),
+        });
+        expect(result.typecheckExitCode).toBe(0);
+      } finally {
+        process.chdir(originalCwd);
+        rmSync(cwdSandbox, { recursive: true, force: true });
+        rmSync(outA, { recursive: true, force: true });
+      }
+    },
+    60000,
+  );
+
+  test(
     "leaves outDir untouched on typecheck failure (atomic guarantee)",
     async () => {
       const tmp = mkdtempSync(join(tmpdir(), "sk-sdk-fail-"));
