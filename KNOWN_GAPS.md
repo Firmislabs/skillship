@@ -82,7 +82,7 @@ Surfaced by a second L1 sweep through `build` against real vendor specs. Stress-
 
 ### Gap 6 — SDK namespaces are derived from the path, ignoring declared `tags`
 
-**Status:** Open.
+**Status:** Resolved (2026-05-27, commit `382582d`). `src/extractors/openapi3-ops.ts` `pushTagsClaim` now emits a `tags` claim from `opDef.tags`; `src/renderers/oas.ts` `buildTags` reads it and uses the first declared tag (lowercased), and its path fallback now skips leading `v\d+`/`api`/numeric noise segments. Verified end-to-end against val.town/vercel/sentry: namespaces are now real resources (`blobs`/`files`/`projects`/`crons`/…) with zero `v1`…`v13` or single-`api` buckets. `substrate/frozen` retagged forward `1b9435b → 382582d`. Goldens byte-identical (`minimal.yaml` has no declared tags and a clean `/projects` path).
 
 **Symptom:** version- or `api`-prefixed specs collapse into degenerate namespaces. The synthetic OAS derives each operation's namespace tag from the path's first non-template segment, so:
 - val.town (`/v1/...`, `/v2/...`) → namespaces `v1`, `v2`, `v3`
@@ -97,7 +97,7 @@ The result is an SDK shaped like `client.v2.files()` / `client.api.something()` 
 
 ### Gap 7 — method-name collisions within a collapsed namespace fall straight to op-hash suffixes
 
-**Status:** Open (largely subsumed by Gap 6).
+**Status:** Resolved (2026-05-27, commit `382582d`). `src/sdk-plugins/resource-tree.ts` `resolveMethodName` now tries `qualifyWithSegment` (deepest distinguishing literal path segment → `getAttachments`-style name) before the op-hash tail; the hash remains the deterministic last resort, and overlay `rename` is still the escape hatch. Note: version-only-distinguished duplicates (e.g. vercel's `/v1/` vs `/v6/` of the same verb+resource) intentionally still fall to the op-hash tail because the version is stripped as namespace noise — overlay rename is the fix for those. `r-sdk-wedge/frozen` retagged forward `f14c62b → 382582d`.
 
 **Symptom:** inside a degenerate namespace (Gap 6), many operations derive the same readable verb (`list`, `get`, `create`), so the deterministic disambiguator appends the op-hash tail, producing names like `client.v2.files_f8d3f9c7()`. Readability regresses toward the very hashes Gap 5 removed, just one level down.
 
@@ -107,7 +107,7 @@ The result is an SDK shaped like `client.v2.files()` / `client.api.something()` 
 
 ### Gap 8 — `build` silently emits an empty SDK when a source extracts 0 operations
 
-**Status:** Open.
+**Status:** Resolved (2026-05-27, commit `382582d`). `src/cli/build.ts` `runBuild` now warns (non-fatal, stderr) when `ingest.operations === 0` and `hasApiSurfaceSource(config.sources)` is true (a `rest`/`grpc` source excluding the github-repo placeholder). Docs-only/llms_txt products with 0 operations stay silent. Note: the actual `SurfaceKind` values are `rest`/`grpc` (GraphQL specs carry surface `rest` + `content_type: application/graphql`), so the guard gates on `rest`/`grpc`.
 
 **Symptom:** if a `rest`/`graphql` source contributes zero operations to the graph (e.g. the config `content_type` does not match any extractor, so `dispatchExtractor` returns `null`), `build` exits 0 and writes a structurally valid but empty SDK — no resource methods, no signal to the operator that anything went wrong. This is how the first OpenAI run produced an empty SDK (wrong `content_type` `application/yaml` → silent dispatch miss).
 
@@ -117,7 +117,7 @@ The result is an SDK shaped like `client.v2.files()` / `client.api.something()` 
 
 ### Gap 9 — SDK tsc gate resolves `tsc` from `process.cwd()`, not the package
 
-**Status:** Open.
+**Status:** Resolved (2026-05-27, commit `382582d`). `src/renderers/sdk.ts` `runTypecheckGate` now resolves `tsc` via `createRequire(import.meta.url).resolve("typescript/package.json")` + `bin/tsc` instead of `process.cwd()/node_modules/.bin/tsc`. Regression test in `tests/renderers/sdk.test.ts` runs `renderSdkPackage` with `process.cwd()` chdir'd to a `node_modules`-less temp dir and asserts `typecheckExitCode === 0` (RED-confirmed before the fix). `r-sdk-wedge/frozen` retagged forward `f14c62b → 382582d`.
 
 **Symptom:** `renderSdkPackage`'s type-check gate fails with a spurious non-zero exit (reported as `tsc --noEmit exited 1`) whenever `build` is invoked from a working directory that lacks a local `node_modules/.bin/tsc`. This produced a false "Stripe failed" result that disappeared when the same build ran from the repo root.
 
