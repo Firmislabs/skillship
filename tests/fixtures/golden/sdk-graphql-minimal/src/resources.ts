@@ -3,11 +3,9 @@ import { Client } from "./runtime.js";
 
 export interface ResourceTree {
   readonly mutation: {
-    op_a407a3944801e8fb: (opts?: RequestOpts) => Promise<Response>;
+    createProject: (opts?: RequestOpts) => Promise<Response>;
   };
-  readonly query: {
-    op_d3c34b8f2769d5ff: (opts?: RequestOpts) => Promise<Response>;
-  };
+  readonly query: { projects: (opts?: RequestOpts) => Promise<Response> };
 }
 
 interface RequestOpts {
@@ -20,7 +18,7 @@ interface RequestOpts {
 export function attachResources(client: Client): Client & ResourceTree {
   return Object.assign(client, {
     mutation: {
-      op_a407a3944801e8fb: (opts?: RequestOpts) =>
+      createProject: (opts?: RequestOpts) =>
         client.request({
           method: "POST",
           path: "/graphql#createProject",
@@ -31,7 +29,7 @@ export function attachResources(client: Client): Client & ResourceTree {
         }),
     },
     query: {
-      op_d3c34b8f2769d5ff: (opts?: RequestOpts) =>
+      projects: (opts?: RequestOpts) =>
         client.request({
           method: "POST",
           path: "/graphql#projects",

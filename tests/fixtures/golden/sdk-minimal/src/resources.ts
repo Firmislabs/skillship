@@ -3,8 +3,8 @@ import { Client } from "./runtime.js";
 
 export interface ResourceTree {
   readonly projects: {
-    op_4ce2f98e1f94162e: (opts?: RequestOpts) => Promise<Response>;
-    op_028f4be7615a5faf: (opts?: RequestOpts) => Promise<Response>;
+    list: (opts?: RequestOpts) => Promise<Response>;
+    create: (opts?: RequestOpts) => Promise<Response>;
   };
 }
 
@@ -18,7 +18,7 @@ interface RequestOpts {
 export function attachResources(client: Client): Client & ResourceTree {
   return Object.assign(client, {
     projects: {
-      op_4ce2f98e1f94162e: (opts?: RequestOpts) =>
+      list: (opts?: RequestOpts) =>
         client.request({
           method: "GET",
           path: "/projects",
@@ -27,7 +27,7 @@ export function attachResources(client: Client): Client & ResourceTree {
           headers: opts?.headers,
           body: opts?.body,
         }),
-      op_028f4be7615a5faf: (opts?: RequestOpts) =>
+      create: (opts?: RequestOpts) =>
         client.request({
           method: "POST",
           path: "/projects",

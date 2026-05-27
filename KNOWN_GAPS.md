@@ -66,7 +66,7 @@ Surfaced by the first end-to-end run against a real vendor spec (`init` discover
 
 ### Gap 5 — SDK method names are opaque content hashes
 
-**Status:** OPEN. Ergonomics.
+**Status:** Resolved (2026-05-27). Fix: `src/sdk-plugins/resource-tree.ts` now derives a readable method name from each operation when no overlay `rename` is set, via a single deterministic assignment pass (`resolveAssignments`) shared by tree-building and request emission. Rules: a path `#fragment` (GraphQL field name) wins outright; a trailing literal action segment (`/emails/{id}/cancel` → `cancel`, `/emails/batch` → `batch`) is used as-is; otherwise the HTTP verb maps to `list` (GET collection) / `get` (GET item) / `create` (POST) / `update` (PUT/PATCH) / `delete` (DELETE). Overlay `rename` still takes precedence (and an overlay-rename collision still throws as an author error). Derived collisions within a namespace are disambiguated deterministically with a short op-hash suffix instead of crashing the emit. Operation-id hashes are never surfaced as method names. SDK goldens regenerated (`projects.list/create`, `mutation.createProject`, `query.projects`).
 
 **Symptom:** emitted resource methods are named by content-addressed operationId, e.g. `client.emails.op_cbe40e616c22a3e5()` instead of `client.emails.send()`. The official `resend` SDK exposes readable verbs.
 

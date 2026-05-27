@@ -17,11 +17,19 @@
 //   vendor extension on the OAS doc is INFORMATIONAL and NOT re-parsed here.
 //   Single source of truth: the CodegenOverlay Zod-validated object.
 //
-// Fallback when no overlay rule matches: use the operation's tags[0],
-// which R-OAS derives from the REST path's first non-template segment
-// or the GraphQL root type (per renderers/oas.ts buildTags).
+// Method-name resolution (highest precedence first):
+//   1. overlay rename — author intent, validated strictly.
+//   2. a readable name derived from (HTTP method, path): GET collection→list,
+//      GET item→get, POST→create, PUT/PATCH→update, DELETE→delete, and a
+//      trailing literal action segment (e.g. /emails/{id}/cancel→cancel).
+//   Operation ids are content-addressed hashes and are NEVER surfaced as
+//   method names — derived collisions within a namespace are disambiguated
+//   with a short, deterministic op-hash suffix rather than thrown.
 //
-// If tags[0] is also absent, the op lands under "default".
+// Namespace fallback when no overlay rule matches: the operation's tags[0],
+// which R-OAS derives from the REST path's first non-template segment or the
+// GraphQL root type (per renderers/oas.ts buildTags). If tags[0] is absent,
+// the op lands under "default".
 import type { CodegenOverlay } from "../overlays/codegen.js";
 
 export interface OperationInfo {
@@ -52,13 +60,23 @@ const RESERVED_NAMESPACES: ReadonlySet<string> = new Set([
   "request",
 ]);
 
-/**
- * Resolves the emitted method name for an operation: uses overlay rename if set,
- * otherwise falls back to operationId. Used consistently in tree building AND
- * lookup so renamed ops correctly route to their real method+path.
- */
-function resolveMethodName(op: OperationInfo, overlay: CodegenOverlay): string {
-  return overlay.resources[op.operationId]?.rename ?? op.operationId;
+// HTTP method → default verb for resource-shaped paths (collections and items).
+const METHOD_VERB: Readonly<Record<string, string>> = {
+  GET: "list",
+  POST: "create",
+  PUT: "update",
+  PATCH: "update",
+  DELETE: "delete",
+  HEAD: "head",
+  OPTIONS: "options",
+  TRACE: "trace",
+};
+
+/** A fully resolved placement for one operation: where it lives and what it's called. */
+interface Assignment {
+  readonly op: OperationInfo;
+  readonly namespace: string;
+  readonly methodName: string;
 }
 
 export function buildNamespaceTree(
@@ -66,35 +84,8 @@ export function buildNamespaceTree(
   overlay: CodegenOverlay,
 ): Record<string, string[]> {
   const tree: Record<string, string[]> = {};
-  const seen: Record<string, Set<string>> = {};
-  for (const op of ops) {
-    const rule = overlay.resources[op.operationId];
-    // Explicit overlay namespaces are author intent and stay strict (invalid
-    // ones are an actionable config error). Derived namespaces come from the
-    // path's first segment and are auto-sanitized to a valid identifier so
-    // real specs (e.g. "api-keys") emit without requiring an overlay entry.
-    let namespace: string;
-    if (rule?.namespace !== undefined) {
-      assertValidName("namespace", rule.namespace, op.operationId);
-      namespace = rule.namespace;
-    } else {
-      namespace = deriveNamespace(op.tags[0] ?? "default");
-    }
-    const methodName = resolveMethodName(op, overlay);
-    assertValidName("method", methodName, op.operationId);
-    if (RESERVED_NAMESPACES.has(namespace)) {
-      throw new Error(
-        `resource-tree: namespace "${namespace}" (for operation "${op.operationId}") collides with a Client member; rename the namespace in the overlay`,
-      );
-    }
-    const seenInNs = seen[namespace] ??= new Set();
-    if (seenInNs.has(methodName)) {
-      throw new Error(
-        `resource-tree: duplicate method "${namespace}.${methodName}" (operation "${op.operationId}"); two ops cannot map to the same namespace.method pair`,
-      );
-    }
-    seenInNs.add(methodName);
-    (tree[namespace] ??= []).push(methodName);
+  for (const a of resolveAssignments(ops, overlay)) {
+    (tree[a.namespace] ??= []).push(a.methodName);
   }
   const sorted: Record<string, string[]> = {};
   for (const k of Object.keys(tree).sort()) sorted[k] = tree[k]!;
@@ -102,16 +93,133 @@ export function buildNamespaceTree(
 }
 
 /**
+ * Single deterministic pass that places every operation: resolves its
+ * namespace, then its method name (overlay rename → derived → disambiguated),
+ * tracking seen names per namespace so collisions are handled consistently.
+ * Both tree-building and resource emission consume this so the emitted leaf
+ * names and the request-lookup keys can never drift apart.
+ */
+function resolveAssignments(
+  ops: readonly OperationInfo[],
+  overlay: CodegenOverlay,
+): Assignment[] {
+  const seen: Record<string, Set<string>> = {};
+  const out: Assignment[] = [];
+  for (const op of ops) {
+    const rule = overlay.resources[op.operationId];
+    const namespace = resolveNamespace(op, rule);
+    if (RESERVED_NAMESPACES.has(namespace)) {
+      throw new Error(
+        `resource-tree: namespace "${namespace}" (for operation "${op.operationId}") collides with a Client member; rename the namespace in the overlay`,
+      );
+    }
+    const nsSeen = (seen[namespace] ??= new Set());
+    const methodName = resolveMethodName(op, rule, namespace, nsSeen);
+    nsSeen.add(methodName);
+    out.push({ op, namespace, methodName });
+  }
+  return out;
+}
+
+function resolveNamespace(
+  op: OperationInfo,
+  rule: CodegenOverlay["resources"][string] | undefined,
+): string {
+  // Explicit overlay namespaces are author intent and stay strict (invalid
+  // ones are an actionable config error). Derived namespaces come from the
+  // path's first segment and are auto-sanitized to a valid identifier so real
+  // specs (e.g. "api-keys") emit without requiring an overlay entry.
+  if (rule?.namespace !== undefined) {
+    assertValidName("namespace", rule.namespace, op.operationId);
+    return rule.namespace;
+  }
+  return deriveNamespace(op.tags[0] ?? "default");
+}
+
+function resolveMethodName(
+  op: OperationInfo,
+  rule: CodegenOverlay["resources"][string] | undefined,
+  namespace: string,
+  nsSeen: ReadonlySet<string>,
+): string {
+  // Overlay rename wins outright; a collision here is an author error, so throw.
+  if (rule?.rename !== undefined) {
+    assertValidName("method", rule.rename, op.operationId);
+    if (nsSeen.has(rule.rename)) throw duplicateError(namespace, rule.rename, op.operationId);
+    return rule.rename;
+  }
+  const base = deriveMethodName(op.method, op.path);
+  if (!nsSeen.has(base)) return base;
+  // Two operations derived the same readable name (e.g. two GET-by-id paths in
+  // one namespace). Disambiguate deterministically with the op-hash tail rather
+  // than failing the whole emit — overlay rename remains the way to get a clean
+  // name for the second one.
+  const disambiguated = `${base}_${opHashTail(op.operationId)}`;
+  if (nsSeen.has(disambiguated)) throw duplicateError(namespace, disambiguated, op.operationId);
+  return disambiguated;
+}
+
+function duplicateError(namespace: string, methodName: string, opId: string): Error {
+  return new Error(
+    `resource-tree: duplicate method "${namespace}.${methodName}" (operation "${opId}"); two ops cannot map to the same namespace.method pair`,
+  );
+}
+
+/**
  * Maps a derived namespace (the path's first segment) to a valid JS identifier.
  * Already-valid names (incl. underscores) pass through verbatim so emitted code
  * is stable; otherwise non-alphanumeric runs are dropped and the remaining
- * segments are camelCased (e.g. "api-keys" -> "apiKeys"). A leading digit is
- * prefixed with "_"; an empty result falls back to "default".
+ * segments are camelCased (e.g. "api-keys" -> "apiKeys"). Empty result falls
+ * back to "default".
  */
 function deriveNamespace(raw: string): string {
   if (IDENTIFIER_RE.test(raw)) return raw;
+  const camel = camelCaseParts(raw);
+  return camel.length > 0 ? camel : "default";
+}
+
+/**
+ * Derives a readable method name from the operation's HTTP method and path.
+ * A "#fragment" in the path (GraphQL ops are projected as "/graphql#fieldName")
+ * is the operation's own name and wins outright. Otherwise a trailing literal
+ * segment that is not the bare resource (e.g. the "cancel" in
+ * "/emails/{id}/cancel", or "batch" in "/emails/batch") is treated as a named
+ * action; failing that the name comes from the HTTP verb, with GET on a single
+ * item ("/emails/{id}") mapping to "get" rather than "list".
+ */
+function deriveMethodName(method: string, path: string): string {
+  const p = path ?? "";
+  const hashIdx = p.lastIndexOf("#");
+  if (hashIdx >= 0) {
+    const frag = camelCaseParts(p.slice(hashIdx + 1));
+    if (frag.length > 0) return frag;
+  }
+  const m = (method ?? "GET").toUpperCase();
+  const segs = p.split("/").filter((s) => s.length > 0);
+  const last = segs[segs.length - 1];
+  const lastIsParam = last !== undefined && /^\{.+\}$/.test(last);
+  let base: string;
+  if (last !== undefined && !lastIsParam && segs.length >= 2) {
+    base = last;
+  } else if (lastIsParam && m === "GET") {
+    base = "get";
+  } else {
+    base = METHOD_VERB[m] ?? m.toLowerCase();
+  }
+  const id = camelCaseParts(base);
+  return id.length > 0 ? id : "call";
+}
+
+/** A short, deterministic suffix from an operationId for collision disambiguation. */
+function opHashTail(operationId: string): string {
+  const alnum = operationId.replace(/[^A-Za-z0-9]/g, "");
+  return alnum.length > 0 ? alnum.slice(-8) : "x";
+}
+
+/** Splits on non-alphanumerics and camelCases; prefixes "_" if it starts with a digit. */
+function camelCaseParts(raw: string): string {
   const parts = raw.split(/[^A-Za-z0-9]+/).filter((p) => p.length > 0);
-  if (parts.length === 0) return "default";
+  if (parts.length === 0) return "";
   const camel =
     parts[0]! +
     parts.slice(1).map((p) => p.charAt(0).toUpperCase() + p.slice(1)).join("");
@@ -138,18 +246,21 @@ function assertValidName(kind: "namespace" | "method", name: string, opId: strin
  * the request object directly.
  *
  * @param tree    The namespace tree from buildNamespaceTree (ns → method names).
- * @param ops     All operations (used to look up method + path per operationId).
- * @param overlay The codegen overlay — used to resolve renamed method names
- *                so the lookup correctly maps renamed leaves to their ops.
+ * @param ops     All operations (re-resolved here to map each leaf to its op).
+ * @param overlay The codegen overlay — used to resolve namespaces + method
+ *                names identically to buildNamespaceTree.
  */
 export function generateResourceTreeModule(
   tree: Record<string, string[]>,
   ops: readonly OperationInfo[],
   overlay: CodegenOverlay,
 ): string {
-  // Build a lookup from resolved method name → OperationInfo so we wire
-  // the correct HTTP method and path into each wrapper.
-  const opsByMethodName = buildOpsByMethodName(ops, overlay);
+  // Re-run the same deterministic assignment to map each (namespace, method)
+  // leaf back to its OperationInfo, so we wire the correct HTTP method + path.
+  const opByLeaf: Record<string, OperationInfo> = {};
+  for (const a of resolveAssignments(ops, overlay)) {
+    opByLeaf[`${a.namespace}.${a.methodName}`] = a.op;
+  }
 
   const lines: string[] = [];
   lines.push("// Auto-generated by @skillship/sdk-plugin-resource-tree. Do not edit by hand.");
@@ -176,10 +287,10 @@ export function generateResourceTreeModule(
     const methods = tree[ns]!;
     lines.push(`    ${ns}: {`);
     for (const methodName of methods) {
-      const info = opsByMethodName[methodName];
+      const info = opByLeaf[`${ns}.${methodName}`];
       if (!info) {
         throw new Error(
-          `resource-tree: no operation metadata for method "${methodName}"; tree leaf has no matching OperationInfo`,
+          `resource-tree: no operation metadata for method "${ns}.${methodName}"; tree leaf has no matching OperationInfo`,
         );
       }
       const httpMethod = info.method;
@@ -193,19 +304,4 @@ export function generateResourceTreeModule(
   lines.push("  });");
   lines.push("}");
   return lines.join("\n") + "\n";
-}
-
-/**
- * Builds a mapping from each resolved method name to its OperationInfo.
- * Uses resolveMethodName so that renamed ops are found by their new name.
- */
-function buildOpsByMethodName(
-  ops: readonly OperationInfo[],
-  overlay: CodegenOverlay,
-): Record<string, OperationInfo> {
-  const result: Record<string, OperationInfo> = {};
-  for (const op of ops) {
-    result[resolveMethodName(op, overlay)] = op;
-  }
-  return result;
 }
