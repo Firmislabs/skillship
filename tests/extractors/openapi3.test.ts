@@ -365,3 +365,65 @@ describe("extractOpenApi3", () => {
     expect(idsA).toEqual(idsB);
   });
 });
+
+describe("extractOpenApi3 — global security (Gap 4 closure)", () => {
+  const globalSecDoc = JSON.stringify({
+    openapi: "3.0.0",
+    info: { title: "Global Sec", version: "1.0.0" },
+    security: [{ bearerAuth: [] }],
+    components: {
+      securitySchemes: { bearerAuth: { type: "http", scheme: "bearer" } },
+    },
+    paths: {
+      "/things": {
+        get: { responses: { "200": { description: "ok" } } },
+      },
+      "/things/{id}": {
+        get: { responses: { "200": { description: "ok" } } },
+        delete: {
+          security: [],
+          responses: { "204": { description: "no content" } },
+        },
+      },
+    },
+  });
+
+  function extract() {
+    return extractOpenApi3({
+      bytes: Buffer.from(globalSecDoc, "utf-8"),
+      source: fakeSource({ content_type: "application/json" }),
+      productId: "product-global",
+    });
+  }
+
+  test("operations inheriting top-level security get an auth_requires edge", () => {
+    const result = extract();
+
+    const auths = result.nodes.filter((n) => n.kind === "auth_scheme");
+    expect(auths).toHaveLength(1);
+    const authId = auths[0]!.id;
+
+    const authEdges = result.edges.filter((e) => e.kind === "auth_requires");
+    // GET /things and GET /things/{id} inherit global security; DELETE overrides.
+    expect(authEdges).toHaveLength(2);
+    expect(authEdges.every((e) => e.to_node_id === authId)).toBe(true);
+  });
+
+  test("per-op security:[] overrides global to remove auth", () => {
+    const result = extract();
+
+    const deleteOp = result.nodes.find((n) => {
+      if (n.kind !== "operation") return false;
+      const methodClaim = result.claims.find(
+        (c) => c.node_id === n.id && c.field === "method",
+      );
+      return methodClaim?.value === "DELETE";
+    });
+    expect(deleteOp).toBeDefined();
+
+    const deleteAuthEdges = result.edges.filter(
+      (e) => e.kind === "auth_requires" && e.from_node_id === deleteOp!.id,
+    );
+    expect(deleteAuthEdges).toHaveLength(0);
+  });
+});

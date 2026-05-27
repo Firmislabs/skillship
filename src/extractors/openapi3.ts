@@ -27,6 +27,7 @@ export interface OpenApiDoc {
   readonly info?: { title?: string; version?: string };
   readonly servers?: { url?: string }[];
   readonly paths?: Record<string, Record<string, unknown>>;
+  readonly security?: unknown[];
   readonly components?: {
     securitySchemes?: Record<string, Record<string, unknown>>;
   };
@@ -76,6 +77,10 @@ export function extractOpenApi3Doc(
   pushSurfaceClaims(doc, surfaceId, claims);
 
   const authIds = emitAuthSchemes(doc, input.productId, nodes, claims);
+  // Top-level security applies to every operation unless the operation
+  // declares its own `security` (an empty array opts out). Threaded down so
+  // globally-secured operations still get an auth_requires edge.
+  const globalSecurity = Array.isArray(doc.security) ? doc.security : undefined;
 
   for (const [path, pathItem] of Object.entries(doc.paths ?? {})) {
     for (const method of HTTP_METHODS) {
@@ -87,6 +92,7 @@ export function extractOpenApi3Doc(
         method,
         opDef,
         authIds,
+        globalSecurity,
         nodes,
         claims,
         edges,

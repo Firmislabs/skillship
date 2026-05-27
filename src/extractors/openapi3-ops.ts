@@ -11,6 +11,8 @@ export interface EmitOperationArgs {
   readonly method: string;
   readonly opDef: Record<string, unknown>;
   readonly authIds: Map<string, string>;
+  /** Top-level security requirements, inherited when the op declares none. */
+  readonly globalSecurity: unknown[] | undefined;
   readonly nodes: ExtractedNode[];
   readonly claims: ExtractedClaim[];
   readonly edges: ExtractedEdge[];
@@ -66,7 +68,7 @@ export function emitOperation(a: EmitOperationArgs): void {
   emitParameters(opId, a.opDef, base, a.nodes, a.claims, a.edges);
   emitRequestBodyParameter(opId, a.opDef, base, a.nodes, a.claims, a.edges);
   emitResponses(opId, a.opDef, base, a.nodes, a.claims, a.edges);
-  emitOperationAuth(opId, a.opDef, base, a.authIds, a.edges);
+  emitOperationAuth(opId, a.opDef, base, a.globalSecurity, a.authIds, a.edges);
 }
 
 function emitRequestExample(
@@ -401,11 +403,18 @@ function emitOperationAuth(
   opId: string,
   opDef: Record<string, unknown>,
   base: string,
+  globalSecurity: unknown[] | undefined,
   authIds: Map<string, string>,
   edges: ExtractedEdge[],
 ): void {
-  const security = opDef.security;
+  // A per-op `security` array overrides the global one — including an empty
+  // array, which explicitly opts the operation out of auth. Only when the op
+  // omits `security` entirely does it inherit the top-level requirements.
+  const opSecurity = opDef.security;
+  const hasOpSecurity = Array.isArray(opSecurity);
+  const security = hasOpSecurity ? opSecurity : globalSecurity;
   if (!Array.isArray(security)) return;
+  const rationale = hasOpSecurity ? `${base}.security` : "$.security";
   for (const req of security) {
     if (!isObject(req)) continue;
     for (const name of Object.keys(req)) {
@@ -415,7 +424,7 @@ function emitOperationAuth(
         kind: "auth_requires",
         from_node_id: opId,
         to_node_id: authId,
-        rationale: `${base}.security`,
+        rationale,
       });
     }
   }
