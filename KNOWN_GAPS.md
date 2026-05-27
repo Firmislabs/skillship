@@ -56,7 +56,7 @@ Surfaced by the first end-to-end run against a real vendor spec (`init` discover
 
 ### Gap 4 — SDK emits no auth when security is declared globally
 
-**Status:** OPEN. Critical/functional — the generated SDK does not authenticate.
+**Status:** Resolved (2026-05-27, commit `1b9435b`). Fix: `src/extractors/openapi3-ops.ts` `emitOperationAuth` now inherits the doc's top-level `security` when an operation declares none, emitting an `auth_requires` edge per inherited scheme (`src/extractors/openapi3.ts` threads `doc.security` down as `globalSecurity`). A per-op `security` array — including an empty one, which opts out — still takes precedence. Goldens stayed byte-identical (`minimal.yaml` uses per-op security). `substrate/frozen` retagged forward `dfd196c → 1b9435b`. New regression tests in `tests/extractors/openapi3.test.ts` ("global security (Gap 4 closure)").
 
 **Symptom:** For a spec that declares `security` at the top level (global) rather than per-operation, the emitted `runtime.ts` is `AuthConfig = { kind: "none" }` with `// no auth schemes projected`. Every request goes out unauthenticated (401 against the real API). The SKILL.md auth section is unaffected (it reads `auth_scheme` nodes directly via `src/renderers/skill-auth.ts`).
 
