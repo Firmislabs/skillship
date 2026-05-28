@@ -40,7 +40,7 @@ New module: `src/renderers/sdk-fern.ts`
 
 ```ts
 export interface RenderFernSdksInput {
-  readonly oasJson: unknown;            // the synthetic OAS object (NOT mutated)
+  readonly oasJson: string;             // the rendered openapi.json STRING (same type renderSdkPackage takes; NOT mutated)
   readonly productName: string;
   readonly outDir: string;              // the {product} skill dir (sibling of sdk/)
   readonly overlay: CodegenOverlay;
@@ -73,7 +73,9 @@ if (fernLangs.length > 0) {
 - the existing TS wedge plugin (`generateResourceTreeModule`) — behavior unchanged;
 - the new Fern OAS-rewriter.
 
-**Invariant:** the namespace/method names Fern emits are derived from the *exact same* `resolveAssignments` pass that drives the TS SDK. They cannot drift apart.
+`renderFernSdks` obtains its `ops: readonly OperationInfo[]` by calling the existing `extractOperations(oasJson)` (`src/renderers/sdk-utils.ts`) — the **same function `renderSdkPackage` calls** (`src/renderers/sdk.ts:79`) — then passes that array to `resolveAssignments(ops, overlay)`. It must **not** re-derive operations from the rewritten temp OAS or hand-roll a parser; doing so would break the invariant below.
+
+**Invariant:** the namespace/method names Fern emits are derived from the *exact same* `extractOperations` → `resolveAssignments` pass that drives the TS SDK. They cannot drift apart.
 
 ### 3.3 Data flow
 
@@ -83,7 +85,7 @@ graph → synthetic OAS (openapi.json — shipped as-is, never mutated)
               ├─→ renderSdkPackage → sdk/            (TS, @hey-api, pure Node)   [UNCHANGED]
               │
               └─→ renderFernSdks   (only if --sdk given)
-                     1. resolveAssignments(ops, overlay)         ← shared engine
+                     1. ops = extractOperations(oasJson); resolveAssignments(ops, overlay)   ← shared engine (same call as renderSdkPackage)
                      2. rewrite a TEMP OAS copy:
                           operationId = snake(ns) + "_" + snake(method)
                           tags        = [ns]
@@ -112,7 +114,7 @@ Rationale:
 `build` command (`src/cli/index.ts`) gains one option; `runBuild` gains one field.
 
 - `--sdk <langs>` — comma list; valid values `{python, rust}` only. TS is the implicit default and is **not** selectable here (it is already always-on). An unknown value fails fast: `invalid --sdk language "go"; valid: python, rust`.
-- `--skip-sdk` and `--sdk` are **mutually exclusive.** Per the locked CLI semantics, `--skip-sdk` means "no SDKs at all", so combining the two is contradictory and fails fast: `--skip-sdk cannot be combined with --sdk`.
+- `--skip-sdk` and `--sdk` are **mutually exclusive.** `--skip-sdk` keeps its existing frozen behavior unchanged — it skips the TS SDK, which is the only SDK that exists without `--sdk`, so in practice it means "no SDKs at all." This rule is a CLI guard against the contradictory combination (`--skip-sdk` requesting no SDKs while `--sdk` requests Fern SDKs), **not** a change to the `--skip-sdk` semantics locked in §2.2. The combination fails fast: `--skip-sdk cannot be combined with --sdk`.
 - `RunBuildOptions` gains `fernLangs?: FernLang[]`. `build.ts` parses/validates the comma list (dedup, lowercase, membership check) and passes it through.
 
 Edge values:
@@ -201,6 +203,7 @@ Per the locked contract (§2.4):
 1. **Digest pinning support** — confirm Fern's `generators.yml` accepts `@sha256:...`; if not, define the tag + lockfile fallback precisely.
 2. **Snake_case tokenization** — confirm Fern strips the leading `namespace_` token and re-cases the remainder to `get_attachments` for both Python and Rust (§4).
 3. **Python package root** — confirm the package-name config eliminates top-level stdlib-shadowing modules in generated output.
+4. **GraphQL operation naming** — GraphQL operations are projected with a fragment path `/graphql#fieldName`; `deriveMethodName` returns the fragment field as the method (`resource-tree.ts:208-220`), a different branch from the REST verb/segment logic. Confirm the snake_case `operationId` rewrite (§4) and Fern's tokenizer produce clean idiomatic method names for these too. The plan's one-shot tokenization spike (§12.2) **must run the `sdk-graphql-minimal` fixture**, not only the REST `sdk-minimal` fixture, since the two exercise different `deriveMethodName` branches.
 
 ## 13. Freeze Note
 
