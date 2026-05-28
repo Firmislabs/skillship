@@ -2,6 +2,7 @@ node_modules/
 dist/
 dist-eval/
 coverage/
+.worktrees/
 
 # Eval harness working state (regenerable)
 eval/projects/
