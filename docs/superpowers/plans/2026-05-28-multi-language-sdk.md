@@ -1169,7 +1169,6 @@ import { renameSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { buildGoldenOas } from "./sdk-golden-helpers.js";
 import { renderFernSdks } from "../../src/renderers/sdk-fern.js";
-import { CodegenOverlaySchema } from "../../src/overlays/codegen.js";
 import type { FernLang } from "../../src/renderers/fern-images.js";
 
 export type GoldenFixture = "rest" | "graphql";
@@ -1189,12 +1188,12 @@ export async function renderFernGolden(
     fixture === "rest"
       ? { fixturePath: "tests/fixtures/openapi3/minimal.yaml", contentType: "application/openapi+yaml", productId: "p-min", productName: "min.example" }
       : { fixturePath: "tests/fixtures/graphql/minimal.graphql", contentType: "application/graphql", productId: "p-gql", productName: "gql.example" };
-  const { oasJson, productName } = await buildGoldenOas(args);
+  const { oasJson, productName, overlay } = await buildGoldenOas(args);
   await renderFernSdks({
     oasJson,
     productName,
     outDir: outParentDir, // renderFernSdks writes sdk-<lang>/ siblings here
-    overlay: CodegenOverlaySchema.parse({}),
+    overlay, // reuse the overlay buildGoldenOas already resolved (single source of truth)
     langs,
   });
   // renderFernSdks always emits the generic `sdk-<lang>/`; rename each to the
@@ -1210,7 +1209,7 @@ export async function renderFernGolden(
 
 - [ ] **Step 3: Extend `gen-sdk-goldens.mts` with `--langs`**
 
-Add arg parsing: when `--langs python,rust` is passed, additionally regenerate the Fern trees into `tests/fixtures/golden/`. `renderFernGolden` (Step 2) already leaves the fixture-qualified committed-tree names (`sdk-<lang>-minimal` / `sdk-<lang>-graphql-minimal`) — the script just writes each tree's sibling `<tree>.manifest.json` (sorted relpath → sha256). Reuse `parseFernLangs` + the shared `fernTreeName`. Ensure `readFileSync`, `createHash`, `writeFileSync` are imported (the existing script already imports some). Example addition:
+Add arg parsing: when `--langs python,rust` is passed, additionally regenerate the Fern trees into `tests/fixtures/golden/`. `renderFernGolden` (Step 2) already leaves the fixture-qualified committed-tree names (`sdk-<lang>-minimal` / `sdk-<lang>-graphql-minimal`) — the script just writes each tree's sibling `<tree>.manifest.json` (sorted relpath → sha256). Reuse `parseFernLangs` + the shared `fernTreeName`. The existing script imports only `rmSync` from `node:fs` and `join` from `node:path` — add `readFileSync` + `writeFileSync` (node:fs) and `createHash` (node:crypto). Example addition:
 ```ts
 import { createHash } from "node:crypto";
 import { readFileSync, writeFileSync } from "node:fs";
