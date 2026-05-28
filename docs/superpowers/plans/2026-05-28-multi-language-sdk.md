@@ -897,33 +897,60 @@ git commit -m "feat: add --sdk language parsing + skip-sdk mutual-exclusion guar
 
 - [ ] **Step 1: Write the failing test (no-Docker no-op path)**
 
+No shared `runBuildOnFixture` harness exists — `tests/helpers.ts` only exports `makeTmpCtx`. Mirror the `stageProject()` setup from `tests/cli/build-sdk.test.ts:20-48` (read it first; it stages a `.skillship/` fixture from `tests/fixtures/openapi3/minimal.yaml` with domain `min.example` → product slug `min-example`). The no-op guard:
 ```ts
 // Verifies the build wiring treats absent/empty fernLangs as a pure no-op:
 // no Docker, no sdk-python/ dir. (Full Docker generation is covered by the
 // golden tasks + the Docker CI lane.)
-import { describe, expect, test } from "vitest";
-import { existsSync } from "node:fs";
-import { join } from "node:path";
-import { mkdtempSync, rmSync } from "node:fs";
+import { createHash } from "node:crypto";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-// Use the existing build fixture harness pattern from tests/cli/build-sdk.test.ts
-// to run runBuild with NO fernLangs and assert no sdk-python/ sibling appears.
-import { runBuildOnFixture } from "../helpers.js"; // if a shared harness exists; else inline as in build-sdk.test.ts
+import { join } from "node:path";
+import { describe, expect, test } from "vitest";
+import { runBuild } from "../../src/cli/build.js";
+
+const FIXTURE_SPEC = readFileSync(
+  join(process.cwd(), "tests/fixtures/openapi3/minimal.yaml"),
+  "utf8",
+);
+
+// Copy of stageProject() from tests/cli/build-sdk.test.ts (keep in sync).
+function stageProject(): { inDir: string; outDir: string; cleanup: () => void } {
+  const root = mkdtempSync(join(tmpdir(), "sk-build-fern-noop-"));
+  const inDir = join(root, "in");
+  const outDir = join(root, "out");
+  mkdirSync(join(inDir, ".skillship/sources"), { recursive: true });
+  const sha = createHash("sha256").update(FIXTURE_SPEC).digest("hex");
+  writeFileSync(join(inDir, ".skillship/sources", `${sha}.yaml`), FIXTURE_SPEC, "utf8");
+  const cfg = `product:
+  domain: min.example
+  github_org: null
+sources:
+  - url: https://min.example/openapi.yaml
+    surface: rest
+    sha256: ${sha}
+    content_type: application/openapi+yaml
+    fetched_at: 2026-05-20T00:00:00.000Z
+coverage: bronze
+`;
+  writeFileSync(join(inDir, ".skillship/config.yaml"), cfg, "utf8");
+  return { inDir, outDir, cleanup: () => rmSync(root, { recursive: true, force: true }) };
+}
 
 describe("build wiring: fernLangs no-op", () => {
   test("omitting fernLangs produces no sdk-python/ or sdk-rust/", async () => {
-    const out = mkdtempSync(join(tmpdir(), "sk-build-fern-noop-"));
+    const { inDir, outDir, cleanup } = stageProject();
     try {
-      const skillDir = await runBuildOnFixture({ out }); // returns the {product} dir
+      await runBuild({ in: inDir, out: outDir });
+      const skillDir = join(outDir, "min-example");
       expect(existsSync(join(skillDir, "sdk-python"))).toBe(false);
       expect(existsSync(join(skillDir, "sdk-rust"))).toBe(false);
     } finally {
-      rmSync(out, { recursive: true, force: true });
+      cleanup();
     }
   });
 });
 ```
-> If no shared `runBuildOnFixture` helper exists, mirror the setup already used in `tests/cli/build-sdk.test.ts` (read it first) to construct a `.skillship/` fixture and call `runBuild`. Keep the assertion identical.
 
 - [ ] **Step 2: Run test to verify it fails (or passes trivially)**
 
@@ -934,9 +961,8 @@ Expected: PASS is acceptable here only after Step 3 wiring exists and defaults t
 
 In `src/cli/build.ts`:
 
-Add imports near line 29:
+Add imports near line 29 (note: `renderSdkPackage` is **already** imported at line 29 — do NOT re-add it; add only these three):
 ```ts
-import { renderSdkPackage } from "../renderers/sdk.js";
 import { renderFernSdks } from "../renderers/sdk-fern.js";
 import { listEmittedFiles } from "../renderers/sdk-fs.js";
 import type { FernLang } from "../renderers/fern-images.js";
@@ -954,7 +980,7 @@ export interface RunBuildOptions {
 }
 ```
 
-Replace the SDK tail (current lines 92-105) with:
+Replace the SDK tail. The current code (build.ts:92-105) is an `if (opts.skipSdk !== true) { … return { …, [...artifacts, ...sdkArtifacts], … }; }` block with an **embedded `return` at line 103**, followed by a **trailing bare `return` at line 105**. The replacement below removes BOTH of those `return` statements and collapses them into a single linear flow with one trailing `return`. Keep the atomicity comment at lines 89-91 above it; replace exactly lines 92-105:
 ```ts
     const artifactsAll: BuildArtifact[] = [...artifacts];
     if (opts.skipSdk !== true) {
@@ -1109,20 +1135,29 @@ git commit -m "feat: add --sdk build flag + skillship sdk warm subcommand"
 
 - [ ] **Step 1: Extract `buildGoldenOas` from `sdk-golden-helpers.ts`**
 
-Refactor `renderSdkGoldenFromFixture` so the ingest→OAS portion is an exported function:
+Refactor `renderSdkGoldenFromFixture` so the ingest→OAS portion is an exported function. Note `buildGoldenOas` does NOT need `outDir` (only `renderSdkPackage` does), so give it its own arg type:
 ```ts
+export interface GoldenOasArgs {
+  readonly fixturePath: string;
+  readonly contentType: string;
+  readonly productId: string;
+  readonly productName: string;
+}
+
 export interface GoldenOas {
   readonly oasJson: string;
   readonly productName: string;
   readonly overlay: CodegenOverlay; // CodegenOverlaySchema.parse({})
 }
 
-export async function buildGoldenOas(args: FixtureArgs): Promise<GoldenOas> {
-  // (the ingestConfig + renderSyntheticOpenApi body currently inside
-  //  renderSdkGoldenFromFixture, returning { oasJson, productName, overlay })
+export async function buildGoldenOas(args: GoldenOasArgs): Promise<GoldenOas> {
+  // (the mkdtemp + openGraph + ingestConfig + renderSyntheticOpenApi body
+  //  currently inside renderSdkGoldenFromFixture, MINUS the renderSdkPackage
+  //  call, returning { oasJson, productName: args.productName,
+  //  overlay: CodegenOverlaySchema.parse({}) }. Keep the tmp-graph cleanup.)
 }
 ```
-Keep `renderSdkGoldenRest/Graphql` working by having `renderSdkGoldenFromFixture` call `buildGoldenOas` then `renderSdkPackage`. Run `npx vitest run tests/renderers/sdk-golden.test.ts` to confirm the TS goldens are still byte-identical (no behavior change).
+Keep `renderSdkGoldenRest/Graphql` working by having `renderSdkGoldenFromFixture(args: FixtureArgs)` call `buildGoldenOas({ fixturePath, contentType, productId, productName })`, then `renderSdkPackage({ oasJson, productName, outDir: args.outDir, overlay })`. Run `npx vitest run tests/renderers/sdk-golden.test.ts` to confirm the TS goldens are still byte-identical (no behavior change).
 
 - [ ] **Step 2: Add the Fern golden helpers**
 
@@ -1130,13 +1165,23 @@ Keep `renderSdkGoldenRest/Graphql` working by having `renderSdkGoldenFromFixture
 ```ts
 // Docker-required. Regenerates the Python/Rust golden trees from the same
 // fixtures the TS goldens use, via renderFernSdks.
+import { renameSync, rmSync } from "node:fs";
+import { join } from "node:path";
 import { buildGoldenOas } from "./sdk-golden-helpers.js";
 import { renderFernSdks } from "../../src/renderers/sdk-fern.js";
 import { CodegenOverlaySchema } from "../../src/overlays/codegen.js";
 import type { FernLang } from "../../src/renderers/fern-images.js";
 
+export type GoldenFixture = "rest" | "graphql";
+
+/** The committed-tree name for a (lang, fixture) pair. Single source of truth
+ *  shared by the regen script + (implicitly) the pure-Node lock's TREES list. */
+export function fernTreeName(lang: FernLang, fixture: GoldenFixture): string {
+  return fixture === "rest" ? `sdk-${lang}-minimal` : `sdk-${lang}-graphql-minimal`;
+}
+
 export async function renderFernGolden(
-  fixture: "rest" | "graphql",
+  fixture: GoldenFixture,
   outParentDir: string,
   langs: readonly FernLang[],
 ): Promise<void> {
@@ -1144,41 +1189,49 @@ export async function renderFernGolden(
     fixture === "rest"
       ? { fixturePath: "tests/fixtures/openapi3/minimal.yaml", contentType: "application/openapi+yaml", productId: "p-min", productName: "min.example" }
       : { fixturePath: "tests/fixtures/graphql/minimal.graphql", contentType: "application/graphql", productId: "p-gql", productName: "gql.example" };
-  const { oasJson, productName } = await buildGoldenOas({ ...args, outDir: outParentDir });
+  const { oasJson, productName } = await buildGoldenOas(args);
   await renderFernSdks({
     oasJson,
     productName,
-    outDir: outParentDir, // writes sdk-<lang>/ siblings here
+    outDir: outParentDir, // renderFernSdks writes sdk-<lang>/ siblings here
     overlay: CodegenOverlaySchema.parse({}),
     langs,
   });
+  // renderFernSdks always emits the generic `sdk-<lang>/`; rename each to the
+  // fixture-qualified committed-tree name so rest + graphql don't collide.
+  for (const lang of langs) {
+    const generic = join(outParentDir, `sdk-${lang}`);
+    const target = join(outParentDir, fernTreeName(lang, fixture));
+    rmSync(target, { recursive: true, force: true });
+    renameSync(generic, target);
+  }
 }
 ```
 
 - [ ] **Step 3: Extend `gen-sdk-goldens.mts` with `--langs`**
 
-Add arg parsing: when `--langs python,rust` is passed, additionally regenerate the Fern trees into `tests/fixtures/golden/` with the naming convention `sdk-<lang>-minimal` (rest) and `sdk-<lang>-graphql-minimal` (graphql), then write a sibling `<tree>.manifest.json` (sorted relpath → sha256). Reuse `parseFernLangs`. Example addition:
+Add arg parsing: when `--langs python,rust` is passed, additionally regenerate the Fern trees into `tests/fixtures/golden/`. `renderFernGolden` (Step 2) already leaves the fixture-qualified committed-tree names (`sdk-<lang>-minimal` / `sdk-<lang>-graphql-minimal`) — the script just writes each tree's sibling `<tree>.manifest.json` (sorted relpath → sha256). Reuse `parseFernLangs` + the shared `fernTreeName`. Ensure `readFileSync`, `createHash`, `writeFileSync` are imported (the existing script already imports some). Example addition:
 ```ts
 import { createHash } from "node:crypto";
-import { writeFileSync } from "node:fs";
+import { readFileSync, writeFileSync } from "node:fs";
 import { parseFernLangs } from "../src/cli/sdk-langs.js";
-import { renderFernGolden } from "../tests/renderers/sdk-fern-golden-helpers.js";
+import {
+  renderFernGolden,
+  fernTreeName,
+  type GoldenFixture,
+} from "../tests/renderers/sdk-fern-golden-helpers.js";
 import { listEmittedFiles } from "../src/renderers/sdk-fs.js";
 // ... after the TS goldens:
 const langs = parseFernLangs(process.argv.find((a) => a.startsWith("--langs="))?.slice("--langs=".length)
   ?? (process.argv.includes("--langs") ? process.argv[process.argv.indexOf("--langs") + 1] : undefined));
-for (const fixture of ["rest", "graphql"] as const) {
+const parent = join(repoRoot, "tests/fixtures/golden");
+for (const fixture of ["rest", "graphql"] as const satisfies readonly GoldenFixture[]) {
   if (langs.length === 0) break;
-  const parent = join(repoRoot, "tests/fixtures/golden");
-  // clean the target sibling dirs first
-  for (const lang of langs) {
-    const tree = fixture === "rest" ? `sdk-${lang}-minimal` : `sdk-${lang}-graphql-minimal`;
-    rmSync(join(parent, tree), { recursive: true, force: true });
-  }
+  // renderFernGolden renames sdk-<lang>/ -> fernTreeName(lang, fixture) internally,
+  // rm-ing any prior target first, so no pre-clean is needed here.
   await renderFernGolden(fixture, parent, langs);
   for (const lang of langs) {
-    const tree = fixture === "rest" ? `sdk-${lang}-minimal` : `sdk-${lang}-graphql-minimal`;
-    const dir = join(parent, tree);
+    const dir = join(parent, fernTreeName(lang, fixture));
     const manifest: Record<string, string> = {};
     for (const rel of listEmittedFiles(dir)) {
       manifest[rel] = createHash("sha256").update(readFileSync(join(dir, rel))).digest("hex");
@@ -1188,7 +1241,6 @@ for (const fixture of ["rest", "graphql"] as const) {
   }
 }
 ```
-> Note: `renderFernGolden` writes `sdk-<lang>/` under `parent`; rename to the fixture-qualified tree name immediately after each fixture (rest leaves `sdk-python/`; move to `sdk-python-minimal`). Simplest: have `renderFernGolden` accept the final tree names, or move post-generation. Keep the move deterministic and inside the script.
 
 - [ ] **Step 4: Generate + sanity-check**
 
