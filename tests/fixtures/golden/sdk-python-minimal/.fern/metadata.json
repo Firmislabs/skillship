@@ -1,0 +1,9 @@
+{
+  "cliVersion": "5.40.0",
+  "generatorName": "fernapi/fern-python-sdk",
+  "generatorVersion": "5.14.4",
+  "generatorConfig": {
+    "package_name": "skillship_sdk"
+  },
+  "invokedBy": "manual"
+}
