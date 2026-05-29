@@ -1320,10 +1320,13 @@ import { join } from "node:path";
 import { describe, expect, test } from "vitest";
 
 const ROOT = join(process.cwd(), "tests/fixtures/golden");
+// NOTE (Task 10 finding): the Fern Python generator in local-file-system mode
+// emits a FLAT package (Spike 0.3) — there is NO pyproject.toml; the package
+// root marker is __init__.py. Rust still has Cargo.toml.
 const TREES: { dir: string; marker: string }[] = [
-  { dir: "sdk-python-minimal", marker: "pyproject.toml" },
+  { dir: "sdk-python-minimal", marker: "__init__.py" },
   { dir: "sdk-rust-minimal", marker: "Cargo.toml" },
-  { dir: "sdk-python-graphql-minimal", marker: "pyproject.toml" },
+  { dir: "sdk-python-graphql-minimal", marker: "__init__.py" },
   { dir: "sdk-rust-graphql-minimal", marker: "Cargo.toml" },
 ];
 
