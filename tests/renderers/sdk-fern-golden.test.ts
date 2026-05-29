@@ -7,16 +7,28 @@ import { createHash } from "node:crypto";
 import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, test } from "vitest";
+import { fernTreeName, type GoldenFixture } from "./sdk-fern-golden-helpers.js";
+import type { FernLang } from "../../src/renderers/fern-images.js";
 
 const ROOT = join(process.cwd(), "tests/fixtures/golden");
 // NOTE: Fern's Python generator (local-file-system mode) emits a FLAT package
 // with NO pyproject.toml — the root marker is __init__.py. Rust has Cargo.toml.
-const TREES: { dir: string; marker: string }[] = [
-  { dir: "sdk-python-minimal", marker: "__init__.py" },
-  { dir: "sdk-rust-minimal", marker: "Cargo.toml" },
-  { dir: "sdk-python-graphql-minimal", marker: "__init__.py" },
-  { dir: "sdk-rust-graphql-minimal", marker: "Cargo.toml" },
-];
+// Record<FernLang, string> makes this exhaustive: adding a language to the
+// FernLang union forces a marker here (compile error otherwise), and fernTreeName
+// (the single source of truth for tree names) auto-generates its tree dirs below.
+const LANG_MARKERS: Record<FernLang, string> = {
+  python: "__init__.py",
+  rust: "Cargo.toml",
+};
+const FIXTURES: readonly GoldenFixture[] = ["rest", "graphql"];
+const TREES: { dir: string; marker: string }[] = (
+  Object.keys(LANG_MARKERS) as FernLang[]
+).flatMap((lang) =>
+  FIXTURES.map((fixture) => ({
+    dir: fernTreeName(lang, fixture),
+    marker: LANG_MARKERS[lang],
+  })),
+);
 
 function listRel(dir: string, base = dir): string[] {
   const out: string[] = [];
@@ -32,7 +44,8 @@ describe("Fern SDK golden lock (pure Node)", () => {
   for (const { dir, marker } of TREES) {
     const treeDir = join(ROOT, dir);
     test(`${dir}: manifest integrity`, () => {
-      const manifest = JSON.parse(readFileSync(`${treeDir}.manifest.json`, "utf8")) as Record<string, string>;
+      const raw = readFileSync(`${treeDir}.manifest.json`, "utf8");
+      const manifest = JSON.parse(raw) as Record<string, string>;
       const files = listRel(treeDir);
       expect(files).toEqual(Object.keys(manifest).sort());
       for (const rel of files) {
