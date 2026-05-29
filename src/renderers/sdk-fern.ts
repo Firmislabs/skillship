@@ -18,6 +18,12 @@ export type { FernLang } from "./fern-images.js";
 
 export interface RenderFernSdksInput {
   readonly oasJson: string;
+  /**
+   * Product name. Accepted for symmetry with renderSdkPackage and surfaced in
+   * failure diagnostics. NOTE: the Python package name is intentionally FIXED
+   * ("skillship_sdk", per Spike 0.3) for deterministic output — productName does
+   * NOT drive it.
+   */
   readonly productName: string;
   /** The {product} skill dir; the renderer writes sdk-<lang>/ siblings under it. */
   readonly outDir: string;
@@ -50,8 +56,8 @@ export async function renderFernSdks(
   }
   if (failures.length > 0) {
     throw new Error(
-      `renderFernSdks: ${failures.length} generator(s) failed (${failures.join("; ")}). ` +
-        "Successful languages and the TypeScript SDK were written.",
+      `renderFernSdks(${input.productName}): ${failures.length} generator(s) failed ` +
+        `(${failures.join("; ")}). Successful languages and the TypeScript SDK were written.`,
     );
   }
   return { emitted };
@@ -78,7 +84,7 @@ async function renderOneLang(
 
     const generated = join(projectDir, "out", lang);
     if (!statSyncSafe(generated)) {
-      throw new Error(`Fern produced no output at out/${lang}`);
+      throw new Error(`Fern produced no output for ${lang} (expected at ${generated})`);
     }
     const dest = join(outDir, `sdk-${lang}`);
     atomicMove(generated, dest);
