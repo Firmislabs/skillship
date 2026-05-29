@@ -27,6 +27,9 @@ import { GITHUB_REPO_PLACEHOLDER } from "../resolvers/githubSpecs.js";
 import { renderSyntheticOpenApi } from "../renderers/oas.js";
 import { loadCodegenOverlay, type CodegenOverlay } from "../overlays/codegen.js";
 import { renderSdkPackage } from "../renderers/sdk.js";
+import { renderFernSdks } from "../renderers/sdk-fern.js";
+import { listEmittedFiles } from "../renderers/sdk-fs.js";
+import type { FernLang } from "../renderers/fern-images.js";
 
 export interface RunBuildOptions {
   readonly in: string;
@@ -34,6 +37,7 @@ export interface RunBuildOptions {
   readonly productId?: string;
   readonly description?: string;
   readonly skipSdk?: boolean;
+  readonly fernLangs?: readonly FernLang[];
 }
 
 export interface BuildArtifact {
@@ -89,6 +93,7 @@ export async function runBuild(opts: RunBuildOptions): Promise<BuildResult> {
     // Whole-build atomicity is NOT guaranteed: the top-level artifacts above
     // are already on disk. If SDK rendering throws, those persist by design
     // (the SDK subtree itself is atomic — see renderSdkPackage).
+    const artifactsAll: BuildArtifact[] = [...artifacts];
     if (opts.skipSdk !== true) {
       const sdkResult = await renderSdkPackage({
         oasJson,
@@ -96,13 +101,28 @@ export async function runBuild(opts: RunBuildOptions): Promise<BuildResult> {
         outDir: join(skillDir, "sdk"),
         overlay: codegenOverlay,
       });
-      const sdkArtifacts = sdkResult.files.map(relPath => {
+      for (const relPath of sdkResult.files) {
         const filePath = join(sdkResult.outDir, relPath);
-        return { path: filePath, bytes: statSync(filePath).size };
-      });
-      return { productId, artifacts: [...artifacts, ...sdkArtifacts], ingest };
+        artifactsAll.push({ path: filePath, bytes: statSync(filePath).size });
+      }
     }
-    return { productId, artifacts, ingest };
+    const fernLangs = opts.fernLangs ?? [];
+    if (fernLangs.length > 0) {
+      const fernResult = await renderFernSdks({
+        oasJson,
+        productName,
+        outDir: skillDir,
+        overlay: codegenOverlay,
+        langs: fernLangs,
+      });
+      for (const e of fernResult.emitted) {
+        for (const relPath of listEmittedFiles(e.path)) {
+          const filePath = join(e.path, relPath);
+          artifactsAll.push({ path: filePath, bytes: statSync(filePath).size });
+        }
+      }
+    }
+    return { productId, artifacts: artifactsAll, ingest };
   } finally {
     handle.close();
   }
