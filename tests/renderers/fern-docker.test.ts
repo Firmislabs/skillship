@@ -9,9 +9,17 @@ import { FERN_PINS } from "../../src/renderers/fern-images.js";
 
 describe("assertDockerAvailable", () => {
   test("resolves when exec succeeds", async () => {
-    await expect(
-      assertDockerAvailable(async () => ({ stdout: "ok", stderr: "" })),
-    ).resolves.toBeUndefined();
+    let seenOpts: { cwd?: string; timeout?: number } | undefined;
+    const exec = async (
+      _cmd: string,
+      _args: readonly string[],
+      opts: { cwd?: string; timeout?: number },
+    ) => {
+      seenOpts = opts;
+      return { stdout: "ok", stderr: "" };
+    };
+    await expect(assertDockerAvailable(exec)).resolves.toBeUndefined();
+    expect(seenOpts?.timeout).toBe(15000);
   });
 
   test("throws DockerUnavailableError with actionable message when exec fails", async () => {
@@ -50,5 +58,6 @@ describe("runFernGenerate", () => {
       "sdks",
     ]);
     expect(calls[0]!.opts.cwd).toBe("/tmp/proj");
+    expect(calls[0]!.opts.timeout).toBe(600000);
   });
 });
