@@ -34,6 +34,21 @@ export interface GoldenOas {
   readonly overlay: CodegenOverlay;
 }
 
+/** Fixture definitions shared by the TS golden path and the Fern golden path
+ *  (single source of truth — both render from byte-identical OAS input). */
+export const REST_FIXTURE_ARGS: GoldenOasArgs = {
+  fixturePath: "tests/fixtures/openapi3/minimal.yaml",
+  contentType: "application/openapi+yaml",
+  productId: "p-min",
+  productName: "min.example",
+};
+export const GQL_FIXTURE_ARGS: GoldenOasArgs = {
+  fixturePath: "tests/fixtures/graphql/minimal.graphql",
+  contentType: "application/graphql",
+  productId: "p-gql",
+  productName: "gql.example",
+};
+
 /**
  * Builds the synthetic OAS for a fixture (ingest → renderSyntheticOpenApi), owning
  * the temp-graph lifecycle. Returns the detached oasJson string + the resolved
@@ -66,41 +81,26 @@ export async function buildGoldenOas(args: GoldenOasArgs): Promise<GoldenOas> {
       loadBytes: async () => bytes,
       now: () => NOW,
     });
+    const overlay = CodegenOverlaySchema.parse({});
     const oasJson = renderSyntheticOpenApi({
       db: graph.db,
       productId: args.productId,
       productName: args.productName,
-      overlay: CodegenOverlaySchema.parse({}),
+      overlay,
     });
-    return { oasJson, productName: args.productName, overlay: CodegenOverlaySchema.parse({}) };
+    return { oasJson, productName: args.productName, overlay };
   } finally {
     graph.close();
     rmSync(tmp, { recursive: true, force: true });
   }
 }
 
-export async function renderSdkGoldenRest(
-  outDir: string,
-): Promise<SdkGoldenResult> {
-  return renderSdkGoldenFromFixture({
-    fixturePath: "tests/fixtures/openapi3/minimal.yaml",
-    contentType: "application/openapi+yaml",
-    productId: "p-min",
-    productName: "min.example",
-    outDir,
-  });
+export async function renderSdkGoldenRest(outDir: string): Promise<SdkGoldenResult> {
+  return renderSdkGoldenFromFixture({ ...REST_FIXTURE_ARGS, outDir });
 }
 
-export async function renderSdkGoldenGraphql(
-  outDir: string,
-): Promise<SdkGoldenResult> {
-  return renderSdkGoldenFromFixture({
-    fixturePath: "tests/fixtures/graphql/minimal.graphql",
-    contentType: "application/graphql",
-    productId: "p-gql",
-    productName: "gql.example",
-    outDir,
-  });
+export async function renderSdkGoldenGraphql(outDir: string): Promise<SdkGoldenResult> {
+  return renderSdkGoldenFromFixture({ ...GQL_FIXTURE_ARGS, outDir });
 }
 
 interface FixtureArgs {

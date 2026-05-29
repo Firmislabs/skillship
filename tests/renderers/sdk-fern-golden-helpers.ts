@@ -2,7 +2,7 @@
 // fixtures the TS goldens use, via renderFernSdks.
 import { renameSync, rmSync } from "node:fs";
 import { join } from "node:path";
-import { buildGoldenOas } from "./sdk-golden-helpers.js";
+import { buildGoldenOas, REST_FIXTURE_ARGS, GQL_FIXTURE_ARGS } from "./sdk-golden-helpers.js";
 import { renderFernSdks } from "../../src/renderers/sdk-fern.js";
 import type { FernLang } from "../../src/renderers/fern-images.js";
 
@@ -19,10 +19,7 @@ export async function renderFernGolden(
   outParentDir: string,
   langs: readonly FernLang[],
 ): Promise<void> {
-  const args =
-    fixture === "rest"
-      ? { fixturePath: "tests/fixtures/openapi3/minimal.yaml", contentType: "application/openapi+yaml", productId: "p-min", productName: "min.example" }
-      : { fixturePath: "tests/fixtures/graphql/minimal.graphql", contentType: "application/graphql", productId: "p-gql", productName: "gql.example" };
+  const args = fixture === "rest" ? REST_FIXTURE_ARGS : GQL_FIXTURE_ARGS;
   const { oasJson, productName, overlay } = await buildGoldenOas(args);
   await renderFernSdks({
     oasJson,
