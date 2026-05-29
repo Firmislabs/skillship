@@ -93,39 +93,66 @@ export async function runBuild(opts: RunBuildOptions): Promise<BuildResult> {
     // Whole-build atomicity is NOT guaranteed: the top-level artifacts above
     // are already on disk. If SDK rendering throws, those persist by design
     // (the SDK subtree itself is atomic — see renderSdkPackage).
-    const artifactsAll: BuildArtifact[] = [...artifacts];
-    if (opts.skipSdk !== true) {
-      const sdkResult = await renderSdkPackage({
-        oasJson,
-        productName,
-        outDir: join(skillDir, "sdk"),
-        overlay: codegenOverlay,
-      });
-      for (const relPath of sdkResult.files) {
-        const filePath = join(sdkResult.outDir, relPath);
-        artifactsAll.push({ path: filePath, bytes: statSync(filePath).size });
-      }
-    }
-    const fernLangs = opts.fernLangs ?? [];
-    if (fernLangs.length > 0) {
-      const fernResult = await renderFernSdks({
-        oasJson,
-        productName,
-        outDir: skillDir,
-        overlay: codegenOverlay,
-        langs: fernLangs,
-      });
-      for (const e of fernResult.emitted) {
-        for (const relPath of listEmittedFiles(e.path)) {
-          const filePath = join(e.path, relPath);
-          artifactsAll.push({ path: filePath, bytes: statSync(filePath).size });
-        }
-      }
-    }
-    return { productId, artifacts: artifactsAll, ingest };
+    const allArtifacts = await assembleSdkArtifacts(opts, {
+      base: artifacts,
+      oasJson,
+      productName,
+      skillDir,
+      overlay: codegenOverlay,
+    });
+    return { productId, artifacts: allArtifacts, ingest };
   } finally {
     handle.close();
   }
+}
+
+interface SdkArtifactContext {
+  readonly base: readonly BuildArtifact[];
+  readonly oasJson: string;
+  readonly productName: string;
+  readonly skillDir: string;
+  readonly overlay: CodegenOverlay;
+}
+
+/**
+ * Assembles the SDK artifact list: base build artifacts, then the TypeScript SDK
+ * (unless skipped), then any opt-in Fern (Python/Rust) SDKs. Extracted from
+ * runBuild so the orchestrator stays focused on graph lifecycle.
+ */
+async function assembleSdkArtifacts(
+  opts: RunBuildOptions,
+  ctx: SdkArtifactContext,
+): Promise<BuildArtifact[]> {
+  const artifactsAll: BuildArtifact[] = [...ctx.base];
+  if (opts.skipSdk !== true) {
+    const sdkResult = await renderSdkPackage({
+      oasJson: ctx.oasJson,
+      productName: ctx.productName,
+      outDir: join(ctx.skillDir, "sdk"),
+      overlay: ctx.overlay,
+    });
+    for (const relPath of sdkResult.files) {
+      const filePath = join(sdkResult.outDir, relPath);
+      artifactsAll.push({ path: filePath, bytes: statSync(filePath).size });
+    }
+  }
+  const fernLangs = opts.fernLangs ?? [];
+  if (fernLangs.length > 0) {
+    const fernResult = await renderFernSdks({
+      oasJson: ctx.oasJson,
+      productName: ctx.productName,
+      outDir: ctx.skillDir,
+      overlay: ctx.overlay,
+      langs: fernLangs,
+    });
+    for (const e of fernResult.emitted) {
+      for (const relPath of listEmittedFiles(e.path)) {
+        const filePath = join(e.path, relPath);
+        artifactsAll.push({ path: filePath, bytes: statSync(filePath).size });
+      }
+    }
+  }
+  return artifactsAll;
 }
 
 function hasApiSurfaceSource(
