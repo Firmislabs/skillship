@@ -75,6 +75,13 @@ These are investigation tasks, **not** TDD. Each ends by recording its outcome i
 
 **Question:** Does `generators.yml` accept an immutable digest for `version`, or only a published tag?
 
+> **RESOLVED (executed 2026-05-28, fern-api@5.40.0):**
+> - **cliVersion = 5.40.0** (cached + latest published; succeeds). `fern/fern.config.json` = `{"organization":"skillship","version":"5.40.0"}` works.
+> - **Resolved digests:** rust `sha256:04f5adc1cd0faafaa2583cfaaa5af1055f17454907ac387cee6d705659f0c1d6`; python `sha256:0daab174eeca54710a75cc35775922d0a51015224159e35cb8d3c69611433084`.
+> - **Digest pinning is NOT cleanly supported.** Tested 5 forms: `version: "<digest>"` → "Failed to parse version" (version field requires semver); `name: "<repo@digest>"` (no version) → schema rejects; `name: "<repo@digest>" + version` → "Unrecognized generator … specify ir-version" (Fern infers IR version by *name*-registry lookup, which a digest defeats — it falls into the brittle custom-generator path needing a hand-pinned `ir-version`); `image: "<string>"` → schema expects an object, not a string. Only tag-based `version: 0.36.8` succeeds via the blessed path.
+> - **DECISION (plan's pre-specified fallback): tag-pin + recorded-digest.** `pinnedVersion()` returns the tag; `FERN_PINS.generators.*.digest` holds the sha256 for verification/`docker pull` only. Drift defense = Fern's immutable per-version publishing + the Docker regen lane's golden byte-diff (Task 12).
+> - **BLOCKER FOUND → folded into Task 4:** `generators.yml` MUST include an `api:` block (`api: { specs: [{ openapi: "openapi/openapi.json" }] }`); without it Fern aborts with "Detected empty API definition." Task 4's `buildFernProject` + its test updated accordingly.
+
 - [ ] **Step 1: Resolve the digests**
 
 ```bash
@@ -102,6 +109,13 @@ Try the digest in the `version:` field; if rejected, try `name: fernapi/fern-rus
 ### Spike 0.2: snake_case tokenization (REST **and** GraphQL fixtures)
 
 **Question:** Does `operationId = snake(ns)_snake(method)` + `tags = [ns]` make Fern emit clean idiomatic method names (`get_attachments`, not `getattachments`) for both REST and GraphQL-derived operations?
+
+> **RESOLVED (executed 2026-05-28, fern-api@5.40.0, python 5.14.4 + rust 0.36.8):** Validated on the real `tests/fixtures/graphql/minimal.graphql` (decisive multi-word case `createProject`) and `tests/fixtures/openapi3/minimal.yaml`, both rewritten through the real `resolveAssignments` engine.
+> - **SNAKE input** (`mutation_create_project`, `tags:[mutation]`) → Python `def create_project(...)`, Rust `pub async fn create_project(...)`. ✅
+> - **CAMEL control** (`mutation_createProject`) → Python `def createproject(...)`, Rust `pub async fn createproject(...)`. ❌ This is exactly the `getattachments` bug class — snake_case is required.
+> - **No `op_<hex>` leakage** in either snake output (grep clean). Namespace grouping works: GraphQL → `mutation/` + `query/` packages; REST → `projects/`. Method names clean: `list`, `create`, `create_project`, `projects`.
+> - The spike's `camelToSnake` (`/([a-z0-9])([A-Z])/`→`$1_$2`, `/([A-Z]+)([A-Z][a-z])/`→`$1_$2`, `[-\s]+`→`_`, lowercase) handles all Task 2 cases (`getAttachments`→`get_attachments`, `apiKeys`→`api_keys`, `list`→`list`, `createProject`→`create_project`). Implement Task 2's `camelToSnake` as written.
+> - **Note for Spike 0.3:** the Python output put `types/`, `core/`, `errors/` at the package *root* (no package nesting) — Spike 0.3 addresses this.
 
 - [ ] **Step 1: Produce both fixtures' OAS**
 
@@ -135,6 +149,14 @@ Expected: no `getattachments`/`op_<hex>` leakage; idiomatic snake methods presen
 ### Spike 0.3: Python package-root config
 
 **Question:** Which `generators.yml` generator `config` key sets the Python package name so all modules nest under one import root (no top-level `types/` shadowing stdlib), and does `python -m compileall` pass from a neutral CWD?
+
+> **RESOLVED (executed 2026-05-28, fern-api@5.40.0, fern-python-sdk 5.14.4):**
+> - **Config key = `package_name`** (confirmed against the generator's `SDKCustomConfig` schema in the image: `/src/fern_python/generators/sdk/custom_config.py`). Setting `package_name: skillship_sdk` rewrites the **import root shown in docstring example code** (`from skillship_sdk import SkillshipApi` instead of the org-derived default `from skillship import …`) — verified by diffing config vs no-config output (6 files differ, all docstring/example `TYPE_CHECKING` import lines; runtime imports are all relative `from ..types.… import …`).
+> - **`local-file-system` mode emits a FLAT package** (`types/`, `core/`, `errors/`, `projects/` at the output root). Neither `package_name` nor `output_directory: project-root` produces a `src/<package>/` wrapper in this mode — `output_directory: project-root` was silently ignored (no `src/`, no rename). So **no config key nests the modules** under local-file-system; the flat layout is inherent. The plan's documented fallback applies.
+> - **The top-level `types/` shadows stdlib ONLY in the pathological case** where the package-root directory is placed *directly* on `sys.path`. Under normal consumption — the package imported by name from its parent (exactly how our sibling `sdk-python/` dir is consumed) — `from types import GeneratorType` in `core/jsonable_encoder.py` is an absolute import that resolves to **stdlib** `types`, not the sibling package. Verified: `importlib.import_module("python.core.jsonable_encoder")` with the parent on `sys.path` succeeds (stdlib resolved); the same import with the package-root dir itself on `sys.path` raises the circular-import shadow error. Real installs/imports use the safe path.
+> - **`python -m compileall` from a neutral CWD (`/tmp`) → exit 0** in all variants (the Task 12 regen-lane guard).
+> - **Byte-deterministic:** two independent `fern generate` runs of the python SDK produced byte-identical trees (0 diff lines, including `.fern/metadata.json`). De-risks Task 11.
+> - **DECISION:** Task 4 sets `config: { package_name: "skillship_sdk" }` for python (clean, consistent docstring import root; fully deterministic), and **no** config for rust. Accept the flat layout as Fern's native local-file-system output. The Docker regen lane (Task 12) runs `python -m compileall` from a neutral CWD as the safety guard. Record the flat-layout + pathological-shadow note in `KNOWN_GAPS.md` (Task 13).
 
 - [ ] **Step 1: Try the package-name config**
 
@@ -355,7 +377,7 @@ git commit -m "feat: add fern OAS rewrite (snake_case operationId + namespace ta
 - Create: `src/renderers/fern-images.ts`
 - Test: (covered indirectly by Task 4; add a tiny invariant test)
 
-> **Spike inputs:** set `cliVersion` (Spike 0.1 Step 3), and `digest` per generator (Spike 0.1). Keep `tag` + `image` regardless.
+> **Spike inputs (RESOLVED — already filled in below):** `cliVersion = "5.40.0"`; per-generator `digest` recorded for verification only; `pinnedVersion()` returns the `tag` (Spike 0.1). Values below are final — implement as written.
 
 - [ ] **Step 1: Write the failing test**
 
@@ -370,9 +392,11 @@ describe("FERN_PINS", () => {
     expect(FERN_PINS.generators.rust.image).toMatch(/fern-rust-sdk/);
     expect(FERN_PINS.cliVersion).not.toBe("");
   });
-  test("pinnedVersion prefers digest when present", () => {
+  test("pinnedVersion returns the tag (digest is verification-only; Spike 0.1)", () => {
+    // Fern's generators.yml `version:` requires a semver tag — a digest there fails
+    // ("Failed to parse version"). digest is recorded for docker-pull + golden verification.
     expect(pinnedVersion({ name: "x", tag: "1.0.0", digest: "sha256:abc", image: "x:1.0.0" }))
-      .toBe("sha256:abc");
+      .toBe("1.0.0");
     expect(pinnedVersion({ name: "x", tag: "1.0.0", digest: null, image: "x:1.0.0" }))
       .toBe("1.0.0");
   });
@@ -394,8 +418,8 @@ export type FernLang = "python" | "rust";
 
 export interface FernGeneratorPin {
   readonly name: string;   // generators.yml name
-  readonly tag: string;    // exact published tag (readability + fallback)
-  readonly digest: string | null; // sha256:… if generators.yml accepts it (Spike 0.1)
+  readonly tag: string;    // exact published tag — used in generators.yml `version:`
+  readonly digest: string | null; // recorded sha256 for docker-pull + golden verification ONLY; NOT usable in generators.yml `version:` (Spike 0.1)
   readonly image: string;  // fully-qualified ref for `docker pull`
 }
 
@@ -405,26 +429,30 @@ export interface FernToolchainPins {
 }
 
 export const FERN_PINS: FernToolchainPins = {
-  cliVersion: "<SET FROM SPIKE 0.1>",
+  cliVersion: "5.40.0",
   generators: {
     python: {
       name: "fernapi/fern-python-sdk",
       tag: "5.14.4",
-      digest: null, // <SET FROM SPIKE 0.1 if supported>
+      digest: "sha256:0daab174eeca54710a75cc35775922d0a51015224159e35cb8d3c69611433084",
       image: "fernapi/fern-python-sdk:5.14.4",
     },
     rust: {
       name: "fernapi/fern-rust-sdk",
       tag: "0.36.8",
-      digest: null, // <SET FROM SPIKE 0.1 if supported>
+      digest: "sha256:04f5adc1cd0faafaa2583cfaaa5af1055f17454907ac387cee6d705659f0c1d6",
       image: "fernapi/fern-rust-sdk:0.36.8",
     },
   },
 };
 
-/** Version string for generators.yml: digest when available, else tag. */
+/**
+ * Version string for generators.yml `version:` — ALWAYS the tag. Fern rejects a
+ * digest here ("Failed to parse version"); the recorded `digest` is for docker-pull
+ * + golden verification only (Spike 0.1).
+ */
 export function pinnedVersion(pin: FernGeneratorPin): string {
-  return pin.digest ?? pin.tag;
+  return pin.tag;
 }
 ```
 
@@ -460,9 +488,13 @@ describe("buildFernProject", () => {
     const { files } = buildFernProject(["python"]);
     expect(files["fern/fern.config.json"]).toContain('"organization": "skillship"');
     const gen = parseYaml(files["fern/generators.yml"]);
+    // api.specs is required — Fern aborts with "empty API definition" without it (Spike 0.1).
+    expect(gen.api.specs).toEqual([{ openapi: "openapi/openapi.json" }]);
     const names = gen.groups.sdks.generators.map((g: { name: string }) => g.name);
     expect(names).toEqual(["fernapi/fern-python-sdk"]);
     expect(gen.groups.sdks.generators[0].output.path).toBe("../out/python");
+    // Spike 0.3: package_name sets the docstring import root; deterministic.
+    expect(gen.groups.sdks.generators[0].config).toEqual({ package_name: "skillship_sdk" });
   });
 
   test("rust generator carries no python package config", () => {
@@ -488,7 +520,9 @@ Expected: FAIL — module missing.
 // src/renderers/fern-project.ts
 // Pure emission of a temp Fern project for the requested languages. Output dirs
 // are RELATIVE to the fern/ project root (Fern resolves local-file-system paths
-// from there). The caller writes the rewritten OAS to fern/openapi/openapi.json.
+// from there). The caller writes the rewritten OAS to fern/openapi/openapi.json,
+// which the required `api:` block in generators.yml points at (Spike 0.1: without
+// an `api:` section Fern fails with "Detected empty API definition").
 import { stringify as stringifyYaml } from "yaml";
 import { FERN_PINS, pinnedVersion, type FernLang } from "./fern-images.js";
 
@@ -519,23 +553,32 @@ export function buildFernProject(langs: readonly FernLang[]): FernProjectFiles {
     return entry;
   });
   const fernConfig = { organization: "skillship", version: FERN_PINS.cliVersion };
+  // `api.specs` is REQUIRED — Fern aborts with "Detected empty API definition"
+  // otherwise. Path is relative to fern/ (caller writes fern/openapi/openapi.json).
+  const generatorsDoc = {
+    api: { specs: [{ openapi: "openapi/openapi.json" }] },
+    groups: { sdks: { generators } },
+  };
   return {
     files: {
       "fern/fern.config.json": JSON.stringify(fernConfig, null, 2) + "\n",
-      "fern/generators.yml": stringifyYaml({ groups: { sdks: { generators } } }),
+      "fern/generators.yml": stringifyYaml(generatorsDoc),
     },
   };
 }
 
-/** Per-language generator config. Python nests modules under one import root (Spike 0.3). */
+/**
+ * Per-language generator config. Python sets `package_name` so docstring example
+ * code reads `from skillship_sdk import …` (Spike 0.3 — it does NOT change physical
+ * layout; local-file-system mode is always flat). Rust takes no config.
+ */
 function generatorConfig(lang: FernLang): Record<string, unknown> | undefined {
   if (lang === "python") {
-    return { /* <SET KEY FROM SPIKE 0.3, e.g. package_name: "skillship_sdk"> */ };
+    return { package_name: "skillship_sdk" };
   }
   return undefined;
 }
 ```
-> Note: if Spike 0.3 yields a real key, return `{ package_name: "skillship_sdk" }` (or the verified key) and the empty-object branch becomes that object; update the rust test if the python `config` shape changes.
 
 - [ ] **Step 4: Run tests to verify they pass**
 
