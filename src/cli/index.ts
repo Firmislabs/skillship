@@ -5,6 +5,8 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { runInit } from "./init.js";
 import { runBuild } from "./build.js";
+import { parseFernLangs, assertSdkFlagsCompatible } from "./sdk-langs.js";
+import { runSdkWarm } from "./sdk.js";
 import { fetchGithubRepoBlobs } from "../resolvers/githubFetcher.js";
 
 function printConfigSummary(
@@ -63,21 +65,36 @@ function makeProgram(): Command {
     .option("--out <dir>", "output directory (defaults to <in>/skills)")
     .option("--product-id <id>", "override product node id")
     .option("--skip-sdk", "skip SDK package emission (faster builds)")
+    .option("--sdk <langs>", "also emit Python/Rust SDKs via Fern (requires Docker), e.g. python,rust")
     .action(async (opts: {
       in?: string;
       out?: string;
       productId?: string;
       skipSdk?: boolean;
+      sdk?: string;
     }) => {
       const inDir = opts.in ?? process.cwd();
       const outDir = opts.out ?? join(inDir, "skills");
+      const fernLangs = parseFernLangs(opts.sdk);
+      assertSdkFlagsCompatible(opts.skipSdk === true, fernLangs);
       const result = await runBuild({
         in: inDir,
         out: outDir,
         ...(opts.productId !== undefined ? { productId: opts.productId } : {}),
         ...(opts.skipSdk === true ? { skipSdk: true } : {}),
+        ...(fernLangs.length > 0 ? { fernLangs } : {}),
       });
       printBuildSummary(result.artifacts.map((a) => a.path), outDir);
+    });
+
+  const sdk = program
+    .command("sdk")
+    .description("Multi-language SDK helpers (Python/Rust via Fern)");
+  sdk
+    .command("warm")
+    .description("Pre-pull pinned generator images + Fern CLI for offline use")
+    .action(async () => {
+      await runSdkWarm();
     });
 
   return program;
