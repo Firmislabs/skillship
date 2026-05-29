@@ -73,7 +73,7 @@ const METHOD_VERB: Readonly<Record<string, string>> = {
 };
 
 /** A fully resolved placement for one operation: where it lives and what it's called. */
-interface Assignment {
+export interface Assignment {
   readonly op: OperationInfo;
   readonly namespace: string;
   readonly methodName: string;
@@ -99,7 +99,7 @@ export function buildNamespaceTree(
  * Both tree-building and resource emission consume this so the emitted leaf
  * names and the request-lookup keys can never drift apart.
  */
-function resolveAssignments(
+export function resolveAssignments(
   ops: readonly OperationInfo[],
   overlay: CodegenOverlay,
 ): Assignment[] {
