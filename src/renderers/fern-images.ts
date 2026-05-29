@@ -6,7 +6,9 @@ export type FernLang = "python" | "rust";
 export interface FernGeneratorPin {
   readonly name: string;   // generators.yml name
   readonly tag: string;    // exact published tag — used in generators.yml `version:`
-  readonly digest: string | null; // recorded sha256 for docker-pull + golden verification ONLY; NOT usable in generators.yml `version:` (Spike 0.1)
+  // NEVER use this in generators.yml `version:` — Fern rejects digests there
+  // ("Failed to parse version"). Recorded for docker-pull + golden verification (Spike 0.1).
+  readonly digest: string | null;
   readonly image: string;  // fully-qualified ref for `docker pull`
 }
 
@@ -15,7 +17,7 @@ export interface FernToolchainPins {
   readonly generators: Readonly<Record<FernLang, FernGeneratorPin>>;
 }
 
-export const FERN_PINS: FernToolchainPins = {
+export const FERN_PINS = {
   cliVersion: "5.40.0",
   generators: {
     python: {
@@ -31,7 +33,7 @@ export const FERN_PINS: FernToolchainPins = {
       image: "fernapi/fern-rust-sdk:0.36.8",
     },
   },
-};
+} satisfies FernToolchainPins;
 
 /**
  * Version string for generators.yml `version:` — ALWAYS the tag. Fern rejects a
