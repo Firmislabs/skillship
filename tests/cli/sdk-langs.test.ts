@@ -14,6 +14,14 @@ describe("parseFernLangs", () => {
   test("throws on unknown lang", () => {
     expect(() => parseFernLangs("go")).toThrow(/invalid --sdk language "go"; valid: python, rust/);
   });
+  test("tolerates trailing comma and surrounding whitespace", () => {
+    expect(parseFernLangs("python,")).toEqual(["python"]);
+    expect(parseFernLangs("python, rust")).toEqual(["python", "rust"]);
+    expect(parseFernLangs(" python , rust ")).toEqual(["python", "rust"]);
+  });
+  test("fails fast naming the first invalid lang in multi-value input", () => {
+    expect(() => parseFernLangs("python,go")).toThrow(/invalid --sdk language "go"/);
+  });
 });
 
 describe("assertSdkFlagsCompatible", () => {
@@ -23,5 +31,6 @@ describe("assertSdkFlagsCompatible", () => {
   test("allows each alone", () => {
     expect(() => assertSdkFlagsCompatible(true, [])).not.toThrow();
     expect(() => assertSdkFlagsCompatible(false, ["python"])).not.toThrow();
+    expect(() => assertSdkFlagsCompatible(false, [])).not.toThrow();
   });
 });
