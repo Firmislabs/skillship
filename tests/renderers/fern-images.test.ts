@@ -15,4 +15,10 @@ describe("FERN_PINS", () => {
     expect(pinnedVersion({ name: "x", tag: "1.0.0", digest: null, image: "x:1.0.0" }))
       .toBe("1.0.0");
   });
+  test("each pin's image equals `${name}:${tag}` (no desync)", () => {
+    for (const lang of Object.keys(FERN_PINS.generators) as Array<keyof typeof FERN_PINS.generators>) {
+      const pin = FERN_PINS.generators[lang];
+      expect(pin.image, `image desync for ${lang}`).toBe(`${pin.name}:${pin.tag}`);
+    }
+  });
 });
