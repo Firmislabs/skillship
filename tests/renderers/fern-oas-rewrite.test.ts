@@ -36,4 +36,36 @@ describe("buildFernOas", () => {
     // input string not mutated
     expect(JSON.parse(oas).paths["/emails"].get.operationId).toBe("op_aaa");
   });
+
+  test("passes through operations absent from the ops list without rewriting them", () => {
+    // OAS doc with two operations: one normal and one orphan.
+    const oasWithOrphan = JSON.stringify({
+      openapi: "3.1.0",
+      paths: {
+        "/emails": {
+          get: { operationId: "op_aaa", tags: ["emails"] },
+        },
+        "/orphan": {
+          get: { operationId: "op_orphan_xyz" },
+        },
+      },
+    });
+
+    // Extract all ops, then exclude the orphan so it is present in the doc
+    // but NOT in the assignment map — this is exactly the condition that triggers
+    // `if (!hit) continue` in buildFernOas.
+    const allOps = extractOperations(oasWithOrphan);
+    const opsSubset = allOps.filter((o) => o.operationId !== "op_orphan_xyz");
+
+    const out = buildFernOas(oasWithOrphan, opsSubset, CodegenOverlaySchema.parse({}));
+    const doc = JSON.parse(out);
+
+    // The normal op was in opsSubset → it MUST be rewritten.
+    expect(doc.paths["/emails"].get.operationId).toBe("emails_list");
+
+    // The orphan was NOT in opsSubset → it MUST be left untouched.
+    expect(doc.paths["/orphan"].get.operationId).toBe("op_orphan_xyz");
+    // tags should remain absent (undefined) since we never set them.
+    expect(doc.paths["/orphan"].get.tags).toBeUndefined();
+  });
 });
