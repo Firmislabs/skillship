@@ -9,10 +9,15 @@ on:
     paths:
       - "src/renderers/fern-*.ts"
       - "src/renderers/sdk-fern.ts"
+      - "src/renderers/sdk-fs.ts"
       - "src/sdk-plugins/resource-tree.ts"
       - "scripts/gen-sdk-goldens.mts"
       - "tests/renderers/sdk-fern-golden*"
       - ".github/workflows/sdk-docker.yml"
+
+concurrency:
+  group: sdk-docker-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   regen-and-verify:
