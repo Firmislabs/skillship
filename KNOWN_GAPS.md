@@ -124,3 +124,41 @@ The result is an SDK shaped like `client.v2.files()` / `client.api.something()` 
 **Root cause:** `src/renderers/sdk.ts` `runTypecheckGate` resolves the compiler as `join(process.cwd(), "node_modules", ".bin", "tsc")`. That couples the gate to the caller's CWD instead of to where `typescript` is actually installed (the skillship package's own dependency tree).
 
 **Resolution path:** resolve `tsc` relative to the installed `typescript` module, e.g. via `createRequire(import.meta.url).resolve("typescript/package.json")` then join to its `bin/tsc`, rather than `process.cwd()`. Add a regression test that runs `renderSdkPackage` with `process.cwd()` set to a directory lacking `node_modules` and asserts `typecheckExitCode === 0`. Affects `src/renderers/sdk.ts`; likely an `r-sdk-wedge/frozen` retag forward.
+
+---
+
+## Multi-language SDK — Python + Rust via Fern (2026-05-28)
+
+The opt-in `--sdk python,rust` build flag emits idiomatic Python/Rust SDKs via the Fern code generator (`fern generate --local`, pinned Docker images). The TypeScript SDK path (`renderSdkPackage`) is unchanged and remains the zero-dependency default. The shared engine (graph → synthetic OpenAPI → `resolveAssignments` naming) is reused; only the final per-language emission differs. Three Phase-0 spikes pinned the toolchain behavior; their outcomes are recorded below alongside the deferred surface.
+
+### Deferred output features (parity with TS Plan 2b)
+
+**Status:** Deferred. The Fern Python/Rust SDKs project the same operation surface the TS SDK does — methods, params, request bodies, bearer/basic/apiKey auth — but do NOT model overlay-driven pagination, retries, streaming, or webhooks. This mirrors the TS SDK's Plan 2b deferral (the codegen overlay's pagination/retry/streaming/webhook fields are not wired into any emitter yet). When Plan 2b wires those into the TS path, `src/renderers/fern-oas-rewrite.ts` is where the equivalent OAS-level hints (e.g. an `x-fern-pagination` extension) would be injected for the Python/Rust path.
+
+### Spike 0.1 — Fern accepts only a tag, not a digest, in `generators.yml`
+
+**Decision (locked):** `FERN_PINS.generators.*.tag` is what `generators.yml`'s `version:` field uses; `pinnedVersion()` returns the tag. The immutable `sha256` digest is recorded in `FERN_PINS` for `docker pull` + golden verification ONLY — it is NOT usable in `version:`. Five forms were tested against `fern-api@5.40.0`: `version: "<digest>"` → "Failed to parse version"; `name: "<repo@digest>"` → schema reject; `name`+`version` with a digest → "Unrecognized generator … specify ir-version" (Fern infers the IR version by name-registry lookup, which a digest defeats); `image:` expects an object, not a string. Only the blessed tag path works. Drift defense is therefore Fern's immutable per-version publishing + the Docker lane's byte-diff (`.github/workflows/sdk-docker.yml`), NOT digest pinning.
+
+**Also locked here:** `generators.yml` MUST carry an `api: { specs: [{ openapi: "openapi/openapi.json" }] }` block — without it Fern aborts with "Detected empty API definition." `FERN_PINS.cliVersion = "5.40.0"`; pinned generators: `fern-python-sdk@5.14.4`, `fern-rust-sdk@0.36.8`.
+
+### Spike 0.2 — snake_case operationIds are required (camelCase collapses)
+
+**Decision (locked):** `buildFernOas` rewrites each operation's `operationId` to `snake(namespace)_snake(methodName)` and `tags` to `[namespace]`, derived from the same `resolveAssignments` pass that drives the TS SDK (single source of truth, matched back to the doc by original `operationId`). Verified on the real REST + GraphQL fixtures: snake input → Python `def create_project` / Rust `fn create_project`; camelCase input → `createproject` (the bug). No `op_<hex>` leakage; namespace grouping works (`mutation/`, `query/`, `projects/`).
+
+**Edge case (accepted, NOT pre-engineered):** `camelToSnake` is not injective, so two distinct camelCase method names in one namespace could rarely collapse to the same snake `operationId`. Fern errors LOUDLY on a duplicate `operationId` if this ever happens — that is the signal. The fix when triggered is an overlay `rename` on one of the colliding operations; do NOT add speculative disambiguation to `fern-oas-rewrite.ts`.
+
+### Spike 0.3 — Python package layout is flat; `package_name` only sets docstring imports
+
+**Decision (locked):** `buildFernProject` sets `config: { package_name: "skillship_sdk" }` for the Python generator (Rust takes no config). In `local-file-system` output mode the Fern Python generator emits a FLAT package (`types/`, `core/`, `errors/`, `<namespace>/` at the output root) with NO `pyproject.toml` — `package_name`/`output_directory: project-root` do NOT nest the modules; `package_name` only rewrites the import root shown in docstring example code (`from skillship_sdk import …`). Python output is byte-deterministic across runs (`.fern/metadata.json` included).
+
+**Stdlib-shadow note:** the flat tree puts a `types/` package at the root, and `core/jsonable_encoder.py` does `from types import GeneratorType` (wanting stdlib). This only shadows if the package-root directory is placed DIRECTLY on `sys.path` (pathological); normal consumption (importing the package by name from its parent — how the sibling `sdk-python/` dir is consumed) resolves `from types import` to stdlib (verified). The Docker lane's Python compile gate runs `python3 -m compileall` from a NEUTRAL CWD (`/tmp`) as the guard. Consequently the golden marker file for the Python trees is `__init__.py`, not `pyproject.toml`.
+
+### Determinism & enforcement
+
+Output changes ONLY when `FERN_PINS` is bumped. Two complementary gates: (1) the pure-Node manifest lock (`tests/renderers/sdk-fern-golden.test.ts`) recomputes sha256 of every committed golden file vs the committed `<tree>.manifest.json` — runs in normal CI, no Docker, guards committed artifacts against hand-edits; (2) the Docker regen lane (`.github/workflows/sdk-docker.yml`, nightly + Fern-path PRs) regenerates with real Docker and byte-diffs vs the committed trees, then compile-gates (`cargo check`, `python -m compileall`). First run needs network for `npx fern-api@…` + the generator images; thereafter offline from cache (`skillship sdk warm`); `assertDockerAvailable` fails fast with the `warm` hint when Docker is down (the TS SDK still emits).
+
+### Minor follow-ups (non-blocking, surfaced in code review)
+
+- **`runBuild` length:** after wiring the Fern path and extracting `assembleSdkArtifacts`, `runBuild` (`src/cli/build.ts`) is ~54 lines — slightly over the 50-line guideline. The residual is pre-existing config/ingest/`writeAll` setup that predates this feature; a fuller sub-50 refactor (extracting the ingest-warning + setup) is a separate cleanup, out of scope here.
+- **`stageProject` duplication:** `tests/cli/build-sdk-fern-noop.test.ts` inlines a copy of `stageProject()` from `tests/cli/build-sdk.test.ts` (the plan chose inlining over coupling the new test to a refactor of the green existing test; the copy carries a "keep in sync" comment). Extracting a shared test-fixture helper is a candidate cleanup.
+- **Rust compile gate has no committed `Cargo.lock`:** the Fern-generated `Cargo.toml` files use semver ranges, so the Docker lane's `cargo check` resolves latest-compatible crates from crates.io on each run. Acceptable for a Fern-managed golden (Fern owns valid-Rust generation), but a `cargo check` failure may occasionally be a crates.io resolution issue rather than an SDK bug.
