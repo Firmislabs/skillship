@@ -1,0 +1,57 @@
+name: SDK Docker Lane
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 7 * * *" # nightly
+  pull_request:
+    branches: [main]
+    paths:
+      - "src/renderers/fern-*.ts"
+      - "src/renderers/sdk-fern.ts"
+      - "src/sdk-plugins/resource-tree.ts"
+      - "scripts/gen-sdk-goldens.mts"
+      - "tests/renderers/sdk-fern-golden*"
+      - ".github/workflows/sdk-docker.yml"
+
+jobs:
+  regen-and-verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - uses: dtolnay/rust-toolchain@stable
+      - run: npm ci
+      - run: npm run build
+
+      - name: Warm Fern images
+        run: node dist/cli/index.js sdk warm
+
+      - name: Regenerate Fern goldens
+        run: npx tsx scripts/gen-sdk-goldens.mts --langs python,rust
+
+      - name: Byte-diff regenerated trees vs committed goldens
+        run: |
+          git diff --exit-code -- \
+            tests/fixtures/golden/sdk-python-minimal \
+            tests/fixtures/golden/sdk-rust-minimal \
+            tests/fixtures/golden/sdk-python-graphql-minimal \
+            tests/fixtures/golden/sdk-rust-graphql-minimal \
+            'tests/fixtures/golden/*.manifest.json'
+
+      - name: Rust compile gate
+        run: |
+          for d in tests/fixtures/golden/sdk-rust-minimal tests/fixtures/golden/sdk-rust-graphql-minimal; do
+            cargo check --manifest-path "$d/Cargo.toml"
+          done
+
+      - name: Python compile gate (neutral CWD)
+        run: |
+          cd /tmp
+          for d in sdk-python-minimal sdk-python-graphql-minimal; do
+            python3 -m compileall -q "$GITHUB_WORKSPACE/tests/fixtures/golden/$d"
+          done
