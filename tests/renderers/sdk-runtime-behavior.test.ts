@@ -403,3 +403,36 @@ describe("tokenProvider auth", () => {
     expect(apiCall.authorization).toBe("Bearer provided-token");
   });
 });
+
+// ─── 9. status-exhaustion attempt-count suffix ──────────────────────────────
+
+describe("status-exhaustion attempt-count suffix", () => {
+  test("GET 500×(MAX_RETRIES+1) throws typed 5xx error with (after 3 attempts) suffix", async () => {
+    // MAX_RETRIES=2 default → loop runs attempts 0,1,2 → 3 total fetches, all 500.
+    const { sleep } = makeRecordedSleep();
+    const apiResponses = queue([
+      jsonResponse({ error: "internal" }, 500),
+      jsonResponse({ error: "internal" }, 500),
+      jsonResponse({ error: "internal" }, 500),
+    ]);
+    const { fetchImpl } = makeFetch({ token: () => tokenResponse("t"), api: apiResponses });
+    const client = makeClient({ fetch: fetchImpl, sleep });
+
+    let thrown: unknown = null;
+    try {
+      await client.request({ path: "/items", method: "GET" });
+    } catch (err) {
+      thrown = err;
+    }
+
+    expect(thrown).not.toBeNull();
+    expect(thrown).toBeInstanceOf(Error);
+    // Must be the typed 5xx error class, not a bare Error.
+    const { InternalServerError } = await import(
+      "../fixtures/golden/sdk-agent-minimal/src/errors.js"
+    );
+    expect(thrown).toBeInstanceOf(InternalServerError);
+    // The contract: exhausted status path must append the suffix.
+    expect((thrown as Error).message).toMatch(/after 3 attempts/);
+  });
+});

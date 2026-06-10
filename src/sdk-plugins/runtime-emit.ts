@@ -144,16 +144,16 @@ export function emitExecuteWithAuthRefresh(): string {
     "    for (;;) {",
     "      const { url, headers } = this.buildTarget(input);",
     "      await this.authManager.applyAuth(headers, url.searchParams);",
-    "      const res = await this.runRetryLoop(input.method, url, headers, input.body);",
+    "      const { res, attempts } = await this.runRetryLoop(input.method, url, headers, input.body);",
     "      if (res.status === 401 && !refreshed && this.authManager.onUnauthorized()) {",
     "        refreshed = true;",
     "        continue;",
     "      }",
-    "      return this.finalize(res);",
+    "      return this.finalize(res, attempts);",
     "    }",
     "  }",
     "",
-    "  private async finalize(res: Response): Promise<Response> {",
+    "  private async finalize(res: Response, attempts: number): Promise<Response> {",
     "    let out = res;",
     "    if (this.onResponse) out = await this.onResponse(out);",
     "    if (!out.ok) {",
@@ -162,9 +162,11 @@ export function emitExecuteWithAuthRefresh(): string {
     "      try { body = await out.clone().json(); } catch { try { body = await out.clone().text(); } catch { /* ignore */ } }",
     "      // A 401 that reaches finalize survived the single auth-refresh retry.",
     "      if (out.status === 401) {",
-    '        throw new UnauthorizedError({ status: 401, requestId, body, code: null, message: "API error 401" });',
+    '        const msg401 = attempts > 1 ? `API error 401 (after ${attempts} attempts)` : "API error 401";',
+    '        throw new UnauthorizedError({ status: 401, requestId, body, code: null, message: msg401 });',
     "      }",
-    "      throwForResponse({ status: out.status, requestId, body, code: null });",
+    "      const suffix = attempts > 1 ? ` (after ${attempts} attempts)` : \"\";",
+    "      throwForResponse({ status: out.status, requestId, body, code: null, suffix });",
     "    }",
     "    return out;",
     "  }",
@@ -174,10 +176,11 @@ export function emitExecuteWithAuthRefresh(): string {
 export function emitRequestLoop(): string {
   // Drives the retry counter. onResponse runs ONLY in finalize (on the returned
   // response), never here. A fresh Request is built every attempt so single-use
-  // bodies are re-serialized cleanly.
+  // bodies are re-serialized cleanly. Returns { res, attempts } so finalize can
+  // append the "(after N attempts)" suffix on status-exhaustion paths too.
   return [
     "",
-    "  private async runRetryLoop(method: string, url: URL, headers: Record<string, string>, body: unknown): Promise<Response> {",
+    "  private async runRetryLoop(method: string, url: URL, headers: Record<string, string>, body: unknown): Promise<{ res: Response; attempts: number }> {",
     "    const idempotent = IDEMPOTENT_METHODS.includes(method.toUpperCase());",
     "    let lastError: unknown = null;",
     "    let lastResponse: Response | null = null;",
@@ -198,7 +201,7 @@ export function emitRequestLoop(): string {
     "          await this.sleep(this.computeDelay(attempt, res));",
     "          continue;",
     "        }",
-    "        return res;",
+    "        return { res, attempts: attempt + 1 };",
     "      } catch (err) {",
     "        const timedOut = controller.signal.aborted;",
     '        lastError = timedOut ? new TimeoutError({ status: 0, requestId: null, body: null, code: "timeout", message: `Request timed out after ${this.timeout}ms` }) : err;',
@@ -211,7 +214,7 @@ export function emitRequestLoop(): string {
     "        if (timeoutId !== null) clearTimeout(timeoutId);",
     "      }",
     "    }",
-    "    if (lastResponse !== null) return lastResponse;",
+    "    if (lastResponse !== null) return { res: lastResponse, attempts: MAX_RETRIES + 1 };",
     "    throw this.exhausted(lastError, MAX_RETRIES + 1);",
     "  }",
   ].join("\n");

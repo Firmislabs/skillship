@@ -131,7 +131,7 @@ export class Client {
     for (;;) {
       const { url, headers } = this.buildTarget(input);
       await this.authManager.applyAuth(headers, url.searchParams);
-      const res = await this.runRetryLoop(
+      const { res, attempts } = await this.runRetryLoop(
         input.method,
         url,
         headers,
@@ -145,11 +145,11 @@ export class Client {
         refreshed = true;
         continue;
       }
-      return this.finalize(res);
+      return this.finalize(res, attempts);
     }
   }
 
-  private async finalize(res: Response): Promise<Response> {
+  private async finalize(res: Response, attempts: number): Promise<Response> {
     let out = res;
     if (this.onResponse) out = await this.onResponse(out);
     if (!out.ok) {
@@ -166,15 +166,26 @@ export class Client {
       }
       // A 401 that reaches finalize survived the single auth-refresh retry.
       if (out.status === 401) {
+        const msg401 =
+          attempts > 1
+            ? `API error 401 (after ${attempts} attempts)`
+            : "API error 401";
         throw new UnauthorizedError({
           status: 401,
           requestId,
           body,
           code: null,
-          message: "API error 401",
+          message: msg401,
         });
       }
-      throwForResponse({ status: out.status, requestId, body, code: null });
+      const suffix = attempts > 1 ? ` (after ${attempts} attempts)` : "";
+      throwForResponse({
+        status: out.status,
+        requestId,
+        body,
+        code: null,
+        suffix,
+      });
     }
     return out;
   }
@@ -184,7 +195,7 @@ export class Client {
     url: URL,
     headers: Record<string, string>,
     body: unknown,
-  ): Promise<Response> {
+  ): Promise<{ res: Response; attempts: number }> {
     const idempotent = IDEMPOTENT_METHODS.includes(method.toUpperCase());
     let lastError: unknown = null;
     let lastResponse: Response | null = null;
@@ -211,7 +222,7 @@ export class Client {
           await this.sleep(this.computeDelay(attempt, res));
           continue;
         }
-        return res;
+        return { res, attempts: attempt + 1 };
       } catch (err) {
         const timedOut = controller.signal.aborted;
         lastError = timedOut
@@ -232,7 +243,8 @@ export class Client {
         if (timeoutId !== null) clearTimeout(timeoutId);
       }
     }
-    if (lastResponse !== null) return lastResponse;
+    if (lastResponse !== null)
+      return { res: lastResponse, attempts: MAX_RETRIES + 1 };
     throw this.exhausted(lastError, MAX_RETRIES + 1);
   }
 

@@ -96,8 +96,9 @@ export function throwForResponse(args: {
   requestId: string | null;
   body: unknown;
   code: string | null;
+  suffix?: string;
 }): never {
-  const message = "API error " + String(args.status);
+  const message = "API error " + String(args.status) + (args.suffix ?? "");
   switch (args.status) {
     case 400:
       throw new BadRequestError({ ...args, message });

@@ -36,8 +36,8 @@ export class TimeoutError extends APIError { constructor(a: ConstructorParameter
 export class AuthError extends APIError { constructor(message: string) { super({ status: 0, requestId: null, body: null, code: "auth_error", message }); this.name = "AuthError"; } }
 export class ConfigError extends APIError { constructor(message: string) { super({ status: 0, requestId: null, body: null, code: "config_error", message }); this.name = "ConfigError"; } }
 
-export function throwForResponse(args: { status: number; requestId: string | null; body: unknown; code: string | null }): never {
-  const message = "API error " + String(args.status);
+export function throwForResponse(args: { status: number; requestId: string | null; body: unknown; code: string | null; suffix?: string }): never {
+  const message = "API error " + String(args.status) + (args.suffix ?? "");
   switch (args.status) {
     case 400: throw new BadRequestError({ ...args, message });
     case 401: throw new UnauthorizedError({ ...args, message });

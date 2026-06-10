@@ -155,8 +155,14 @@ describe("runtime plugin — retry loop semantics", () => {
 
   test("exhaustion rethrows the final typed error with (after N attempts) suffix", () => {
     const code = generateRuntimeModule(bearerOnly, DEFAULT_RETRIES);
+    // Network/timeout exhaustion path (exhausted() helper).
     expect(code).toContain("after ");
     expect(code).toContain("attempts");
+    // Status-exhaustion path: finalize receives attempts count and appends suffix
+    // via throwForResponse({ ..., suffix }) — exercises GET 500×(MAX_RETRIES+1).
+    expect(code).toMatch(/suffix.*after.*attempts|after.*attempts.*suffix/s);
+    expect(code).toContain("throwForResponse({");
+    expect(code).toContain("suffix");
   });
 
   test("uses injected sleep (this.sleep) — no real timers in the loop", () => {
