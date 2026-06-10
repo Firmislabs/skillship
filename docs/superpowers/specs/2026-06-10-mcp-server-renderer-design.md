@@ -124,9 +124,12 @@ export interface CatalogEntry {
 `id` uses the same `snake(namespace)_snake(methodName)` convention as the Fern
 rewrite, so the names an agent sees through MCP match the Python/Rust SDK
 method names. Params derive from the synthetic OAS operation (path/query
-params + body presence; body params from the OAS requestBody where present,
-else a single `body` object param). Search text fields are pre-lowercased at
-generation time for deterministic matching.
+params; the synthetic OAS emits only stub body schemas, so every op with a
+requestBody gets a single opaque `body` object param — describe documents it
+as such; named body fields are future work tied to request-body projection).
+The interface gains a `searchText: string` field — the pre-lowercased
+concatenation used by the scorer — while `id`/`summary`/`description` keep
+original casing for describe output.
 
 ### 4.4 The protocol module (`mcp-protocol.ts`, generated, static)
 
@@ -180,8 +183,19 @@ export function createGateway(deps?: GatewayDeps): (msg: JsonRpcRequest) => Prom
   byte budget, default 50 KB, with a truncation notice). SDK typed errors
   (status, message, attempt counts) → isError text; secrets never echoed
   (guaranteed by Spec A's error contracts).
-- **baseUrl** resolution: baked default from the synthetic OAS/product config
-  at generation time; `<PREFIX>_BASE_URL` env override.
+- **baseUrl** resolution (chain-closure — verified the synthetic OAS has NO
+  `servers` block and the overlay no base-URL field): `RenderSdkInput` gains
+  `baseUrl: string | null`, plumbed from `src/cli/build.ts`, which reads the
+  HTTP surface's `base_url` claim from the graph (the same claim `mcpJson.ts`
+  reads for MCP surfaces — extend the query to HTTP surfaces or read it
+  directly; build.ts has DB access). The catalog bakes it as a literal default.
+  Resolution order at runtime: `<PREFIX>_BASE_URL` env override > baked
+  default > null. When null (docs-only inputs may carry no base_url claim),
+  search/describe still work and `invoke_operation` returns an isError result
+  naming `<PREFIX>_BASE_URL` as required. Projecting a `servers` block into the
+  synthetic OAS (which would also serve Fern environments) is recorded as
+  future work in KNOWN_GAPS — out of scope here to avoid a three-language
+  golden cascade.
 
 ### 4.6 Launcher + `.mcp.json`
 
@@ -263,7 +277,10 @@ mode; rate limiting beyond the SDK's retries.
 6. Full suite green (`npm test` exit 0), typecheck green, build green.
 7. KNOWN_GAPS records: protocol-subset conformance ownership, Node-version
    floor for the no-build flow (spike S1 outcome), annotation coverage
-   (heuristic fallback when the graph has no claims), response truncation.
+   (heuristic fallback when the graph has no claims), response truncation,
+   npm-publish posture (`.npmignore` excludes `src/`, so a published package's
+   `bin/mcp.js` cannot re-exec the TS source — publishing remains out of scope
+   and unbuilt), and the future-work `servers`-block projection (§4.5).
 
 ## 7. Plan-phase spike (sequence FIRST, fold outcome into the plan)
 
@@ -274,5 +291,15 @@ mode; rate limiting beyond the SDK's retries.
   (c) require zero installs. Verify the generated module set is fully
   "erasable TS" (no enums/parameter-properties/namespaces — strip-types-safe);
   if any Spec A generated module violates erasability, the spike reports it
-  and the plan adds the minimal emitter fix. Outcome: exact launcher text +
-  the documented Node floor + a `skipIf` guard expression for the smoke test.
+  and the plan adds the minimal emitter fix. The spike also verifies the
+  generated package's tsc gate constraints for the protocol module: the golden
+  tsconfig is DOM-lib, zero-dep, no `@types/node` — stdin/stdout/exit need a
+  wider `process`/stream ambient declaration than Spec A's narrow
+  `{ env }` pattern (`src/auth.ts:7`); the spike determines the minimal ambient
+  block that passes the gate. Outcome: exact launcher text + the documented
+  Node floor + a `skipIf` guard expression for the smoke test + the ambient
+  declaration recipe. Note for the plan: the package.json/README templating is
+  static substitution today — conditional `bin`/README sections for
+  `--skip-mcp` need a small conditional-templating capability in
+  `src/renderers/sdk-templates/render.ts` (same pattern as the conditional
+  auth/pagination sections).
