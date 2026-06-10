@@ -15,6 +15,8 @@ import type {
   Op30E7D79D32E7C322Responses,
   Op4182B9B8145F98B7Data,
   Op4182B9B8145F98B7Responses,
+  OpE64E8Ca3293F7D36Data,
+  OpE64E8Ca3293F7D36Responses,
 } from "./types.gen.js";
 
 export type Options<
@@ -34,6 +36,22 @@ export type Options<
    */
   meta?: Record<string, unknown>;
 };
+
+/**
+ * Returns events for the account. Paginated using cursor and per_page. Supports filtering by type.
+ */
+export const opE64E8Ca3293F7D36 = <ThrowOnError extends boolean = false>(
+  options?: Options<OpE64E8Ca3293F7D36Data, ThrowOnError>,
+) =>
+  (options?.client ?? client).get<
+    OpE64E8Ca3293F7D36Responses,
+    unknown,
+    ThrowOnError
+  >({
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/events",
+    ...options,
+  });
 
 /**
  * List items (cursor-paginated)

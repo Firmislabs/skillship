@@ -141,6 +141,50 @@ paths:
                       properties:
                         message:
                           type: string
+  /events:
+    get:
+      operationId: listEvents
+      description: >-
+        Returns events for the account. Paginated using cursor and per_page.
+        Supports filtering by type.
+      parameters:
+        - name: cursor
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Opaque pagination cursor.
+        - name: per_page
+          in: query
+          required: false
+          schema:
+            oneOf:
+              - type: integer
+              - type: string
+                enum:
+                  - all
+          description: Number of results per page, or "all".
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      results:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            id:
+                              type: string
+                      next_cursor:
+                        type: string
+                        nullable: true
 components:
   securitySchemes:
     agentOauth:

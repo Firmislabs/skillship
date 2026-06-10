@@ -27,6 +27,14 @@ ls skills/supabase-com/
 # SKILL.md  references/  .mcp.json  llms.txt  llms-full.txt
 ```
 
+If discovery misses a spec link (e.g. a docs-page URL), add it manually:
+
+```bash
+# Fetch, sniff content type, and append to .skillship/config.yaml in one step:
+npx github:firmislabs/skillship add-source https://example.com/api/openapi.yaml
+# Use --surface to override the auto-sniff: add-source <url> --surface rest
+```
+
 Commit `skills/` to your repo — it's what Claude consumes.
 
 ## Demo

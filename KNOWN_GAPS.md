@@ -241,3 +241,45 @@ The emitted `src/mcp-server.ts` artifact is 366 lines for the graphql-minimal go
 - **Named body params (request-body projection):** the catalog emits a single opaque `body: object` parameter for any operation with a `requestBody` (Gap 2's projection covers the OAS level; the catalog does not decompose the body schema into named fields). Callers pass the entire body as `args.body`. Named field projection requires full `$ref` resolution of component schemas — future work tracked with Gap 2.
 - **Search over enriched descriptions:** the `search_operations` scorer uses the summary and description as emitted in the synthetic OAS at build time. LLM-enriched summaries (the enrich stage) are captured in the graph but only reach the OAS if they overwrite the claim that feeds `oas.ts`; no separate enrichment pass feeds the catalog. When the enrich stage is wired end-to-end, the catalog will benefit automatically because it reads from the same synthetic OAS.
 - **`deps.env` does not govern auth:** `GatewayDeps.env` in the emitted gateway controls base-URL resolution and the `<PREFIX>_MCP_ALLOW_DESTRUCTIVE` override only. Auth credential resolution always calls `resolveAuthFromEnv` from the SDK's `auth.ts`, which reads the real `process.env` unconditionally. Tests that inject `deps.env` cannot override credentials without also setting `process.env` (or patching the SDK's auth module). This is intentional (auth must read real env for security) but differs from the design spec's implication that `deps.env` is the single injection point. Documented in the emitted `buildHeader` comment (`src/sdk-plugins/mcp-server-emit.ts` lines 36-38).
+
+---
+
+## Real-world hardening (2026-06-11)
+
+All four gaps from the Listmonk dogfood (Spec C, design 2026-06-11) are now implemented. Residual asymmetries and footguns are documented below.
+
+### Auth synthesis + valuePrefix (Spec C §2.1) — closed
+
+`applyOverlayToDescriptor` in `src/renderers/sdk-utils.ts` now synthesizes an auth descriptor when `overlay.auth.mode` is set and no matching descriptor exists in the OAS (the zero-schemes case). `apiKey` synthesis uses `overlay.auth.in`, `overlay.auth.name` (default `X-API-Key`), and `overlay.auth.valuePrefix` (default `""`). `bearer` synthesis creates `{ kind: "bearer", id: "overlay_bearer" }`. The auth emitter (`auth-emit.ts`) honors `valuePrefix` conditionally — empty prefix emits the existing line verbatim, so goldens without valuePrefix are byte-stable. Env pickup derives automatically from the synthesized descriptor. The `AuthSchemeDescriptor` type gains `readonly valuePrefix?: string`. The `valuePrefix` is emitted via `JSON.stringify` so special characters and backslashes escape cleanly in the generated source.
+
+**Gap:** `valuePrefix` applies to `apiKey` mode only. `bearer` mode has a fixed `"Bearer "` prefix per RFC. `oauth2-client-credentials` does not use a value prefix (the token is injected as `Authorization: Bearer <access_token>` by the token refresh loop).
+
+### Envelope pagination — one-level descent only (Spec C §2.3) — closed
+
+`detectPagination` (`src/renderers/pagination-detect.ts`) now descends into a one-level envelope: if the 200-response schema has exactly one object-typed property whose schema has exactly one array property, it emits dotted paths (`data.results`, `data.next_cursor`). The `getPath` helper in the emitted `pagination.ts` engine reads dotted paths safely (literal-key-first, then split-and-walk).
+
+**Footgun — tier-2 product-wide style on envelope APIs:** when the overlay uses `pagination.style` (product-wide) without an explicit `fields.itemsField`, the auto-detect tier fires only at operation level. For envelope APIs where each op's response has a different top-level key, the product-wide style may not fire at all (ambiguity guard). The fix is an explicit dotted `fields.itemsField` in the overlay.
+
+**Footgun — one-level descent only:** responses with more than one object-typed property at the top level (ambiguous envelope), or with the array nested more than one level deep, do not auto-detect. Use an explicit overlay `fields.itemsField` with a dotted path.
+
+**Footgun — dotted property-name guard:** if a response body has a literal property whose name contains a `.` (e.g. `"data.results": [...]`), `getPath` tries the literal key first (via `hasOwnProperty`) before splitting. This means the behavior is correct for both cases but may be surprising when debugging.
+
+### oneOf integer-branch preference (Spec C §2.3) — closed
+
+`src/extractors/openapi3-ops.ts` param type claim: when a param schema has `oneOf`/`anyOf` and any branch is `integer`, the claim type is `integer`. The overlay path (criterion-3 override) remains for specs where integer is NOT the right paginator.
+
+### `skillship add-source` (Spec C §2.2) — closed
+
+`src/cli/add-source.ts` fetches a URL, content-sniffs (reusing `inferSpecContentType`), writes `.skillship/sources/<sha>.<ext>`, and rewrites `.skillship/config.yaml` (parse-validate-rewrite — never raw-append). Replace semantics when URL already exists.
+
+**Gap — binary-unknown requires `--surface`:** when the content sniffer cannot classify a fetched document (e.g. a binary or non-text response), `add-source` exits 1 with an actionable message requesting `--surface <rest|docs|...>`. Pure binary surfaces are not supported without an explicit flag.
+
+**Gap — orphaned cache files on replace:** when `add-source` replaces an existing URL entry in the config (refresh semantics), the old `.skillship/sources/<sha>.<ext>` file is NOT deleted. The orphaned file is inert (never loaded unless the sha appears in the config), but accumulates on repeated refreshes. A `skillship prune-sources` command is future work.
+
+### Catalog summary fallback (Spec C §2.4) — closed
+
+`computeCatalogEntries` (`src/sdk-plugins/mcp-catalog.ts`) now derives `summary` as: (1) `op.summary` when present; (2) first sentence of `op.description` (split on `/[.!?]\s/`, capped to 100 chars, appended with `"…"` when truncated); (3) `""`. The original `description` field is unchanged.
+
+### openapi3-ops.ts line budget — split queued
+
+`src/extractors/openapi3-ops.ts` is at ~535 lines (above the 300-line house rule). The split is queued: param-claims emission is a natural extraction boundary → sibling file `openapi3-ops-params.ts`. Deferred to avoid a non-hardening golden cascade; recorded here for the next maintainer.

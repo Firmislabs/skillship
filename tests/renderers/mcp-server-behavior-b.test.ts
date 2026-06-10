@@ -215,3 +215,60 @@ describe("12. retry loop through invoke: 429 + Retry-After:0 → success", () =>
     expect(apiCalls).toHaveLength(2);
   });
 });
+
+// ─── 13. events op: describe shows fallback summary ──────────────────────────
+
+describe("13. events op — describe_operation shows fallback summary from description", () => {
+  test("describe events_list returns the fallback summary (first sentence of description)", async () => {
+    const { fetchImpl } = makeFetch(() => tokenResponse(), () => jsonResponse({}));
+    const handler = makeGateway({ fetchImpl, env: {} });
+    const res = await callGateway(handler, {
+      jsonrpc: "2.0", id: 1, method: "tools/call",
+      params: { name: "describe_operation", arguments: { id: "events_list" } },
+    });
+    const result = res.result as { isError?: boolean; content: Array<{ text: string }> };
+    expect(result.isError).toBeFalsy();
+    const text = result.content[0]!.text;
+    // Fallback summary: first sentence of the description
+    expect(text).toContain("Returns events for the account.");
+    // The id must be present
+    expect(text).toContain("events_list");
+  });
+});
+
+// ─── 14. events op: invoke routes cursor + per_page query params ──────────────
+
+describe("14. events op — invoke routes cursor and per_page as query params", () => {
+  test("invoke_operation events_list with cursor and per_page — fake fetch sees them in URL", async () => {
+    vi.stubEnv("AGENTMIN_CLIENT_ID", "cid-events");
+    vi.stubEnv("AGENTMIN_CLIENT_SECRET", "csec-events");
+
+    const recordedUrls: string[] = [];
+    const fetchImpl = (async (
+      input: Request | string | URL,
+      init?: RequestInit,
+    ): Promise<Response> => {
+      const req = input instanceof Request ? input : new Request(String(input), init);
+      recordedUrls.push(req.url);
+      if (req.url === TOKEN_URL) {
+        return tokenResponse("tok-events");
+      }
+      return jsonResponse({ data: { results: [{ id: "evt-1" }], next_cursor: null } });
+    }) as typeof fetch;
+
+    const handler = makeGateway({ fetchImpl, env: {} });
+    await callGateway(handler, {
+      jsonrpc: "2.0", id: 1, method: "tools/call",
+      params: {
+        name: "invoke_operation",
+        arguments: { id: "events_list", args: { cursor: "cur-abc", per_page: 25 } },
+      },
+    });
+
+    const apiCalls = recordedUrls.filter((u) => u !== TOKEN_URL);
+    expect(apiCalls.length).toBeGreaterThan(0);
+    const url = apiCalls[0]!;
+    expect(url).toContain("cursor=cur-abc");
+    expect(url).toContain("per_page=25");
+  });
+});

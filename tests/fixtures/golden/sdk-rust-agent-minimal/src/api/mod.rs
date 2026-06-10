@@ -11,5 +11,5 @@
 pub mod resources;
 pub mod types;
 
-pub use resources::{ApiClient, ItemsClient, LogsClient, OauthClient};
+pub use resources::{ApiClient, EventsClient, ItemsClient, LogsClient, OauthClient};
 pub use types::*;

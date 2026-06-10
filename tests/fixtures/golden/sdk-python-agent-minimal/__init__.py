@@ -6,9 +6,10 @@ import typing
 from importlib import import_module
 
 if typing.TYPE_CHECKING:
-    from . import items, logs, oauth
+    from . import events, items, logs, oauth
     from ._default_clients import DefaultAioHttpClient, DefaultAsyncHttpxClient
     from .client import AsyncSkillshipApi, SkillshipApi
+    from .events import EventsListResponse, EventsListResponseData, EventsListResponseDataResultsItem
     from .items import ItemsCreateResponse, ItemsListResponse, ItemsListResponseDataItem
     from .logs import LogsListResponse, LogsListResponseDataItem
     from .oauth import OauthTokenResponse
@@ -16,6 +17,9 @@ _dynamic_imports: typing.Dict[str, str] = {
     "AsyncSkillshipApi": ".client",
     "DefaultAioHttpClient": "._default_clients",
     "DefaultAsyncHttpxClient": "._default_clients",
+    "EventsListResponse": ".events",
+    "EventsListResponseData": ".events",
+    "EventsListResponseDataResultsItem": ".events",
     "ItemsCreateResponse": ".items",
     "ItemsListResponse": ".items",
     "ItemsListResponseDataItem": ".items",
@@ -23,6 +27,7 @@ _dynamic_imports: typing.Dict[str, str] = {
     "LogsListResponseDataItem": ".logs",
     "OauthTokenResponse": ".oauth",
     "SkillshipApi": ".client",
+    "events": ".events",
     "items": ".items",
     "logs": ".logs",
     "oauth": ".oauth",
@@ -54,6 +59,9 @@ __all__ = [
     "AsyncSkillshipApi",
     "DefaultAioHttpClient",
     "DefaultAsyncHttpxClient",
+    "EventsListResponse",
+    "EventsListResponseData",
+    "EventsListResponseDataResultsItem",
     "ItemsCreateResponse",
     "ItemsListResponse",
     "ItemsListResponseDataItem",
@@ -61,6 +69,7 @@ __all__ = [
     "LogsListResponseDataItem",
     "OauthTokenResponse",
     "SkillshipApi",
+    "events",
     "items",
     "logs",
     "oauth",

@@ -315,6 +315,116 @@ describe("computeCatalogEntries — params mapping", () => {
 });
 
 // ============================
+// SUMMARY FALLBACK (C4)
+// ============================
+
+describe("computeCatalogEntries — summary fallback from description", () => {
+  test("summary present → summary field is op.summary verbatim (fallback not used)", () => {
+    const oasJson = makeOas([{
+      path: "/items",
+      method: "get",
+      operationId: "listItems",
+      summary: "List items",
+      description: "Returns a list. All items included.",
+    }]);
+    const ops = extractOperations(oasJson);
+    const entries = computeCatalogEntries(ops, oasJson, EMPTY_OVERLAY);
+    const entry = entries.find((e) => e.id === "items_list")!;
+    // summary wins; first sentence of description is NOT used
+    expect(entry.summary).toBe("List items");
+    // description remains unchanged
+    expect(entry.description).toBe("Returns a list. All items included.");
+  });
+
+  test("no summary but description present → summary is first sentence of description", () => {
+    const oasJson = makeOas([{
+      path: "/items",
+      method: "get",
+      operationId: "listItems",
+      description: "Returns a list of items. Paginated by cursor.",
+    }]);
+    const ops = extractOperations(oasJson);
+    const entries = computeCatalogEntries(ops, oasJson, EMPTY_OVERLAY);
+    const entry = entries.find((e) => e.id === "items_list")!;
+    // first sentence (up to the '. ' boundary)
+    expect(entry.summary).toBe("Returns a list of items.");
+    // description is unchanged
+    expect(entry.description).toBe("Returns a list of items. Paginated by cursor.");
+  });
+
+  test("no summary, description with exclamation sentence boundary → first sentence extracted", () => {
+    const oasJson = makeOas([{
+      path: "/items",
+      method: "get",
+      operationId: "listItems",
+      description: "Fetch all items! Use cursor for pagination.",
+    }]);
+    const ops = extractOperations(oasJson);
+    const entries = computeCatalogEntries(ops, oasJson, EMPTY_OVERLAY);
+    const entry = entries.find((e) => e.id === "items_list")!;
+    expect(entry.summary).toBe("Fetch all items!");
+    expect(entry.description).toBe("Fetch all items! Use cursor for pagination.");
+  });
+
+  test("no summary, description with question sentence boundary → first sentence extracted", () => {
+    const oasJson = makeOas([{
+      path: "/items",
+      method: "get",
+      operationId: "listItems",
+      description: "Looking for items? Use the filter param.",
+    }]);
+    const ops = extractOperations(oasJson);
+    const entries = computeCatalogEntries(ops, oasJson, EMPTY_OVERLAY);
+    const entry = entries.find((e) => e.id === "items_list")!;
+    expect(entry.summary).toBe("Looking for items?");
+    expect(entry.description).toBe("Looking for items? Use the filter param.");
+  });
+
+  test("first sentence longer than 100 chars → truncated to 100 chars with ellipsis appended", () => {
+    // 110-char first sentence, then a second sentence
+    const longSentence = "A".repeat(105);
+    const oasJson = makeOas([{
+      path: "/items",
+      method: "get",
+      operationId: "listItems",
+      description: `${longSentence}. Second sentence.`,
+    }]);
+    const ops = extractOperations(oasJson);
+    const entries = computeCatalogEntries(ops, oasJson, EMPTY_OVERLAY);
+    const entry = entries.find((e) => e.id === "items_list")!;
+    expect(entry.summary).toBe("A".repeat(100) + "…");
+    expect(entry.summary.length).toBe(101); // 100 chars + 1 ellipsis char
+    // description unchanged
+    expect(entry.description).toBe(`${longSentence}. Second sentence.`);
+  });
+
+  test("first sentence exactly 100 chars → no ellipsis", () => {
+    const exactSentence = "A".repeat(99) + ".";
+    const oasJson = makeOas([{
+      path: "/items",
+      method: "get",
+      operationId: "listItems",
+      description: `${exactSentence} Second sentence.`,
+    }]);
+    const ops = extractOperations(oasJson);
+    const entries = computeCatalogEntries(ops, oasJson, EMPTY_OVERLAY);
+    const entry = entries.find((e) => e.id === "items_list")!;
+    // 100 chars → no truncation
+    expect(entry.summary).toBe(exactSentence);
+    expect(entry.summary.length).toBe(100);
+  });
+
+  test("both absent → summary is empty string", () => {
+    const oasJson = makeOas([{ path: "/items", method: "get", operationId: "listItems" }]);
+    const ops = extractOperations(oasJson);
+    const entries = computeCatalogEntries(ops, oasJson, EMPTY_OVERLAY);
+    const entry = entries.find((e) => e.id === "items_list")!;
+    expect(entry.summary).toBe("");
+    expect(entry.description).toBe("");
+  });
+});
+
+// ============================
 // SORTED IDS
 // ============================
 

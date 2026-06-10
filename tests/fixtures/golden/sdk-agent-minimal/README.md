@@ -87,12 +87,12 @@ import { Client, attachResources } from "@skillship/agentmin-sdk";
 const client = attachResources(new Client({ baseUrl: "https://api.example.com", auth: { /* ... */ } }));
 
 // Iterate all pages — the generator fetches the next page on demand.
-for await (const page of client.items.listPages()) {
+for await (const page of client.events.listPages()) {
   console.log(page);
 }
 ```
 
-Pass `{ query: { limit: N } }` to control page size.
+Pass `{ query: { per_page: N } }` to control page size.
 
 ## Use with Claude Code
 

@@ -9,6 +9,23 @@ interface PaginatePlan {
   opId: string;
 }
 
+function getPath(obj: unknown, path: string): unknown {
+  if (
+    typeof obj === "object" &&
+    obj !== null &&
+    Object.prototype.hasOwnProperty.call(obj, path)
+  ) {
+    return (obj as Record<string, unknown>)[path];
+  }
+  const parts = path.split(".");
+  let cur: unknown = obj;
+  for (const part of parts) {
+    if (cur === null || typeof cur !== "object") return undefined;
+    cur = (cur as Record<string, unknown>)[part];
+  }
+  return cur;
+}
+
 async function* paginateCursor<Item>(
   fetchPage: (pageArgs: Record<string, unknown>) => Promise<unknown>,
   plan: PaginatePlan,
@@ -19,8 +36,7 @@ async function* paginateCursor<Item>(
       cursor != null ? { [plan.requestParam]: cursor } : {};
     const body = await fetchPage(pageArgs);
     if (typeof body !== "object" || body === null) return;
-    const record = body as Record<string, unknown>;
-    const items = record[plan.itemsField];
+    const items = getPath(body, plan.itemsField);
     if (!Array.isArray(items)) {
       throw new TypeError(
         `paginate(${plan.opId}): response body missing array field "${plan.itemsField}"`,
@@ -30,7 +46,7 @@ async function* paginateCursor<Item>(
     for (const item of items) yield item as Item;
     const nextField = plan.nextField;
     if (nextField === null) return;
-    const next = record[nextField];
+    const next = getPath(body, nextField);
     if (next == null || next === "") return;
     if (next === cursor) return;
     cursor = next;
@@ -47,8 +63,7 @@ async function* paginateOffsetOrPage<Item>(
     const pageArgs: Record<string, unknown> = { [plan.requestParam]: counter };
     const body = await fetchPage(pageArgs);
     if (typeof body !== "object" || body === null) return;
-    const record = body as Record<string, unknown>;
-    const items = record[plan.itemsField];
+    const items = getPath(body, plan.itemsField);
     if (!Array.isArray(items)) {
       throw new TypeError(
         `paginate(${plan.opId}): response body missing array field "${plan.itemsField}"`,

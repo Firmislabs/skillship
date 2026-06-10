@@ -15,9 +15,9 @@
 //!     };
 //!     let client = ApiClient::new(config).expect("Failed to build client");
 //!     client
-//!         .items
+//!         .events
 //!         .list(
-//!             &ItemsListQueryRequest {
+//!             &EventsListQueryRequest {
 //!                 ..Default::default()
 //!             },
 //!             None,

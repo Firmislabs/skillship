@@ -25,6 +25,35 @@ export interface CatalogEntry {
 
 export const CATALOG: readonly CatalogEntry[] = [
   {
+    id: "events_list",
+    accessor: ["events", "list"] as const,
+    httpMethod: "GET",
+    path: "/events",
+    summary: "Returns events for the account.",
+    description:
+      "Returns events for the account. Paginated using cursor and per_page. Supports filtering by type.",
+    params: [
+      {
+        name: "cursor",
+        in: "query",
+        type: "string",
+        required: false,
+      },
+      {
+        name: "per_page",
+        in: "query",
+        type: "integer",
+        required: false,
+      },
+    ],
+    annotations: {
+      destructive: false,
+      readOnly: true,
+      idempotent: true,
+    },
+    paginated: true,
+  },
+  {
     id: "items_create",
     accessor: ["items", "create"] as const,
     httpMethod: "POST",

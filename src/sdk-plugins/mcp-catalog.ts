@@ -164,6 +164,35 @@ function findOasOp(doc: OasDoc, op: OperationInfo): OasOperation | null {
   return oasOp;
 }
 
+// ---- Summary fallback ----
+
+const SENTENCE_BOUNDARY = /[.!?]\s/;
+
+/**
+ * Derives the catalog `summary` field:
+ *   1. op.summary when present and non-empty.
+ *   2. First sentence of op.description (split on /[.!?]\s/), capped at 100
+ *      chars with "…" appended when truncated.
+ *   3. "" when both are absent.
+ * `description` is always returned verbatim (unchanged).
+ */
+function deriveSummary(rawSummary: string | undefined, rawDescription: string | undefined): string {
+  if (typeof rawSummary === "string" && rawSummary.length > 0) {
+    return rawSummary;
+  }
+  if (typeof rawDescription !== "string" || rawDescription.length === 0) {
+    return "";
+  }
+  const m = SENTENCE_BOUNDARY.exec(rawDescription);
+  const firstSentence = m !== null
+    ? rawDescription.slice(0, m.index + 1)
+    : rawDescription;
+  if (firstSentence.length <= 100) {
+    return firstSentence;
+  }
+  return firstSentence.slice(0, 100) + "…";
+}
+
 // ---- Main computation ----
 
 /**
@@ -185,8 +214,9 @@ export function computeCatalogEntries(
     const { op, namespace, methodName } = a;
     const id = `${camelToSnake(namespace)}_${camelToSnake(methodName)}`;
     const oasOp = findOasOp(doc, op);
-    const summary = typeof oasOp?.summary === "string" ? oasOp.summary : "";
+    const rawSummary = typeof oasOp?.summary === "string" ? oasOp.summary : undefined;
     const description = typeof oasOp?.description === "string" ? oasOp.description : "";
+    const summary = deriveSummary(rawSummary, description === "" ? undefined : description);
     const params = oasOp ? extractParams(oasOp) : [];
     const annotations = computeAnnotations(op.method, oasOp ?? {});
     const paginated = plans.has(op.operationId);

@@ -9,6 +9,7 @@ from .core.client_wrapper import AsyncClientWrapper, SyncClientWrapper
 from .core.logging import LogConfig, Logger
 
 if typing.TYPE_CHECKING:
+    from .events.client import AsyncEventsClient, EventsClient
     from .items.client import AsyncItemsClient, ItemsClient
     from .logs.client import AsyncLogsClient, LogsClient
     from .oauth.client import AsyncOauthClient, OauthClient
@@ -81,9 +82,18 @@ class SkillshipApi:
             max_retries=_defaulted_max_retries,
             logging=logging,
         )
+        self._events: typing.Optional[EventsClient] = None
         self._items: typing.Optional[ItemsClient] = None
         self._logs: typing.Optional[LogsClient] = None
         self._oauth: typing.Optional[OauthClient] = None
+
+    @property
+    def events(self):
+        if self._events is None:
+            from .events.client import EventsClient  # noqa: E402
+
+            self._events = EventsClient(client_wrapper=self._client_wrapper)
+        return self._events
 
     @property
     def items(self):
@@ -198,9 +208,18 @@ class AsyncSkillshipApi:
             max_retries=_defaulted_max_retries,
             logging=logging,
         )
+        self._events: typing.Optional[AsyncEventsClient] = None
         self._items: typing.Optional[AsyncItemsClient] = None
         self._logs: typing.Optional[AsyncLogsClient] = None
         self._oauth: typing.Optional[AsyncOauthClient] = None
+
+    @property
+    def events(self):
+        if self._events is None:
+            from .events.client import AsyncEventsClient  # noqa: E402
+
+            self._events = AsyncEventsClient(client_wrapper=self._client_wrapper)
+        return self._events
 
     @property
     def items(self):

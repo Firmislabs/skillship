@@ -4,6 +4,33 @@ export type ClientOptions = {
   baseUrl: `${string}://${string}` | (string & {});
 };
 
+export type OpE64E8Ca3293F7D36Data = {
+  body?: never;
+  path?: never;
+  query?: {
+    cursor?: string;
+    per_page?: number;
+  };
+  url: "/events";
+};
+
+export type OpE64E8Ca3293F7D36Responses = {
+  /**
+   * 200
+   */
+  200: {
+    data?: {
+      results?: Array<{
+        id?: string;
+      }>;
+      next_cursor?: string;
+    };
+  };
+};
+
+export type OpE64E8Ca3293F7D36Response =
+  OpE64E8Ca3293F7D36Responses[keyof OpE64E8Ca3293F7D36Responses];
+
 export type Op15Af9Ffbbece6C20Data = {
   body?: never;
   path?: never;

@@ -3,6 +3,10 @@ import { Client } from "./runtime.js";
 import { paginate } from "./pagination.js";
 
 export interface ResourceTree {
+  readonly events: {
+    list: (opts?: RequestOpts) => Promise<Response>;
+    listPages: (opts?: RequestOpts) => AsyncGenerator<unknown>;
+  };
   readonly items: {
     list: (opts?: RequestOpts) => Promise<Response>;
     listPages: (opts?: RequestOpts) => AsyncGenerator<unknown>;
@@ -24,6 +28,48 @@ interface RequestOpts {
 
 export function attachResources(client: Client): Client & ResourceTree {
   return Object.assign(client, {
+    events: {
+      list: (opts?: RequestOpts) =>
+        client.request({
+          method: "GET",
+          path: "/events",
+          pathParams: opts?.pathParams,
+          query: opts?.query,
+          headers: opts?.headers,
+          body: opts?.body,
+        }),
+      listPages: (opts?: RequestOpts): AsyncGenerator<unknown> =>
+        paginate<unknown>(
+          (pageArgs) =>
+            client
+              .request({
+                method: "GET",
+                path: "/events",
+                pathParams: opts?.pathParams,
+                query: {
+                  ...opts?.query,
+                  ...(pageArgs as Record<
+                    string,
+                    string | number | boolean | undefined
+                  >),
+                },
+                headers: opts?.headers,
+                body: opts?.body,
+              })
+              .then((r) => r.json() as Promise<unknown>),
+          {
+            style: "cursor",
+            requestParam: "cursor",
+            pageSizeParam: "per_page",
+            itemsField: "data.results",
+            nextField: "data.next_cursor",
+            opId: "op_e64e8ca3293f7d36",
+          },
+          typeof opts?.query?.["per_page"] === "number"
+            ? (opts.query["per_page"] as number)
+            : undefined,
+        ),
+    },
     items: {
       list: (opts?: RequestOpts) =>
         client.request({

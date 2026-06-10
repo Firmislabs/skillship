@@ -102,12 +102,12 @@ client = SkillshipApi(
     base_url="https://yourhost.com/path/to/api",
 )
 
-client.items.list()
+client.events.list()
 ```
 
 ```python
 # You can also iterate through pages and access the typed response per page
-pager = client.items.list(...)
+pager = client.events.list(...)
 for page in pager.iter_pages():
     print(page.response)  # access the typed response for each page
     for item in page:

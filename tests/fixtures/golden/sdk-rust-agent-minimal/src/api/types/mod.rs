@@ -1,3 +1,7 @@
+pub mod events_events_list_response;
+pub mod events_events_list_response_data;
+pub mod events_events_list_response_data_results_item;
+pub mod events_list_query_request;
 pub mod items_items_create_response;
 pub mod items_items_list_response;
 pub mod items_items_list_response_data_item;
@@ -7,6 +11,10 @@ pub mod logs_logs_list_response;
 pub mod logs_logs_list_response_data_item;
 pub mod oauth_oauth_token_response;
 
+pub use events_events_list_response::EventsListResponse;
+pub use events_events_list_response_data::EventsListResponseData;
+pub use events_events_list_response_data_results_item::EventsListResponseDataResultsItem;
+pub use events_list_query_request::EventsListQueryRequest;
 pub use items_items_create_response::ItemsCreateResponse;
 pub use items_items_list_response::ItemsListResponse;
 pub use items_items_list_response_data_item::ItemsListResponseDataItem;

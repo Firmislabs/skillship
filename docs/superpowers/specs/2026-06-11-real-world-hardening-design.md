@@ -1,7 +1,7 @@
 # Real-World Hardening (Spec C) — Design
 
 **Date:** 2026-06-11
-**Status:** Approved design, pre-plan
+**Status:** Implemented (2026-06-11) — see KNOWN_GAPS.md
 **Repo:** skillship
 **Evidence:** Listmonk dogfood (2026-06-10/11) — a 72-op real-world API built, served over MCP, and driven live. All four gaps below were demonstrated empirically, not hypothesized. Predecessors: Spec A (SDK runtime), Spec B (MCP renderer), both implemented.
 

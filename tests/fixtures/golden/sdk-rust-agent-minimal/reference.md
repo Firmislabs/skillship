@@ -1,4 +1,85 @@
 # Reference
+## Events
+<details><summary><code>client.events.<a href="/src/api/resources/events/client.rs">list</a>(cursor: Option&lt;Option&lt;String&gt;&gt;, per_page: Option&lt;Option&lt;i64&gt;&gt;) -> Result&lt;EventsListResponse, ApiError&gt;</code></summary>
+<dl>
+<dd>
+
+#### 📝 Description
+
+<dl>
+<dd>
+
+<dl>
+<dd>
+
+Returns events for the account. Paginated using cursor and per_page. Supports filtering by type.
+</dd>
+</dl>
+</dd>
+</dl>
+
+#### 🔌 Usage
+
+<dl>
+<dd>
+
+<dl>
+<dd>
+
+```rust
+use skillship_api::prelude::*;
+
+#[tokio::main]
+async fn main() {
+    let config = ClientConfig {
+        token: Some("<token>".to_string()),
+        ..Default::default()
+    };
+    let client = ApiClient::new(config).expect("Failed to build client");
+    client
+        .events
+        .list(
+            &EventsListQueryRequest {
+                ..Default::default()
+            },
+            None,
+        )
+        .await;
+}
+```
+</dd>
+</dl>
+</dd>
+</dl>
+
+#### ⚙️ Parameters
+
+<dl>
+<dd>
+
+<dl>
+<dd>
+
+**cursor:** `Option<String>` 
+    
+</dd>
+</dl>
+
+<dl>
+<dd>
+
+**per_page:** `Option<i64>` 
+    
+</dd>
+</dl>
+</dd>
+</dl>
+
+
+</dd>
+</dl>
+</details>
+
 ## Items
 <details><summary><code>client.items.<a href="/src/api/resources/items/client.rs">list</a>(cursor: Option&lt;Option&lt;String&gt;&gt;, limit: Option&lt;Option&lt;i64&gt;&gt;) -> Result&lt;ItemsListResponse, ApiError&gt;</code></summary>
 <dl>

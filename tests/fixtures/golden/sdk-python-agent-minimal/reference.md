@@ -1,4 +1,83 @@
 # Reference
+## Events
+<details><summary><code>client.events.<a href="src/skillship_sdk/events/client.py">list</a>(...) -> EventsListResponse</code></summary>
+<dl>
+<dd>
+
+#### 📝 Description
+
+<dl>
+<dd>
+
+<dl>
+<dd>
+
+Returns events for the account. Paginated using cursor and per_page. Supports filtering by type.
+</dd>
+</dl>
+</dd>
+</dl>
+
+#### 🔌 Usage
+
+<dl>
+<dd>
+
+<dl>
+<dd>
+
+```python
+from skillship_sdk import SkillshipApi
+
+client = SkillshipApi(
+    token="<token>",
+    base_url="https://yourhost.com/path/to/api",
+)
+
+client.events.list()
+
+```
+</dd>
+</dl>
+</dd>
+</dl>
+
+#### ⚙️ Parameters
+
+<dl>
+<dd>
+
+<dl>
+<dd>
+
+**cursor:** `typing.Optional[str]` 
+    
+</dd>
+</dl>
+
+<dl>
+<dd>
+
+**per_page:** `typing.Optional[int]` 
+    
+</dd>
+</dl>
+
+<dl>
+<dd>
+
+**request_options:** `typing.Optional[RequestOptions]` — Request-specific configuration.
+    
+</dd>
+</dl>
+</dd>
+</dl>
+
+
+</dd>
+</dl>
+</details>
+
 ## Items
 <details><summary><code>client.items.<a href="src/skillship_sdk/items/client.py">list</a>(...) -> ItemsListResponse</code></summary>
 <dl>
