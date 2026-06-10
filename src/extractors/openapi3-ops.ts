@@ -287,6 +287,35 @@ function emitResponses(
   }
 }
 
+function pushResponseSchemaClaim(
+  claims: ExtractedClaim[],
+  respId: string,
+  respBase: string,
+  ct: string,
+  schema: Record<string, unknown>,
+): void {
+  const ref = typeof schema.$ref === "string" ? schema.$ref : undefined;
+  if (ref !== undefined) {
+    claims.push({
+      node_id: respId,
+      field: "schema_ref",
+      value: ref,
+      span_path: `${respBase}.content["${ct}"].schema.$ref`,
+      confidence: "attested",
+    });
+  } else if (isObjectLikeSchema(schema)) {
+    // Inline object schema (no $ref): persist verbatim so pagination-detect
+    // tier 2–3 can read response properties from the synthetic OAS.
+    claims.push({
+      node_id: respId,
+      field: "schema_json",
+      value: schema,
+      span_path: `${respBase}.content["${ct}"].schema`,
+      confidence: "attested",
+    });
+  }
+}
+
 function pushResponseClaims(
   claims: ExtractedClaim[],
   respId: string,
@@ -315,27 +344,8 @@ function pushResponseClaims(
   const schema = ctBody !== undefined && isObject(ctBody.schema)
     ? ctBody.schema
     : undefined;
-  const ref = schema !== undefined && typeof schema.$ref === "string"
-    ? schema.$ref
-    : undefined;
-  if (ref !== undefined) {
-    claims.push({
-      node_id: respId,
-      field: "schema_ref",
-      value: ref,
-      span_path: `${respBase}.content["${ct}"].schema.$ref`,
-      confidence: "attested",
-    });
-  } else if (schema !== undefined && isObjectLikeSchema(schema)) {
-    // Inline object schema (no $ref): persist verbatim so pagination-detect
-    // tier 2–3 can read response properties from the synthetic OAS.
-    claims.push({
-      node_id: respId,
-      field: "schema_json",
-      value: schema,
-      span_path: `${respBase}.content["${ct}"].schema`,
-      confidence: "attested",
-    });
+  if (schema !== undefined) {
+    pushResponseSchemaClaim(claims, respId, respBase, ct, schema);
   }
   const example = ctBody !== undefined ? pickExampleFromBody(ctBody) : undefined;
   if (example !== undefined) {
