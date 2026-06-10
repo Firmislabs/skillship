@@ -12,9 +12,45 @@
 
 ---
 
-## Spike S1 outcome (folded in before plan review)
+## Spike S1 outcome (verified 2026-06-10 on Node 24.11.0 + official Node docs)
 
-**S1-PLACEHOLDER** — launcher mechanism, import-specifier rule for generated MCP modules, minimal ambient declaration block for the tsc gate, Node floor, smoke-test `skipIf` expression. This section is replaced with verified results before execution begins; Tasks 4, 5, and 6 reference it.
+**Type-stripping matrix:** `--experimental-strip-types` since 22.6; default-on since 23.6 (22.18 backport); warning removed 24.3; stable naming 24.12. **Node floor for the no-build flow: ≥ 23.6.0.** Below it, `.ts` files raise `SyntaxError` (no TS awareness on 20).
+
+**Erasability:** ALL committed golden SDK sources are fully erasable (no enums/namespaces/parameter-properties/decorators/`import =`). No Spec A emitter changes needed for erasability.
+
+**THE HARD FINDING — import specifiers:** Node's ESM resolver does NOT map `.js` specifiers to `.ts` files (`ERR_MODULE_NOT_FOUND`; docs require literal `.ts` specifiers under stripping). The SDK's internal imports are all `.js`-specifier — so an MCP entry that imports the SDK cannot run under plain stripping. **Spike S1b (running) decides between:** (d) a ≤25-line zero-dep resolve-hook loader registered via `module.register()` in `bin/mcp.js` mapping `.js`→`.ts` for relative in-package specifiers (no Spec A churn), vs (a) switching ALL generated specifiers to `.ts` + `allowImportingTsExtensions`/`noEmit` tsconfig (golden churn, consumer-contract shift). **S1B-PLACEHOLDER** — the verdict + exact launcher/loader text replaces this sentence before execution; Tasks 4/5/6 consume it.
+
+**Launcher skeleton (verified, mechanism-independent parts):** `#!/usr/bin/env node` JS file in a `"type":"module"` package; version gate comparing `process.versions.node` against 23.6 with an actionable 3-line stderr message + exit 1; entry via `await import(new URL("../src/mcp-server.ts", import.meta.url).href)` (cwd-independent); `echo '{"jsonrpc":"2.0","id":1,"method":"ping"}' | node bin/mcp.js` round-trips.
+
+**Ambient block for the tsc gate (verified — typechecks under the golden DOM-lib strict config AND runs under stripping):**
+
+```ts
+declare const process: {
+  stdin: {
+    setEncoding(enc: string): void;
+    on(event: "data", listener: (chunk: string) => void): void;
+    on(event: "end", listener: () => void): void;
+    resume(): void;
+  };
+  stdout: { write(data: string): boolean };
+  exit(code: number): never;
+  versions: { node: string };
+};
+```
+
+(Place in the emitted protocol module; extend minimally if the gateway needs more — e.g. `env` is already declared in auth.ts's narrow ambient; avoid duplicate `declare const process` in ONE compilation — the protocol module owns the wide declaration and other MCP modules import nothing process-related, OR unify into a shared emitted `mcp-ambient.d.ts`-style block; decide in T4 and keep tsc green.)
+
+**skipIf guard for the smoke test (verified form):**
+
+```ts
+const BELOW_STRIP_FLOOR = (() => {
+  const [major, minor] = process.versions.node.split(".").map(Number);
+  return major < 23 || (major === 23 && minor < 6);
+})();
+describe.skipIf(BELOW_STRIP_FLOOR)("MCP stdio smoke", () => { /* ... */ });
+```
+
+**Watch-outs:** disable-flag is `--no-experimental-strip-types` on ≤24.11, `--no-strip-types` on ≥24.12 (irrelevant to us, recorded); CI `ci.yml` node-version must be ≥23.6 for the smoke test or it self-skips (T8 verifies).
 
 ---
 
