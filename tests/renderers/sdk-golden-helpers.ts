@@ -48,6 +48,13 @@ export const GQL_FIXTURE_ARGS: GoldenOasArgs = {
   productId: "p-gql",
   productName: "gql.example",
 };
+export const AGENT_FIXTURE_ARGS: GoldenOasArgs = {
+  fixturePath: "tests/fixtures/openapi3/agent-minimal.yaml",
+  contentType: "application/openapi+yaml",
+  productId: "p-agent",
+  // Env prefix derives from this: slugify("agentmin").toUpperCase() => "AGENTMIN".
+  productName: "agentmin",
+};
 
 /**
  * Builds the synthetic OAS for a fixture (ingest → renderSyntheticOpenApi), owning
@@ -101,6 +108,10 @@ export async function renderSdkGoldenRest(outDir: string): Promise<SdkGoldenResu
 
 export async function renderSdkGoldenGraphql(outDir: string): Promise<SdkGoldenResult> {
   return renderSdkGoldenFromFixture({ ...GQL_FIXTURE_ARGS, outDir });
+}
+
+export async function renderSdkGoldenAgent(outDir: string): Promise<SdkGoldenResult> {
+  return renderSdkGoldenFromFixture({ ...AGENT_FIXTURE_ARGS, outDir });
 }
 
 interface FixtureArgs {

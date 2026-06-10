@@ -13,6 +13,7 @@ import { join } from "node:path";
 import {
   renderSdkGoldenRest,
   renderSdkGoldenGraphql,
+  renderSdkGoldenAgent,
 } from "../tests/renderers/sdk-golden-helpers.js";
 import { parseFernLangs } from "../src/cli/sdk-langs.js";
 import {
@@ -26,15 +27,20 @@ async function main(): Promise<void> {
   const repoRoot = process.cwd();
   const restOut = join(repoRoot, "tests/fixtures/golden/sdk-minimal");
   const gqlOut = join(repoRoot, "tests/fixtures/golden/sdk-graphql-minimal");
+  const agentOut = join(repoRoot, "tests/fixtures/golden/sdk-agent-minimal");
 
   rmSync(restOut, { recursive: true, force: true });
   rmSync(gqlOut, { recursive: true, force: true });
+  rmSync(agentOut, { recursive: true, force: true });
 
   await renderSdkGoldenRest(restOut);
   process.stdout.write(`wrote ${restOut}\n`);
 
   await renderSdkGoldenGraphql(gqlOut);
   process.stdout.write(`wrote ${gqlOut}\n`);
+
+  await renderSdkGoldenAgent(agentOut);
+  process.stdout.write(`wrote ${agentOut}\n`);
 
   const langs = parseFernLangs(
     process.argv.find((a) => a.startsWith("--langs="))?.slice("--langs=".length)

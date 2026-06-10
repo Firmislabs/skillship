@@ -30,19 +30,21 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { promisify } from "node:util";
 import type { CodegenOverlay } from "../overlays/codegen.js";
+import { generateAuthModule } from "../sdk-plugins/auth.js";
 import { generateErrorsModule } from "../sdk-plugins/errors.js";
 import { generateEntryModule } from "../sdk-plugins/entry.js";
-import {
-  generateRuntimeModule,
-  type AuthSchemeDescriptor,
-} from "../sdk-plugins/runtime.js";
+import { generatePaginationModule } from "../sdk-plugins/pagination.js";
+import { generateRuntimeModule } from "../sdk-plugins/runtime.js";
 import {
   buildNamespaceTree,
   generateResourceTreeModule,
-  type OperationInfo,
 } from "../sdk-plugins/resource-tree.js";
 import { renderTemplates } from "./sdk-templates/render.js";
-import { extractAuthSchemes, extractOperations } from "./sdk-utils.js";
+import {
+  computeWedgeInputs,
+  slugify,
+  type WedgeInputs,
+} from "./sdk-utils.js";
 import {
   atomicMove,
   listEmittedFiles,
@@ -75,14 +77,17 @@ export async function renderSdkPackage(
   const tempDir = mkdtempSync(join(tmpdir(), "sk-sdk-"));
   try {
     const oasPath = writeOasToTemp(input.oasJson, tempDir);
-    const schemes = extractAuthSchemes(input.oasJson);
-    const ops = extractOperations(input.oasJson);
+    const wedge = computeWedgeInputs({
+      oasJson: input.oasJson,
+      productName: input.productName,
+      overlay: input.overlay,
+    });
     await runHeyApiCodegen(oasPath, tempDir);
     // Remove openapi.json immediately after codegen — Hey API has finished
     // reading it. Without this, the file ships in the npm package and leaks
     // customer paths and security-scheme metadata (Critical 1 fix).
     rmSync(oasPath);
-    writeWedgeModules(tempDir, schemes, ops, input.overlay);
+    writeWedgeModules(tempDir, wedge);
     writePackageTemplates(tempDir, input);
     await formatWithPrettier(tempDir);
     const { exitCode, stdout, stderr } = await runTypecheckGate(tempDir);
@@ -137,21 +142,31 @@ async function runHeyApiCodegen(
 
 // ---- Manual wedge module emission ----
 
-function writeWedgeModules(
-  tempDir: string,
-  schemes: readonly AuthSchemeDescriptor[],
-  ops: readonly OperationInfo[],
-  overlay: CodegenOverlay,
-): void {
+function writeWedgeModules(tempDir: string, wedge: WedgeInputs): void {
   const srcDir = join(tempDir, "src");
   mkdirSync(srcDir, { recursive: true });
   writeWedgeFile(srcDir, "errors.ts", generateErrorsModule());
-  writeWedgeFile(srcDir, "runtime.ts", generateRuntimeModule(schemes));
-  const tree = buildNamespaceTree(ops, overlay);
+  // auth.ts is ALWAYS emitted — it owns AuthConfig, which runtime.ts imports.
+  writeWedgeFile(
+    srcDir,
+    "auth.ts",
+    generateAuthModule(wedge.schemes, wedge.envPrefix),
+  );
+  writeWedgeFile(
+    srcDir,
+    "runtime.ts",
+    generateRuntimeModule(wedge.schemes, wedge.retries),
+  );
+  // pagination.ts is emitted ONLY when at least one operation paginates, so
+  // resources.ts imports it iff plans exist (kept byte-stable for plan-less specs).
+  if (wedge.plans.size > 0) {
+    writeWedgeFile(srcDir, "pagination.ts", generatePaginationModule());
+  }
+  const tree = buildNamespaceTree(wedge.ops, wedge.overlay);
   writeWedgeFile(
     srcDir,
     "resources.ts",
-    generateResourceTreeModule(tree, ops, overlay),
+    generateResourceTreeModule(tree, wedge.ops, wedge.overlay, wedge.plans),
   );
   // Intentionally overwrite Hey API's generated index.ts with the wedge barrel so
   // the package entry point exposes Client/attachResources/errors — not the raw flat ops.
@@ -242,13 +257,4 @@ async function runTypecheckGate(tempDir: string): Promise<TypecheckResult> {
       stderr: e.stderr ?? "",
     };
   }
-}
-
-// ---- Utilities ----
-
-function slugify(name: string): string {
-  return name
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "");
 }

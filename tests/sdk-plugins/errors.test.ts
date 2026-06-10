@@ -37,4 +37,29 @@ describe("errors plugin", () => {
     // Must NOT claim to patch transport
     expect(code).not.toContain("patches");
   });
+
+  // Task 8: auth.ts forward-imports AuthError + ConfigError — these must be real.
+  test("generated module declares AuthError extending APIError", () => {
+    const code = generateErrorsModule();
+    expect(code).toContain("export class AuthError extends APIError");
+  });
+
+  test("generated module declares ConfigError extending APIError", () => {
+    const code = generateErrorsModule();
+    expect(code).toContain("export class ConfigError extends APIError");
+  });
+
+  test("AuthError and ConfigError accept a plain message (auth.ts calls new AuthError(\"...\"))", () => {
+    const code = generateErrorsModule();
+    // auth.ts emits e.g. `new AuthError("malformed token response")` and
+    // `new ConfigError("tokenUrl is required ...")` — single string arg form.
+    expect(code).toMatch(/class AuthError extends APIError\s*\{[^}]*constructor\(message:\s*string\)/s);
+    expect(code).toMatch(/class ConfigError extends APIError\s*\{[^}]*constructor\(message:\s*string\)/s);
+  });
+
+  test("UnauthorizedError is reused for 401 (no AuthenticationError invented)", () => {
+    const code = generateErrorsModule();
+    expect(code).toContain("UnauthorizedError");
+    expect(code).not.toContain("AuthenticationError");
+  });
 });

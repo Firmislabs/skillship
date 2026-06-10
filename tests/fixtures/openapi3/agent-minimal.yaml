@@ -1,0 +1,149 @@
+openapi: 3.0.3
+info:
+  title: Agent Minimal API
+  version: 1.0.0
+  description: >-
+    Minimal agent-shaped fixture exercising oauth2 client-credentials auth and
+    both cursor + offset pagination. Used to lock the SDK agent golden tree and
+    drive the runtime behavioral suite.
+servers:
+  - url: https://api.agentmin.test/v1
+# Document-level security: every operation inherits an auth_requires edge unless
+# it opts out with `security: []` (the token endpoint does, below).
+security:
+  - agentOauth: []
+paths:
+  /oauth/token:
+    post:
+      operationId: issueToken
+      summary: Issue an OAuth2 access token
+      description: Client-credentials token endpoint. Intentionally authless.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              type: object
+              properties:
+                grant_type:
+                  type: string
+                scope:
+                  type: string
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  access_token:
+                    type: string
+                  token_type:
+                    type: string
+                  expires_in:
+                    type: integer
+  /items:
+    get:
+      operationId: listItems
+      summary: List items (cursor-paginated)
+      description: Returns a cursor-paginated page of items.
+      parameters:
+        - name: cursor
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Opaque pagination cursor.
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+          description: Max rows per page.
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: string
+                        name:
+                          type: string
+                  next_cursor:
+                    type: string
+                    nullable: true
+    post:
+      operationId: createItem
+      summary: Create an item
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: string
+                  name:
+                    type: string
+  /logs:
+    get:
+      operationId: listLogs
+      summary: List logs (offset-paginated)
+      description: Returns an offset-paginated page of log lines.
+      parameters:
+        - name: offset
+          in: query
+          required: false
+          schema:
+            type: integer
+          description: Zero-based offset of the first row.
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+          description: Max rows per page.
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        message:
+                          type: string
+components:
+  securitySchemes:
+    agentOauth:
+      type: oauth2
+      flows:
+        clientCredentials:
+          tokenUrl: https://api.agentmin.test/oauth/token
+          scopes: {}

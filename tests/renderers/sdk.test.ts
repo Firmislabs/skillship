@@ -173,7 +173,7 @@ describe("renderSdkPackage — integration", () => {
   );
 
   test(
-    "oauth2-only spec renders successfully (falls back to none sentinel, no throw)",
+    "oauth2-only spec renders successfully with a real oauth2 AuthConfig member",
     async () => {
       const tmpOauth = mkdtempSync(join(tmpdir(), "sk-sdk-oauth2-"));
       const oasWithOauth2 = JSON.stringify({
@@ -198,12 +198,19 @@ describe("renderSdkPackage — integration", () => {
           overlay: CodegenOverlaySchema.parse({}),
         });
         expect(result.typecheckExitCode).toBe(0);
-        // oauth2ClientCredentials is inert until Task 8; runtime falls back to { kind: "none" } sentinel
+        // Task 8: AuthConfig now lives in auth.ts and oauth2 produces a real
+        // member (+ the always-present tokenProvider). The "none" sentinel is gone.
+        const authSrc = readFileSync(join(tmpOauth, "src", "auth.ts"), "utf8");
+        expect(authSrc).toContain('kind: "oauth2"');
+        expect(authSrc).toContain('kind: "tokenProvider"');
+        expect(authSrc).not.toContain('kind: "none"');
+        // runtime.ts no longer declares AuthConfig — it imports it from auth.js.
         const runtimeSrc = readFileSync(
           join(tmpOauth, "src", "runtime.ts"),
           "utf8",
         );
-        expect(runtimeSrc).toContain('kind: "none"');
+        expect(runtimeSrc).not.toMatch(/export type AuthConfig\s*=/);
+        expect(runtimeSrc).toContain('from "./auth.js"');
       } finally {
         rmSync(tmpOauth, { recursive: true, force: true });
       }

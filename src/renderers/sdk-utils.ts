@@ -3,9 +3,16 @@
 // Kept separate to stay under the 300-line file cap while sdk.ts accumulates
 // correctness fixes (EXDEV fallback, collision guards, slug validation, etc.).
 
-import type { AuthSchemeDescriptor } from "../sdk-plugins/runtime.js";
+import type {
+  AuthSchemeDescriptor,
+  RetriesConfig,
+} from "../sdk-plugins/runtime.js";
 import type { CodegenOverlay } from "../overlays/codegen.js";
 import type { OperationInfo } from "../sdk-plugins/resource-tree.js";
+import {
+  detectPagination,
+  type PaginationPlan,
+} from "./pagination-detect.js";
 
 // ---- Minimal OAS doc shape (read-only, subset used by extractors) ----
 
@@ -142,4 +149,72 @@ export function extractOperations(oasJson: string): readonly OperationInfo[] {
     }
   }
   return out;
+}
+
+// ---- Wedge input computation ----
+
+export interface WedgeInputs {
+  readonly schemes: readonly AuthSchemeDescriptor[];
+  readonly ops: readonly OperationInfo[];
+  readonly plans: ReadonlyMap<string, PaginationPlan>;
+  readonly overlay: CodegenOverlay;
+  readonly envPrefix: string;
+  readonly retries: RetriesConfig;
+}
+
+const DEFAULT_RETRIES: RetriesConfig = {
+  maxRetries: 2,
+  retryableStatus: [408, 409, 429, 500, 502, 503, 504],
+  honorRetryAfter: true,
+};
+
+/**
+ * Slugifies a product name to a lowercase hyphenated slug: lowercased, every
+ * non-alphanumeric run collapsed to a single hyphen, leading/trailing hyphens
+ * trimmed. Shared by env-prefix derivation and package-name construction.
+ */
+export function slugify(name: string): string {
+  return name
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+}
+
+/** AGENTMIN_, MIN_EXAMPLE_, etc. — slug uppercased with hyphens → underscores. */
+export function deriveEnvPrefix(productName: string): string {
+  return slugify(productName).toUpperCase().replace(/-/g, "_");
+}
+
+function resolveRetries(overlay: CodegenOverlay): RetriesConfig {
+  const r = overlay.retries;
+  if (r === undefined) return DEFAULT_RETRIES;
+  return {
+    maxRetries: r.maxRetries,
+    retryableStatus: r.retryableStatus,
+    honorRetryAfter: r.honorRetryAfter,
+  };
+}
+
+/**
+ * Derives every input the wedge emitters need from the render request:
+ * overlay-aware auth schemes, operations, pagination plans, the env-var prefix,
+ * and the resolved retries config (overlay values fall back to contract
+ * defaults). Pure — keeps renderSdkPackage small and side-effect-free here.
+ */
+export function computeWedgeInputs(args: {
+  readonly oasJson: string;
+  readonly productName: string;
+  readonly overlay: CodegenOverlay;
+}): WedgeInputs {
+  const schemes = extractAuthSchemes(args.oasJson, args.overlay);
+  const ops = extractOperations(args.oasJson);
+  const plans = detectPagination(ops, args.oasJson, args.overlay);
+  return {
+    schemes,
+    ops,
+    plans,
+    overlay: args.overlay,
+    envPrefix: deriveEnvPrefix(args.productName),
+    retries: resolveRetries(args.overlay),
+  };
 }

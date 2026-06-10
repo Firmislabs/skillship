@@ -14,6 +14,7 @@ import { describe, expect, test } from "vitest";
 import {
   renderSdkGoldenRest,
   renderSdkGoldenGraphql,
+  renderSdkGoldenAgent,
 } from "./sdk-golden-helpers.js";
 
 function listFilesRecursive(dir: string): string[] {
@@ -80,6 +81,24 @@ describe("SDK golden lock", () => {
   );
 
   test(
+    "Agent golden tree is byte-identical to tests/fixtures/golden/sdk-agent-minimal/",
+    async () => {
+      const tmp = mkdtempSync(join(tmpdir(), "sk-sdk-gld-agent-"));
+      const out = join(tmp, "sdk");
+      try {
+        await renderSdkGoldenAgent(out);
+        compareTrees(
+          out,
+          join(process.cwd(), "tests/fixtures/golden/sdk-agent-minimal"),
+        );
+      } finally {
+        rmSync(tmp, { recursive: true, force: true });
+      }
+    },
+    60000,
+  );
+
+  test(
     "REST golden tsconfig.json typechecks against its own sources",
     () => {
       const goldenDir = join(
@@ -107,6 +126,28 @@ describe("SDK golden lock", () => {
       const goldenDir = join(
         process.cwd(),
         "tests/fixtures/golden/sdk-graphql-minimal",
+      );
+      const tscBin = join(process.cwd(), "node_modules", ".bin", "tsc");
+      try {
+        execFileSync(tscBin, ["--noEmit", "-p", goldenDir], {
+          stdio: "pipe",
+        });
+      } catch (err: unknown) {
+        const e = err as { stdout?: Buffer; stderr?: Buffer };
+        throw new Error(
+          `golden tsc failed:\nstdout:\n${e.stdout?.toString() ?? ""}\nstderr:\n${e.stderr?.toString() ?? ""}`,
+        );
+      }
+    },
+    30000,
+  );
+
+  test(
+    "Agent golden tsconfig.json typechecks against its own sources",
+    () => {
+      const goldenDir = join(
+        process.cwd(),
+        "tests/fixtures/golden/sdk-agent-minimal",
       );
       const tscBin = join(process.cwd(), "node_modules", ".bin", "tsc");
       try {

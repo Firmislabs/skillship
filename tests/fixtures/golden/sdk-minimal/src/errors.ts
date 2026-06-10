@@ -64,6 +64,33 @@ export class TimeoutError extends APIError {
   }
 }
 
+// Client-side errors raised before/around a request (no HTTP response involved).
+// auth.ts constructs these with a plain message: `new AuthError("...")`.
+export class AuthError extends APIError {
+  constructor(message: string) {
+    super({
+      status: 0,
+      requestId: null,
+      body: null,
+      code: "auth_error",
+      message,
+    });
+    this.name = "AuthError";
+  }
+}
+export class ConfigError extends APIError {
+  constructor(message: string) {
+    super({
+      status: 0,
+      requestId: null,
+      body: null,
+      code: "config_error",
+      message,
+    });
+    this.name = "ConfigError";
+  }
+}
+
 export function throwForResponse(args: {
   status: number;
   requestId: string | null;
