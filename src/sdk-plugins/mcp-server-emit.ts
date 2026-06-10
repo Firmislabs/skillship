@@ -33,6 +33,9 @@ import { attachResources } from "./resources.js";
 // module-scoped, so the two ambients never collide.
 declare const process: { env: Record<string, string | undefined> };
 
+// deps.env governs base-URL resolution and the destructive override only; AUTH
+// always reads the real process.env via the SDK's resolveAuthFromEnv, so tests
+// can swap base-URL/override env without having to inject credentials here.
 export interface GatewayDeps {
   readonly fetchImpl?: typeof fetch;
   readonly env?: Record<string, string | undefined>;

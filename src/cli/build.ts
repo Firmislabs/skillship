@@ -38,6 +38,7 @@ export interface RunBuildOptions {
   readonly productId?: string;
   readonly description?: string;
   readonly skipSdk?: boolean;
+  readonly skipMcp?: boolean;
   readonly fernLangs?: readonly FernLang[];
 }
 
@@ -84,12 +85,17 @@ export async function runBuild(opts: RunBuildOptions): Promise<BuildResult> {
       );
     }
     mkdirSync(opts.out, { recursive: true });
+    // The local SDK MCP server is emitted iff the SDK ships AND MCP is not
+    // skipped. Derived from FLAGS, not the SDK render result, because the
+    // .mcp.json is written inside writeAll BEFORE assembleSdkArtifacts runs.
+    const mcpEmitted = opts.skipSdk !== true && opts.skipMcp !== true;
     const { artifacts, oasJson, skillDir } = writeAll(handle.db, opts.out, {
       productId,
       productName,
       description,
       sources: config.sources,
       codegenOverlay,
+      mcpEmitted,
     });
     const baseUrl = readRestBaseUrl(handle.db, productId);
     // Whole-build atomicity is NOT guaranteed: the top-level artifacts above
@@ -135,6 +141,7 @@ async function assembleSdkArtifacts(
       outDir: join(ctx.skillDir, "sdk"),
       overlay: ctx.overlay,
       baseUrl: ctx.baseUrl,
+      ...(opts.skipMcp === true ? { skipMcp: true } : {}),
     });
     for (const relPath of sdkResult.files) {
       const filePath = join(sdkResult.outDir, relPath);
@@ -176,6 +183,8 @@ interface WriteArgs {
   readonly description: string;
   readonly sources: readonly ConfigSourceEntry[];
   readonly codegenOverlay: CodegenOverlay;
+  /** When true, the .mcp.json gains a stdio entry for the locally-emitted SDK MCP server. */
+  readonly mcpEmitted: boolean;
 }
 
 interface WriteAllResult {
@@ -251,6 +260,11 @@ function renderMcp(db: Sqlite3Database, args: WriteArgs): string {
     db,
     productId: args.productId,
     serverName: slug(args.productName),
+    // The launcher path is RELATIVE to the .mcp.json (which sits at the skill
+    // root, with the SDK under sdk/): `node sdk/bin/mcp.js`.
+    ...(args.mcpEmitted
+      ? { localSdkServer: { command: "node", args: ["sdk/bin/mcp.js"] } }
+      : {}),
   });
 }
 

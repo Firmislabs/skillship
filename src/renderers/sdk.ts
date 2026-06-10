@@ -54,6 +54,7 @@ import {
   atomicMove,
   listEmittedFiles,
 } from "./sdk-fs.js";
+import { writeMcpModules } from "./sdk-mcp.js";
 
 const execFileP = promisify(execFile);
 
@@ -69,12 +70,16 @@ export interface RenderSdkInput {
   readonly overlay: CodegenOverlay;
   readonly license?: string;
   /**
-   * Base URL from the REST surface's servers[0].url claim.
-   * Stored on the wedge inputs but intentionally unused by any emitter in
-   * this wave — a later task will consume it. Accepted-but-unused means the
-   * rendered output is byte-identical to the pre-plumbing baseline.
+   * Base URL from the REST surface's servers[0].url claim. Baked into the MCP
+   * server's resolveBaseUrl default and surfaced in describe_operation.
    */
   readonly baseUrl: string | null;
+  /**
+   * When true, the MCP server modules (src/mcp-*.ts) and launcher (bin/) are NOT
+   * emitted, and the package.json `bin` entry + README "Use with Claude Code"
+   * section are omitted. Default false — the MCP server ships by default.
+   */
+  readonly skipMcp?: boolean;
 }
 
 export interface SdkRenderResult {
@@ -101,7 +106,11 @@ export async function renderSdkPackage(
     // customer paths and security-scheme metadata (Critical 1 fix).
     rmSync(oasPath);
     writeWedgeModules(tempDir, wedge);
-    writePackageTemplates(tempDir, input, wedge);
+    const emitMcp = input.skipMcp !== true;
+    if (emitMcp) {
+      writeMcpModules(tempDir, input.oasJson, input.productName, wedge);
+    }
+    writePackageTemplates(tempDir, input, wedge, emitMcp);
     await formatWithPrettier(tempDir);
     const { exitCode, stdout, stderr } = await runTypecheckGate(tempDir);
     if (exitCode !== 0) {
@@ -202,6 +211,7 @@ function writePackageTemplates(
   tempDir: string,
   input: RenderSdkInput,
   wedge: WedgeInputs,
+  mcp: boolean,
 ): void {
   const slug = slugify(input.productName);
   if (!slug) {
@@ -220,6 +230,7 @@ function writePackageTemplates(
     retries: wedge.retries,
     pagesExample: computePagesExample(wedge),
     firstRequestExample: computeFirstRequestExample(wedge),
+    mcp,
   });
   for (const [name, content] of Object.entries(tplOut)) {
     writeFileSync(join(tempDir, name), content, "utf8");

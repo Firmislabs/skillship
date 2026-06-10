@@ -23,6 +23,13 @@ export { formatStatusCodes } from "./render-usage.js";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 
+/**
+ * The single source of truth for the emitted SDK package version. Substituted
+ * into package.json.tpl AND handed to the MCP server emitter as its serverVersion
+ * (pkgVersion) so the two can never drift. Bump here only.
+ */
+export const SDK_PACKAGE_VERSION = "0.1.0";
+
 export interface PagesExample {
   /** Accessor path on the client, e.g. "items.list" → used as "client.items.listPages()". */
   readonly accessor: string;
@@ -49,6 +56,12 @@ export interface TemplateContext {
   readonly pagesExample: PagesExample | null;
   /** Derived from the first non-paginated op; null when there are no ops. */
   readonly firstRequestExample: FirstRequestExample | null;
+  /**
+   * True when the SDK package ships the MCP server (the default). Drives the
+   * conditional package.json `bin` entry and the README "Use with Claude Code"
+   * section. False under --skip-mcp — both render to nothing.
+   */
+  readonly mcp: boolean;
 }
 
 interface TemplateSpec {
@@ -71,6 +84,8 @@ export function renderTemplates(
   const subs: Record<string, string> = {
     PACKAGE_NAME: ctx.packageName,
     PACKAGE_SLUG: slug,
+    PACKAGE_VERSION: SDK_PACKAGE_VERSION,
+    PACKAGE_BIN: buildPackageBin(ctx.mcp, slug),
     PRODUCT_NAME: ctx.productName,
     YEAR: String(ctx.year),
     HOLDER: ctx.licenseHolder,
@@ -80,6 +95,7 @@ export function renderTemplates(
     README_FIRST_REQUEST: buildFirstRequestSection(ctx.firstRequestExample, ctx.packageName),
     README_PAGINATION: buildPaginationSection(ctx.pagesExample, ctx.packageName),
     README_RETRIES: buildRetriesSection(ctx.retries),
+    README_MCP_SECTION: buildMcpReadmeSection(ctx.mcp, slug),
   };
   const out: Record<string, string> = {};
   for (const spec of TEMPLATES) {
@@ -100,4 +116,45 @@ export function applySubs(raw: string, subs: Record<string, string>): string {
     if (v === undefined) throw new Error(`renderTemplates: missing substitution for ${key}`);
     return v;
   });
+}
+
+/**
+ * Renders the conditional package.json `bin` member. When MCP ships, emits the
+ * leading comma + key so the surrounding JSON stays valid; when skipped, emits
+ * the empty string (the engines block remains the last member).
+ */
+function buildPackageBin(mcp: boolean, slug: string): string {
+  if (!mcp) return "";
+  return `,\n  "bin": {\n    "${slug}-mcp": "bin/mcp.js"\n  }`;
+}
+
+/**
+ * Renders the conditional README "Use with Claude Code" section: the .mcp.json
+ * stdio snippet (relative `node sdk/bin/mcp.js` form), a pointer to the
+ * Authentication env table, and the Node >=23.6 requirement note. Empty under
+ * --skip-mcp (the surrounding blank lines collapse away in renderTemplates).
+ */
+function buildMcpReadmeSection(mcp: boolean, slug: string): string {
+  if (!mcp) return "";
+  return [
+    "## Use with Claude Code",
+    "",
+    "This package ships an MCP server exposing every operation as a tool. Add it",
+    "to a `.mcp.json` next to your `sdk/` directory:",
+    "",
+    "```json",
+    "{",
+    '  "mcpServers": {',
+    `    "${slug}": {`,
+    '      "command": "node",',
+    '      "args": ["sdk/bin/mcp.js"]',
+    "    }",
+    "  }",
+    "}",
+    "```",
+    "",
+    "Set the auth and base-URL env vars from the [Authentication](#authentication)",
+    "table before launching. The server runs the SDK's TypeScript directly, so it",
+    "requires **Node >=23.6**.",
+  ].join("\n");
 }

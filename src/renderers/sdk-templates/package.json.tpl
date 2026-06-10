@@ -1,6 +1,6 @@
 {
   "name": "{{PACKAGE_NAME}}",
-  "version": "0.1.0",
+  "version": "{{PACKAGE_VERSION}}",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -21,5 +21,5 @@
   },
   "engines": {
     "node": ">=20"
-  }
+  }{{PACKAGE_BIN}}
 }

@@ -229,7 +229,12 @@ async function runInvoke(
   }
   try {
     const client = getClient();
-    const ns = client[entry.accessor[0] as keyof Gateway] as Record<
+    // accessor[0] is a ResourceTree group key, but Gateway is Client &
+    // ResourceTree, so indexing by keyof Gateway yields a union that also
+    // includes Client's own members (request method, baseUrl, …) whose shapes
+    // do not overlap the resource record. Go through unknown — the catalog
+    // guarantees accessor points at a real resource method.
+    const ns = client[entry.accessor[0] as keyof Gateway] as unknown as Record<
       string,
       (opts?: Record<string, unknown>) => Promise<unknown>
     >;

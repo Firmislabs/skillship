@@ -41,7 +41,14 @@ function buildRequiredEnvVars(
   return `export const REQUIRED_ENV_VARS: readonly string[] = [${literal}];`;
 }
 
-function collectEnvVarNames(
+/**
+ * The canonical, deterministic list of auth env-var NAMES that
+ * resolveAuthFromEnv inspects (and that REQUIRED_ENV_VARS bakes in). Exported so
+ * the MCP server emitter can bake the SAME names into describe_operation's auth
+ * line — they MUST byte-match REQUIRED_ENV_VARS, so this is the single source.
+ * Do NOT re-derive scheme→var mapping anywhere else.
+ */
+export function collectEnvVarNames(
   schemes: readonly AuthSchemeDescriptor[],
   prefix: string,
 ): string[] {

@@ -137,7 +137,19 @@ describe("runBuild", () => {
     const raw = readFileSync(join(outDir, "x-example", ".mcp.json"), "utf8");
     const parsed = JSON.parse(raw);
     expect(parsed.mcpServers).toBeDefined();
-    expect(Object.keys(parsed.mcpServers)).toHaveLength(1);
+    // Two entries now: the vendor remote (http) entry keyed by the serverName
+    // slug, plus the locally-emitted SDK stdio server keyed by productId.
+    expect(Object.keys(parsed.mcpServers)).toHaveLength(2);
+    expect(parsed.mcpServers["x-example"].type).toBe("http");
+    const localEntries = Object.values(parsed.mcpServers).filter(
+      (e: unknown): e is { command: string; args: string[] } =>
+        typeof e === "object" && e !== null && "command" in e,
+    );
+    expect(localEntries).toHaveLength(1);
+    expect(localEntries[0]).toEqual({
+      command: "node",
+      args: ["sdk/bin/mcp.js"],
+    });
   });
 
   test("llms.txt excludes optional, llms-full.txt includes them", async () => {

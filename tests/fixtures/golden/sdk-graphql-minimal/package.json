@@ -21,5 +21,8 @@
   },
   "engines": {
     "node": ">=20"
+  },
+  "bin": {
+    "gql-example-mcp": "bin/mcp.js"
   }
 }

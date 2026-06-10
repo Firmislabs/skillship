@@ -199,4 +199,69 @@ describe("renderMcpJson", () => {
     const parsed = JSON.parse(out);
     expect(Object.keys(parsed.mcpServers)).toEqual(["p-default"]);
   });
+
+  // ── T6: local SDK stdio MCP server entry ─────────────────────────────────
+
+  test("localSdkServer adds a stdio entry keyed by productId alongside vendor entries", async () => {
+    await seed(graph, "p-both", [
+      {
+        surface: "mcp",
+        url: "https://mcp.example.com/.well-known/oauth-protected-resource/mcp",
+        contentType: "application/json",
+        bytes: MCP_BYTES,
+      },
+    ]);
+    const out = renderMcpJson({
+      db: graph.db,
+      productId: "p-both",
+      serverName: "vendor",
+      localSdkServer: { command: "node", args: ["sdk/bin/mcp.js"] },
+    });
+    const parsed = JSON.parse(out);
+    // Vendor http entry still present.
+    expect(parsed.mcpServers.vendor).toEqual({
+      type: "http",
+      url: "https://mcp.example.com/mcp",
+    });
+    // Local SDK stdio entry keyed by productId.
+    expect(parsed.mcpServers["p-both"]).toEqual({
+      command: "node",
+      args: ["sdk/bin/mcp.js"],
+    });
+  });
+
+  test("localSdkServer entry emitted even when product has NO vendor mcp surface", () => {
+    graph.db
+      .prepare(
+        `INSERT INTO nodes (id, kind, parent_id, created_at, updated_at)
+         VALUES ('p-localonly', 'product', NULL, @now, @now)`,
+      )
+      .run({ now: NOW });
+    const out = renderMcpJson({
+      db: graph.db,
+      productId: "p-localonly",
+      serverName: "localonly",
+      localSdkServer: { command: "node", args: ["sdk/bin/mcp.js"] },
+    });
+    const parsed = JSON.parse(out);
+    expect(parsed.mcpServers["p-localonly"]).toEqual({
+      command: "node",
+      args: ["sdk/bin/mcp.js"],
+    });
+  });
+
+  test("omitting localSdkServer (skip case) leaves output unchanged", () => {
+    graph.db
+      .prepare(
+        `INSERT INTO nodes (id, kind, parent_id, created_at, updated_at)
+         VALUES ('p-skip', 'product', NULL, @now, @now)`,
+      )
+      .run({ now: NOW });
+    const out = renderMcpJson({
+      db: graph.db,
+      productId: "p-skip",
+      serverName: "skip",
+    });
+    expect(JSON.parse(out)).toEqual({ mcpServers: {} });
+  });
 });

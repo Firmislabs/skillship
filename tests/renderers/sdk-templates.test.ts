@@ -397,4 +397,56 @@ describe("renderTemplates", () => {
     // must NOT appear dangling without a table beneath it
     expect(readme).not.toContain("Set the following environment variables");
   });
+
+  // ── T6: conditional MCP bin entry in package.json ────────────────────────
+
+  test("mcp:true adds a bin entry keyed by <slug>-mcp → bin/mcp.js", () => {
+    const out = renderTemplates({ ...BEARER_CTX, mcp: true });
+    const pkg = JSON.parse(out["package.json"]!);
+    expect(pkg.bin).toEqual({ "min-example-mcp": "bin/mcp.js" });
+  });
+
+  test("mcp:false (default) omits the bin key entirely", () => {
+    const out = renderTemplates({ ...BEARER_CTX, mcp: false });
+    const pkg = JSON.parse(out["package.json"]!);
+    expect(pkg.bin).toBeUndefined();
+  });
+
+  test("mcp:false package.json stays byte-identical to no-bin baseline shape", () => {
+    const out = renderTemplates({ ...BEARER_CTX, mcp: false });
+    // Valid JSON and no stray "bin" token anywhere.
+    expect(() => JSON.parse(out["package.json"]!)).not.toThrow();
+    expect(out["package.json"]).not.toContain('"bin"');
+  });
+
+  test("mcp:true bin slug derives from product name (oauth2 ctx)", () => {
+    const out = renderTemplates({ ...OAUTH2_CTX, mcp: true });
+    const pkg = JSON.parse(out["package.json"]!);
+    expect(pkg.bin).toEqual({ "agentmin-mcp": "bin/mcp.js" });
+  });
+
+  // ── T6: conditional "Use with Claude Code" README section ────────────────
+
+  test("mcp:true README contains a Use with Claude Code section", () => {
+    const readme = renderTemplates({ ...BEARER_CTX, mcp: true })["README.md"]!;
+    expect(readme).toContain("## Use with Claude Code");
+  });
+
+  test("mcp:true README snippet uses node + sdk/bin/mcp.js relative command", () => {
+    const readme = renderTemplates({ ...BEARER_CTX, mcp: true })["README.md"]!;
+    expect(readme).toContain('"command": "node"');
+    expect(readme).toContain('"args": ["sdk/bin/mcp.js"]');
+  });
+
+  test("mcp:true README points to env table and notes Node >=23.6", () => {
+    const readme = renderTemplates({ ...BEARER_CTX, mcp: true })["README.md"]!;
+    expect(readme).toContain("Authentication");
+    expect(readme).toContain("23.6");
+  });
+
+  test("mcp:false README omits the Use with Claude Code section", () => {
+    const readme = renderTemplates({ ...BEARER_CTX, mcp: false })["README.md"]!;
+    expect(readme).not.toContain("## Use with Claude Code");
+    expect(readme).not.toContain("sdk/bin/mcp.js");
+  });
 });

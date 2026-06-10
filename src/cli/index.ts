@@ -65,12 +65,14 @@ function makeProgram(): Command {
     .option("--out <dir>", "output directory (defaults to <in>/skills)")
     .option("--product-id <id>", "override product node id")
     .option("--skip-sdk", "skip SDK package emission (faster builds)")
+    .option("--skip-mcp", "skip emitting the MCP server into the SDK package")
     .option("--sdk <langs>", "also emit Python/Rust SDKs via Fern (requires Docker), e.g. python,rust")
     .action(async (opts: {
       in?: string;
       out?: string;
       productId?: string;
       skipSdk?: boolean;
+      skipMcp?: boolean;
       sdk?: string;
     }) => {
       const inDir = opts.in ?? process.cwd();
@@ -82,6 +84,7 @@ function makeProgram(): Command {
         out: outDir,
         ...(opts.productId !== undefined ? { productId: opts.productId } : {}),
         ...(opts.skipSdk === true ? { skipSdk: true } : {}),
+        ...(opts.skipMcp === true ? { skipMcp: true } : {}),
         ...(fernLangs.length > 0 ? { fernLangs } : {}),
       });
       printBuildSummary(result.artifacts.map((a) => a.path), outDir);
