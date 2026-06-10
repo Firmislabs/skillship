@@ -57,7 +57,10 @@
         ],
         "tags": [
           "projects"
-        ]
+        ],
+        "x-skillship-annotations": {
+          "readOnly": true
+        }
       },
       "post": {
         "operationId": "op_028f4be7615a5faf",

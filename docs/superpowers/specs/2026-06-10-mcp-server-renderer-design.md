@@ -94,8 +94,12 @@ each synthetic-OAS operation as a vendor extension:
 ```
 
 Only claims that EXIST are projected (absent claims → key omitted — no guessing
-at the OAS layer). Existing fixtures have no annotation claims, so existing OAS
-goldens stay byte-identical (the extension only appears when claims exist).
+at the OAS layer). **Premise correction (Wave-1 boundary finding):** the
+openapi3 extractor has derived `is_read_only` claims for GET ops since an
+earlier plan (`openapi3-ops.ts:62`), so the REST OAS golden gained ONE truthful
+key (`GET /projects` → `readOnly: true`) on projection — regenerated and
+reviewed at the boundary; SDK trees byte-identical (hey-api ignores unknown
+extensions, verified), Fern inputs stripped (verified).
 **Ingestion side:** today only the zodAst extractor populates these claims —
 OpenAPI specs have no path to them. The openapi3 extractor therefore ALSO
 learns to ingest a per-operation `x-skillship-annotations` vendor extension
