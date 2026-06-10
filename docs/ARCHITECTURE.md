@@ -114,7 +114,19 @@ rebuilds via `.skillship/overlays/*.yaml` and the mirror in
 ### 7. `render`
 
 View projection — no LLM. Pure function from graph + overrides to an
-output tree:
+output tree.
+
+**SDK renderer modules (src/renderers/ + src/sdk-plugins/):**
+- `sdk.ts` — orchestrates Hey API codegen + manual wedge emission for TS
+- `sdk-fern.ts` — Fern Docker codegen path (Python + Rust)
+- `sdk-utils.ts` / `sdk-fs.ts` — OAS extraction helpers, file I/O utilities
+- `pagination-detect.ts` — auto-detects cursor/offset/page plans from inline response schemas
+- `sdk-plugins/auth.ts` + `auth-emit.ts` — TS auth module generation (bearer/basic/apiKey/oauth2/tokenProvider) + env-var pickup
+- `sdk-plugins/pagination.ts` — TS pagination iterator/pager module generation
+- `sdk-plugins/runtime-emit.ts` — TS runtime module (retries, Retry-After, fetch wrapper)
+- `sdk-plugins/resource-tree.ts` + `resource-tree-pages.ts` — namespace tree + *Pages method generation
+- `fern-oas-rewrite.ts` — stamps `x-fern-pagination` + `operationId` rewrites before Fern Docker; Fern OAuth auth-schemes emission is gated (DORMANT — see KNOWN_GAPS.md)
+- `sdk-templates/render.ts` — README/package.json/tsconfig/LICENSE/npmignore template rendering
 
 ```
 dist/

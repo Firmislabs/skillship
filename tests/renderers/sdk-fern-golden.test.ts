@@ -4,10 +4,9 @@
 //  (2) structural + no-leakage: required marker file present; no op_<hex>
 //      leakage anywhere in the tree.
 //  (3) agent-specific structural pins: oauth_token_provider.rs IS present in the
-//      rust agent tree — Fern's rust generator emits its native OAuth machinery from
-//      the OAS oauth2 securityScheme + flows alone (independent of our dormant
-//      auth-schemes block). The machinery is not auto-wired into ApiClient; see
-//      KNOWN_GAPS.md.
+//      rust agent tree (Fern emits native oauth2 client-credentials machinery from
+//      the OAS oauth2 securityScheme + flows; the auth-schemes overlay path is
+//      dormant — see KNOWN_GAPS.md); client.py exposes the token callable-union.
 import { createHash } from "node:crypto";
 import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
@@ -82,19 +81,34 @@ describe("Fern SDK agent golden — structural pins", () => {
   });
 
   // Truthfulness pin: oauth_token_provider.rs IS present because Fern's Rust
-  // generator emits it from the OAS securityScheme (agentOauth bearer flow),
-  // NOT from our auth-schemes overlay in generators.yml. The overlay path is
-  // dormant until request-body projection lands (spec §4.1 fallback), so
+  // generator emits its native OAuth machinery (OAuthTokenProvider, OAuthConfig,
+  // client_credentials fetch) from the OAS oauth2 securityScheme + flows alone —
+  // NOT from our auth-schemes overlay in generators.yml. The auth-schemes overlay
+  // path is dormant (gated on request-body projection; see KNOWN_GAPS.md), so
   // generators.yml carries NO auth-schemes block — yet the file appears because
-  // the upstream generator handles bearer auth natively. This pin records the
-  // actual generated reality so future changes can't silently regress it.
-  test("sdk-rust-agent-minimal: oauth_token_provider.rs present (Fern-native bearer — not overlay-driven)", () => {
+  // the upstream generator handles oauth2 client-credentials natively. This pin
+  // records the actual generated reality so future changes can't silently regress it.
+  test("sdk-rust-agent-minimal: oauth_token_provider.rs present (Fern-native oauth2 client-credentials — not overlay-driven)", () => {
     const treeDir = join(ROOT, "sdk-rust-agent-minimal");
     const files = listRel(treeDir);
     const hasProvider = files.some((f) => f.includes("oauth_token_provider"));
     expect(
       hasProvider,
-      "oauth_token_provider.rs must be present (generated from securityScheme, not auth-schemes overlay)",
+      "oauth_token_provider.rs must be present (generated from oauth2 securityScheme + flows, not auth-schemes overlay)",
     ).toBe(true);
+  });
+
+  // Python analog: client.py exposes token as str | Callable union (+async_token on AsyncClient).
+  // This pin confirms the Fern Python generator emits the callable-union token pattern
+  // for oauth2 client-credentials — the Python counterpart of the Rust OAuth machinery pin.
+  test("sdk-python-agent-minimal: client.py exposes token as str | Callable union", () => {
+    const clientPy = readFileSync(
+      join(ROOT, "sdk-python-agent-minimal", "client.py"),
+      "utf8",
+    );
+    expect(
+      clientPy,
+      "client.py must expose token: Optional[Union[str, Callable[[], str]]]",
+    ).toContain("typing.Union[str, typing.Callable[[], str]]");
   });
 });

@@ -162,3 +162,37 @@ Output changes ONLY when `FERN_PINS` is bumped. Two complementary gates: (1) the
 - **`runBuild` length:** after wiring the Fern path and extracting `assembleSdkArtifacts`, `runBuild` (`src/cli/build.ts`) is ~54 lines — slightly over the 50-line guideline. The residual is pre-existing config/ingest/`writeAll` setup that predates this feature; a fuller sub-50 refactor (extracting the ingest-warning + setup) is a separate cleanup, out of scope here.
 - **`stageProject` duplication:** `tests/cli/build-sdk-fern-noop.test.ts` inlines a copy of `stageProject()` from `tests/cli/build-sdk.test.ts` (the plan chose inlining over coupling the new test to a refactor of the green existing test; the copy carries a "keep in sync" comment). Extracting a shared test-fixture helper is a candidate cleanup.
 - **Rust compile gate has no committed `Cargo.lock`:** the Fern-generated `Cargo.toml` files use semver ranges, so the Docker lane's `cargo check` resolves latest-compatible crates from crates.io on each run. Acceptable for a Fern-managed golden (Fern owns valid-Rust generation), but a `cargo check` failure may occasionally be a crates.io resolution issue rather than an SDK bug.
+
+---
+
+## Agent-ready SDK runtime — auth, retries, pagination (2026-06-10)
+
+Auth, retry, and pagination capabilities landed across TS native + Python/Rust Fern paths. The following asymmetries are recorded as intentional or upstream-blocked; they are not bugs in the current implementation.
+
+### Auth
+
+- **Fern OAuth auth-schemes emission is DORMANT.** `src/renderers/fern-oas-rewrite.ts` gates auth-schemes block emission on a request-body property projection that is not yet implemented. The gate requires the token endpoint's request-body fields to appear in the synthetic OAS; request-body property preservation is the reactivation trigger (same family as component-schema preservation below). Until then, `generators.yml` carries no `auth-schemes` block, and the Fern generators receive only the raw `securitySchemes` entry from the OAS.
+
+- **Rust ships complete native OAuth machinery** (`OAuthTokenProvider`, `OAuthConfig`, client_credentials fetch — emitted by Fern from the OAS `oauth2` securityScheme + `flows` that the extractor/OAS chain projects), but the generated `ApiClient` does **not** wire it automatically. The user must construct `OAuthConfig` and call `HttpClient::new_with_oauth` directly; the README in the Rust golden tree documents this path.
+
+- **Python OAuth is not generator-wired.** The Fern Python client exposes `token: str | Callable` (`+async_token` on the async client); the client-credentials token-refresh loop is the caller's responsibility. The README documents the client-credentials snippet path.
+
+- **Env-var auto-pickup is TS-only.** Neither the Fern Python nor the Fern Rust generator emits env-var wiring (neither reads `PRODUCT_TOKEN` / `PRODUCT_CLIENT_ID` from the environment automatically). Only the TS native `runtime.ts` emitter picks up env vars.
+
+- **Rust retry default is 3 vs the overlay/TS default 2.** Fern's Rust generator hard-codes `max_retries: 3`; the TS emitter defaults to 2 (configurable via overlay). This is not configurable at generation time — it would require a Fern generator change or post-generation patching.
+
+### Pagination
+
+- **Pagination pagers are TS-only.** Fern's Python pager emission is gated behind a server-side org entitlement with no local override; Fern's Rust pager emission is disabled upstream (PR #9781). `x-fern-pagination` IS stamped on the OAS extensions (forward-compatible; auto-activates on regen if upstream lifts the gates). Page-style plans are stamped in Fern's offset form (no distinct page type at that syntax level).
+
+- **Pagination auto-detect requires INLINE response schemas.** `$ref`'d component schemas remain `{type: object}` stubs in the synthetic OAS — full component-schema (and request-body property) preservation is future work. A plan is emitted only when the response schema is inlined at the operation level.
+
+- **Pagination engine residual risks:**
+  - Cursor APIs returning an empty page with a valid `next_cursor` stop early by loop-safety design (empty-page guard fires before the cursor check).
+  - A→B→A cursor cycles are not guarded — only immediate same-cursor repeats are detected.
+  - Numeric-STRING `page_size` values (e.g. `"10"` as a string in the query) do not activate the partial-page stop; only numeric values count.
+  - An optional `maxPages` escape hatch is future work.
+
+### Deferrals (v1.1)
+
+OAuth device/browser flow, token cache on disk, streaming/SSE, webhook signature verification, idempotency-key auto-generation.

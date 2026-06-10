@@ -11,6 +11,7 @@ const BEARER_CTX: TemplateContext = {
   plans: new Map(),
   retries: { maxRetries: 2, retryableStatus: [408, 409, 429, 500, 502, 503, 504], honorRetryAfter: true },
   pagesExample: null,
+  firstRequestExample: { accessor: "projects.list" },
 };
 
 const GQL_CTX: TemplateContext = {
@@ -23,6 +24,7 @@ const GQL_CTX: TemplateContext = {
   plans: new Map(),
   retries: { maxRetries: 2, retryableStatus: [408, 409, 429, 500, 502, 503, 504], honorRetryAfter: true },
   pagesExample: null,
+  firstRequestExample: { accessor: "mutation.createProject" },
 };
 
 const OAUTH2_CTX: TemplateContext = {
@@ -45,6 +47,7 @@ const OAUTH2_CTX: TemplateContext = {
   ]),
   retries: { maxRetries: 2, retryableStatus: [408, 409, 429, 500, 502, 503, 504], honorRetryAfter: true },
   pagesExample: { accessor: "items.list", pageSizeParam: "limit" },
+  firstRequestExample: { accessor: "items.create" },
 };
 
 /** Context with custom retries — exercises Fix A per-product threading. */
@@ -58,6 +61,7 @@ const CUSTOM_RETRIES_CTX: TemplateContext = {
   plans: new Map(),
   retries: { maxRetries: 5, retryableStatus: [429, 503], honorRetryAfter: true },
   pagesExample: null,
+  firstRequestExample: null,
 };
 
 /** Context with a differently-named pages accessor — exercises Fix B derivation. */
@@ -74,6 +78,7 @@ const FETCH_ALL_PAGES_CTX: TemplateContext = {
   retries: { maxRetries: 2, retryableStatus: [408, 409, 429, 500, 502, 503, 504], honorRetryAfter: true },
   // fetchAllItems → accessor "reports.fetchAll" — tests non-default accessor name
   pagesExample: { accessor: "reports.fetchAll", pageSizeParam: null },
+  firstRequestExample: null,
 };
 
 /** Context with apiKey scheme — exercises Fix C apiKey quickstart branch. */
@@ -87,6 +92,7 @@ const APIKEY_CTX: TemplateContext = {
   plans: new Map(),
   retries: { maxRetries: 2, retryableStatus: [408, 409, 429, 500, 502, 503, 504], honorRetryAfter: true },
   pagesExample: null,
+  firstRequestExample: null,
 };
 
 /** Context with basic scheme — exercises Fix C basic quickstart branch. */
@@ -100,6 +106,7 @@ const BASIC_CTX: TemplateContext = {
   plans: new Map(),
   retries: { maxRetries: 2, retryableStatus: [408, 409, 429, 500, 502, 503, 504], honorRetryAfter: true },
   pagesExample: null,
+  firstRequestExample: null,
 };
 
 describe("renderTemplates", () => {
@@ -348,6 +355,36 @@ describe("renderTemplates", () => {
     const readme = renderTemplates(BEARER_CTX)["README.md"]!;
     // Should have a first-request/usage example section
     expect(readme).toContain("request");
+  });
+
+  // ── First-request example ────────────────────────────────────────────────
+
+  test("first-request: README with firstRequestExample emits Make a request section", () => {
+    const ctx: TemplateContext = {
+      ...BEARER_CTX,
+      firstRequestExample: { accessor: "projects.list" },
+    };
+    const readme = renderTemplates(ctx)["README.md"]!;
+    expect(readme).toContain("## Make a request");
+    expect(readme).toContain("client.projects.list()");
+  });
+
+  test("first-request: README with firstRequestExample null omits section", () => {
+    const ctx: TemplateContext = {
+      ...BEARER_CTX,
+      firstRequestExample: null,
+    };
+    const readme = renderTemplates(ctx)["README.md"]!;
+    expect(readme).not.toContain("## Make a request");
+  });
+
+  test("first-request: accessor is rendered verbatim (non-list method)", () => {
+    const ctx: TemplateContext = {
+      ...BEARER_CTX,
+      firstRequestExample: { accessor: "emails.send" },
+    };
+    const readme = renderTemplates(ctx)["README.md"]!;
+    expect(readme).toContain("client.emails.send()");
   });
 
   test("Fix C: env table is emitted without dangling lead-in when table is empty", () => {

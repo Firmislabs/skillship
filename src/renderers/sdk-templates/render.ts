@@ -16,6 +16,11 @@ export interface PagesExample {
   readonly pageSizeParam: string | null;
 }
 
+export interface FirstRequestExample {
+  /** Accessor path on the client, e.g. "projects.list" → used as "client.projects.list()". */
+  readonly accessor: string;
+}
+
 export interface TemplateContext {
   readonly productName: string;
   readonly packageName: string;
@@ -28,6 +33,8 @@ export interface TemplateContext {
   readonly retries: RetriesConfig;
   /** Derived from the first plan entry; null when the product has no pagination. */
   readonly pagesExample: PagesExample | null;
+  /** Derived from the first non-paginated op; null when there are no ops. */
+  readonly firstRequestExample: FirstRequestExample | null;
 }
 
 interface TemplateSpec {
@@ -56,6 +63,7 @@ export function renderTemplates(
     README_ENV_TABLE: buildEnvTable(ctx.schemes, ctx.envPrefix),
     README_AUTH_QUICKSTART: buildAuthQuickstart(ctx.schemes, ctx.envPrefix, ctx.packageName),
     README_TOKEN_PROVIDER: buildTokenProviderSection(ctx.packageName),
+    README_FIRST_REQUEST: buildFirstRequestSection(ctx.firstRequestExample, ctx.packageName),
     README_PAGINATION: buildPaginationSection(ctx.pagesExample, ctx.packageName),
     README_RETRIES: buildRetriesSection(ctx.retries),
   };
@@ -255,6 +263,27 @@ function buildTokenProviderSection(packageName: string): string {
     "    },",
     "  }),",
     ");",
+    "```",
+  ].join("\n");
+}
+
+// ── First-request section ─────────────────────────────────────────────────────
+
+function buildFirstRequestSection(
+  example: FirstRequestExample | null,
+  packageName: string,
+): string {
+  if (example === null) return "";
+  const call = `client.${example.accessor}()`;
+  return [
+    "## Make a request",
+    "",
+    "```ts",
+    `import { Client, attachResources } from "${packageName}";`,
+    "",
+    "const client = attachResources(new Client({ baseUrl: \"https://api.example.com\", auth: { /* ... */ } }));",
+    "",
+    `const result = await ${call};`,
     "```",
   ].join("\n");
 }

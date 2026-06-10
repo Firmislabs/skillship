@@ -8,7 +8,8 @@
 //       valid Hey API 0.97.2 plugin shape — see DefinePlugin in @hey-api/shared.
 //       Manual emission is the documented Plan 2 R2-1 fallback.)
 //   3. delete openapi.json from tempDir so it does not ship in the package
-//   4. emit errors.ts, runtime.ts, resources.ts manually into src/
+//   4. emit errors.ts, auth.ts, runtime.ts, pagination.ts (when plans>0),
+//      resources.ts manually into src/
 //   5. write package templates (package.json, tsconfig.json, README, LICENSE, .npmignore)
 //   6. format emitted TS with Prettier
 //   7. run tsc --noEmit against the temp package
@@ -40,7 +41,11 @@ import {
   generateResourceTreeModule,
   resolveAssignments,
 } from "../sdk-plugins/resource-tree.js";
-import { renderTemplates, type PagesExample } from "./sdk-templates/render.js";
+import {
+  renderTemplates,
+  type FirstRequestExample,
+  type PagesExample,
+} from "./sdk-templates/render.js";
 import {
   computeWedgeInputs,
   slugify,
@@ -206,6 +211,19 @@ function computePagesExample(wedge: WedgeInputs): PagesExample | null {
   return { accessor, pageSizeParam: plan.pageSizeParam };
 }
 
+/**
+ * Derives the firstRequestExample for the README "Make a request" section.
+ * Returns the accessor for the first non-paginated operation in assignment order.
+ * Returns null when there are no ops at all.
+ */
+function computeFirstRequestExample(wedge: WedgeInputs): FirstRequestExample | null {
+  const assignments = resolveAssignments(wedge.ops, wedge.overlay);
+  if (assignments.length === 0) return null;
+  const first = assignments.find((a) => !wedge.plans.has(a.op.operationId));
+  const target = first ?? assignments[0]!;
+  return { accessor: `${target.namespace}.${target.methodName}` };
+}
+
 function writePackageTemplates(
   tempDir: string,
   input: RenderSdkInput,
@@ -227,6 +245,7 @@ function writePackageTemplates(
     plans: wedge.plans,
     retries: wedge.retries,
     pagesExample: computePagesExample(wedge),
+    firstRequestExample: computeFirstRequestExample(wedge),
   });
   for (const [name, content] of Object.entries(tplOut)) {
     writeFileSync(join(tempDir, name), content, "utf8");

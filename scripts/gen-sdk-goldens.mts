@@ -1,7 +1,8 @@
 #!/usr/bin/env -S node --import tsx/esm
-// One-off generator that writes the two SDK golden trees.
-// Run: npx tsx scripts/gen-sdk-goldens.mts
-// Output: tests/fixtures/golden/sdk-minimal/ and sdk-graphql-minimal/
+// One-off generator that writes all SDK golden trees.
+// Run: npx tsx scripts/gen-sdk-goldens.mts [--langs python,rust]
+// TS output: sdk-minimal/, sdk-graphql-minimal/, sdk-agent-minimal/
+// Fern output (with --langs): sdk-{python,rust}-minimal/, sdk-{python,rust}-graphql-minimal/, sdk-{python,rust}-agent-minimal/
 // Uses the SAME render code path as the golden lock test.
 //
 // NOTE: The review README (sdk-minimal-README.md) is a SIBLING of the golden

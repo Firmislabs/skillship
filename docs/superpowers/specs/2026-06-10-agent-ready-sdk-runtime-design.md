@@ -1,7 +1,7 @@
 # Agent-Ready SDK Runtime — Design (Spec A)
 
 **Date:** 2026-06-10
-**Status:** Approved design, pre-plan
+**Status:** Implemented (2026-06-10) — see KNOWN_GAPS.md for recorded asymmetries
 **Repo:** skillship
 **Predecessors:** Plan 2 (R-SDK TypeScript wedge), 2026-05-28 multi-language SDK (Fern Python/Rust)
 **Successor:** Spec B — MCP server renderer (R-MCP, separate spec; depends on this work)

@@ -10,12 +10,21 @@ on:
       - "src/renderers/fern-*.ts"
       - "src/renderers/sdk-fern.ts"
       - "src/renderers/sdk-fs.ts"
+      - "src/renderers/pagination-detect.ts"
+      - "src/sdk-plugins/auth.ts"
+      - "src/sdk-plugins/auth-emit.ts"
+      - "src/sdk-plugins/pagination.ts"
+      - "src/sdk-plugins/runtime-emit.ts"
+      - "src/sdk-plugins/resource-tree-pages.ts"
       - "src/sdk-plugins/resource-tree.ts"
       - "src/renderers/oas.ts"
       - "src/renderers/sdk-utils.ts"
+      - "src/shared/oas-schema.ts"
       - "src/overlays/codegen.ts"
       - "scripts/gen-sdk-goldens.mts"
       - "tests/renderers/sdk-fern-golden*"
+      - "tests/fixtures/golden/sdk-python-agent-minimal/**"
+      - "tests/fixtures/golden/sdk-rust-agent-minimal/**"
       - ".github/workflows/sdk-docker.yml"
 
 concurrency:
@@ -49,17 +58,25 @@ jobs:
             tests/fixtures/golden/sdk-rust-minimal \
             tests/fixtures/golden/sdk-python-graphql-minimal \
             tests/fixtures/golden/sdk-rust-graphql-minimal \
+            tests/fixtures/golden/sdk-python-agent-minimal \
+            tests/fixtures/golden/sdk-rust-agent-minimal \
             'tests/fixtures/golden/*.manifest.json'
 
       - name: Rust compile gate
         run: |
-          for d in tests/fixtures/golden/sdk-rust-minimal tests/fixtures/golden/sdk-rust-graphql-minimal; do
+          for d in \
+            tests/fixtures/golden/sdk-rust-minimal \
+            tests/fixtures/golden/sdk-rust-graphql-minimal \
+            tests/fixtures/golden/sdk-rust-agent-minimal; do
             cargo check --manifest-path "$d/Cargo.toml"
           done
 
       - name: Python compile gate (neutral CWD)
         run: |
           cd /tmp
-          for d in sdk-python-minimal sdk-python-graphql-minimal; do
+          for d in \
+            sdk-python-minimal \
+            sdk-python-graphql-minimal \
+            sdk-python-agent-minimal; do
             python3 -m compileall -q "$GITHUB_WORKSPACE/tests/fixtures/golden/$d"
           done

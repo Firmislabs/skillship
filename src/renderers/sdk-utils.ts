@@ -65,7 +65,7 @@ function mapSecurityScheme(id: string, s: OasSecurityScheme): AuthSchemeDescript
     const scopes = cc?.scopes != null ? Object.keys(cc.scopes) : [];
     return { kind: "oauth2ClientCredentials", id, tokenUrl, scopes };
   }
-  // openIdConnect, mutualTLS, unknown — external/inert until Task 8
+  // openIdConnect, mutualTLS, unknown — mapped to external (no auto-inject)
   return { kind: "external", id, schemeType: type };
 }
 

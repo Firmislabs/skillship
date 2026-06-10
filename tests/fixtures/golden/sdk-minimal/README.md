@@ -51,6 +51,16 @@ const client = attachResources(
 );
 ```
 
+## Make a request
+
+```ts
+import { Client, attachResources } from "@skillship/min-example-sdk";
+
+const client = attachResources(new Client({ baseUrl: "https://api.example.com", auth: { /* ... */ } }));
+
+const result = await client.projects.list();
+```
+
 ## Retries
 
 Failed requests are retried automatically (up to 2 retries) for
