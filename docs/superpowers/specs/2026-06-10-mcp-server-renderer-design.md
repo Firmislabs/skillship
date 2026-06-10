@@ -1,7 +1,7 @@
 # MCP Server Renderer (R-MCP) — Design (Spec B)
 
 **Date:** 2026-06-10
-**Status:** Approved design, pre-plan
+**Status:** Implemented (2026-06-10) — see KNOWN_GAPS.md for recorded deviations
 **Repo:** skillship
 **Predecessor:** Spec A — agent-ready SDK runtime (implemented 2026-06-10; this spec wraps it)
 

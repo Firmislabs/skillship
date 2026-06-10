@@ -19,7 +19,10 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version-file: .nvmrc
+          # Node 24 is required so the MCP smoke test (tests/renderers/mcp-server-smoke.test.ts)
+          # is not skipped: the smoke test self-skips below Node 23.6 (the no-build launcher
+          # floor). .nvmrc stays at 20 to pin the dev/Docker lanes.
+          node-version: "24"
           cache: npm
 
       - run: npm ci

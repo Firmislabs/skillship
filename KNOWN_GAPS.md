@@ -196,3 +196,48 @@ Auth, retry, and pagination capabilities landed across TS native + Python/Rust F
 ### Deferrals (v1.1)
 
 OAuth device/browser flow, token cache on disk, streaming/SSE, webhook signature verification, idempotency-key auto-generation.
+
+---
+
+## MCP server renderer (2026-06-10)
+
+The MCP server emitter (`src/sdk-plugins/mcp-catalog.ts`, `mcp-catalog-emit.ts`, `mcp-protocol.ts`, `mcp-server.ts`, `mcp-server-emit.ts`, `mcp-server-dispatch.ts`, `mcp-server-lit.ts`, `mcp-launcher.ts`) is implemented and golden-locked. The following deviations from the design spec and forward-work items are recorded here.
+
+### Protocol-subset conformance — owned in-repo, no upstream SDK dependency
+
+The emitted `src/mcp-protocol.ts` is a hand-rolled zero-dependency stdio JSON-RPC implementation that covers the MCP subset the gateway needs: `initialize`, `notifications/initialized`, `tools/list`, `tools/call`, `ping`. Unknown methods return JSON-RPC `-32601`; malformed frames return `-32700`. The `PROTOCOL_VERSION` constant in the emitter source (`src/sdk-plugins/mcp-protocol.ts`, line 60: `export const PROTOCOL_VERSION = "2025-06-18"`) is pinned to the MCP spec revision current at implementation time. There is no `@modelcontextprotocol/sdk` dependency. **Implication:** new MCP protocol features (e.g. resources, prompts, sampling, revised version negotiation) require emitter updates in `src/sdk-plugins/mcp-protocol.ts` and `mcp-server.ts`; no upstream package bump will pick them up automatically.
+
+### Node floor for the no-build flow — ≥23.6
+
+`bin/mcp.js` (emitted by `generateMcpLauncherModule` in `src/sdk-plugins/mcp-launcher.ts`) checks `process.versions.node` at startup and exits 1 with exactly three actionable stderr lines when `major < 23 || (major === 23 && minor < 6)`:
+
+```
+This MCP server requires Node >=23.6 (it runs TypeScript directly).
+You are on Node <version>. Upgrade Node, then re-run this server.
+See https://nodejs.org for the latest LTS.
+```
+
+Node 23.6 is the floor because that is when `--experimental-strip-types` became default-on (no flag required). The generated SDK is TypeScript source only — `npm run build` is **not** wired; the package has no `dist/` and `src/` is NOT excluded from the published tarball at this time (see the npm-publish posture item below). The generated `package.json`'s `engines` field reflects `"node": ">=23.6"`.
+
+### Annotation coverage — graph claims + method heuristic fallback
+
+`x-skillship-annotations` in the synthetic OAS (`src/renderers/oas.ts`) is projected only for operations that have at least one annotation claim in the graph. The catalog computation (`src/sdk-plugins/mcp-catalog.ts` `computeAnnotations`) applies a two-level rule: (1) if the operation's OAS entry carries an `x-skillship-annotations` extension, each key in it overrides the corresponding heuristic value; (2) absent or missing keys fall back to the HTTP-method heuristic — `GET`/`HEAD` → `readOnly: true`; `DELETE` → `destructive: true`; `GET`/`HEAD`/`PUT`/`DELETE` → `idempotent: true`; everything else → all three `false`. Operations with no OAS entry at all (e.g. GraphQL ops unreachable via `findOasOp`) receive pure heuristic values. **Implication:** ops without either graph-sourced annotations or a matching OAS entry get heuristic values only; a `POST` that is semantically idempotent but carries no annotation claim will emit `idempotent: false`.
+
+### invoke_operation response truncation — 50,000 characters
+
+`runInvoke` in the emitted `src/mcp-server.ts` truncates JSON response text at 50,000 characters (`MAX_RESULT_CHARS = 50000`, defined in `buildHeader` in `src/sdk-plugins/mcp-server-emit.ts`). When truncated, the response appends the literal suffix `\n…[truncated — response exceeded 50,000 characters]` before returning. This is a generation-time constant; changing the budget requires re-emitting the golden trees.
+
+### npm-publish posture — src/ NOT excluded; publishing out of scope
+
+The generated `.npmignore` (emitted by `src/renderers/sdk-templates/render.ts`) currently does **not** exclude `src/`. If a generated SDK package were published to npm as-is, `bin/mcp.js` CAN re-exec the TypeScript source because `src/mcp-server.ts` is present in the tarball. Publishing generated SDK packages remains out of scope and untested; the posture recorded in the design spec ("`.npmignore` excludes `src/`") was NOT implemented — the generated `.npmignore` excludes `node_modules/`, `dist/`, `*.tgz`, and `*.log` only.
+
+### Emitted gateway module — 366-368 lines (adjudicated deviation from 300-line budget)
+
+The emitted `src/mcp-server.ts` artifact is 366 lines for the graphql-minimal golden and 368 lines for the minimal/agent-minimal goldens. This exceeds the 300-line house rule for generated artifacts. The deviation is intentional and controller-adjudicated: the emitter source is split across `mcp-server-emit.ts` (136 lines), `mcp-server-dispatch.ts` (253 lines), `mcp-server.ts` (63 lines), and `mcp-server-lit.ts` — all emitter files respect the 300-line rule. The emitted artifact is kept as one readable file for developer experience (a split generated module would require runtime imports across the SDK's src/ tree). No further split is planned unless the emitted size grows materially.
+
+### Future work
+
+- **`servers`-block projection into synthetic OAS:** the synthetic OAS has no `servers` block today; the `base_url` claim is read at build time and baked as a literal into the catalog. Projecting a `servers` block would also serve Fern environments (Fern reads `servers` for Python/Rust base-URL configuration). Deferred to avoid a three-language golden cascade; recorded in the design spec §4.5.
+- **Named body params (request-body projection):** the catalog emits a single opaque `body: object` parameter for any operation with a `requestBody` (Gap 2's projection covers the OAS level; the catalog does not decompose the body schema into named fields). Callers pass the entire body as `args.body`. Named field projection requires full `$ref` resolution of component schemas — future work tracked with Gap 2.
+- **Search over enriched descriptions:** the `search_operations` scorer uses the summary and description as emitted in the synthetic OAS at build time. LLM-enriched summaries (the enrich stage) are captured in the graph but only reach the OAS if they overwrite the claim that feeds `oas.ts`; no separate enrichment pass feeds the catalog. When the enrich stage is wired end-to-end, the catalog will benefit automatically because it reads from the same synthetic OAS.
+- **`deps.env` does not govern auth:** `GatewayDeps.env` in the emitted gateway controls base-URL resolution and the `<PREFIX>_MCP_ALLOW_DESTRUCTIVE` override only. Auth credential resolution always calls `resolveAuthFromEnv` from the SDK's `auth.ts`, which reads the real `process.env` unconditionally. Tests that inject `deps.env` cannot override credentials without also setting `process.env` (or patching the SDK's auth module). This is intentional (auth must read real env for security) but differs from the design spec's implication that `deps.env` is the single injection point. Documented in the emitted `buildHeader` comment (`src/sdk-plugins/mcp-server-emit.ts` lines 36-38).

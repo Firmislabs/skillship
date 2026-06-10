@@ -125,9 +125,14 @@ output tree.
 - `sdk-plugins/pagination.ts` — TS pagination iterator/pager module generation
 - `sdk-plugins/runtime-emit.ts` — TS runtime module (retries, Retry-After, fetch wrapper)
 - `sdk-plugins/resource-tree.ts` + `resource-tree-pages.ts` — namespace tree + *Pages method generation
-- `fern-oas-rewrite.ts` — stamps `x-fern-pagination` + `operationId`/`tags` rewrites before Fern Docker (pagination + naming only; does NOT gate auth-schemes)
+- `fern-oas-rewrite.ts` — stamps `x-fern-pagination` + `operationId`/`tags` rewrites before Fern Docker; strips `x-skillship-annotations` so Fern generators never see it (pagination + naming only; does NOT gate auth-schemes)
 - `sdk-fern.ts` `computeFernOAuthPlan` → `fern-project.ts` `buildAuthSchemesBlock` — Fern OAuth auth-schemes emission; currently DORMANT (gated on request-body property projection — see KNOWN_GAPS.md)
 - `sdk-templates/render.ts` — README/package.json/tsconfig/LICENSE/npmignore template rendering
+- `sdk-plugins/mcp-catalog.ts` + `mcp-catalog-emit.ts` — computes `CatalogEntry[]` from ops/OAS/overlay (annotation projection + method heuristic fallback) and emits the baked `src/mcp-catalog.ts` literal array
+- `sdk-plugins/mcp-protocol.ts` — emits `src/mcp-protocol.ts`: zero-dep stdio JSON-RPC transport + MCP protocol handler (`initialize`/`ping`/`tools/list`/`tools/call`; `PROTOCOL_VERSION = "2025-06-18"`)
+- `sdk-plugins/mcp-server.ts` + `mcp-server-emit.ts` + `mcp-server-dispatch.ts` + `mcp-server-lit.ts` — emits `src/mcp-server.ts`: three-tool gateway (search/describe/invoke), confirm gate, lazy SDK client, 50 kB truncation
+- `sdk-plugins/mcp-launcher.ts` — emits `bin/mcp.js` (Node ≥23.6 floor gate + loader registration) and `bin/loader.mjs` (ESM `.js`→`.ts` resolve hook for no-build flow)
+- `renderers/mcpJson.ts` `LocalSdkServer` + `localSdkServer` field — extends `.mcp.json` with the stdio `node sdk/bin/mcp.js` entry alongside vendor HTTP surfaces
 
 ```
 dist/
