@@ -162,7 +162,7 @@ export interface WedgeInputs {
   readonly retries: RetriesConfig;
 }
 
-const DEFAULT_RETRIES: RetriesConfig = {
+export const DEFAULT_RETRIES: RetriesConfig = {
   maxRetries: 2,
   retryableStatus: [408, 409, 429, 500, 502, 503, 504],
   honorRetryAfter: true,

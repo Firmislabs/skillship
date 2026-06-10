@@ -6,6 +6,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { AuthSchemeDescriptor } from "../../sdk-plugins/runtime.js";
 import type { PaginationPlan } from "../pagination-detect.js";
+import { DEFAULT_RETRIES } from "../sdk-utils.js";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 
@@ -226,12 +227,39 @@ function buildPaginationSection(
 
 // ── Retries section ───────────────────────────────────────────────────────────
 
+/**
+ * Formats a sorted list of status codes into a compact human-readable string,
+ * collapsing consecutive runs into "start–end" ranges (e.g. 502, 503, 504 → "502–504").
+ * Derived from DEFAULT_RETRIES.retryableStatus so the doc can never drift.
+ */
+function formatStatusCodes(codes: readonly number[]): string {
+  if (codes.length === 0) return "";
+  const sorted = [...codes].sort((a, b) => a - b);
+  const groups: Array<[number, number]> = [];
+  let start = sorted[0]!;
+  let end = sorted[0]!;
+  for (let i = 1; i < sorted.length; i++) {
+    const code = sorted[i]!;
+    if (code === end + 1) {
+      end = code;
+    } else {
+      groups.push([start, end]);
+      start = code;
+      end = code;
+    }
+  }
+  groups.push([start, end]);
+  return groups.map(([s, e]) => (s === e ? String(s) : `${s}–${e}`)).join(", ");
+}
+
 function buildRetriesSection(): string {
+  // Derived from DEFAULT_RETRIES.retryableStatus — stays truthful as the array evolves.
+  const statusList = formatStatusCodes(DEFAULT_RETRIES.retryableStatus);
   return [
     "## Retries",
     "",
     "Failed requests are retried automatically (up to 2 retries by default) for",
-    "idempotent methods on retryable status codes (408, 429, 500–504).",
+    `idempotent methods on retryable status codes (${statusList}).`,
     "POST/PATCH are retried only on 408 and 429.",
     "The `Retry-After` response header is honored when present.",
   ].join("\n");

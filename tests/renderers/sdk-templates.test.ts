@@ -149,6 +149,16 @@ describe("renderTemplates", () => {
     expect(readme).toContain("Retry-After");
   });
 
+  test("README retries section lists the truthful status-code set (409 included, 501 excluded)", () => {
+    const readme = renderTemplates(BEARER_CTX)["README.md"]!;
+    // 409 must appear — either individually or collapsed into the 408–409 range.
+    // The formatter collapses consecutive codes: 408+409 → "408–409", 502+503+504 → "502–504".
+    // Exact expected output derived from DEFAULT_RETRIES.retryableStatus = [408,409,429,500,502,503,504].
+    expect(readme).toContain("408–409, 429, 500, 502–504");
+    // Must NOT imply 501 is retryable via the old erroneous "500–504" range
+    expect(readme).not.toContain("500–504");
+  });
+
   // ── Cross-check: no oauth2/pagination in bearer-only product ────────────
 
   test("bearer README has no AGENTMIN prefix (cross-product guard)", () => {
