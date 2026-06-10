@@ -36,18 +36,6 @@ function runEmit(
   return { nodes, claims, edges };
 }
 
-function paramClaims(
-  claims: ExtractedClaim[],
-  nodes: ExtractedNode[],
-  paramName: string,
-): ExtractedClaim[] {
-  const paramId = nodes.find(
-    (n) => n.kind === "parameter",
-  )?.id;
-  if (paramId === undefined) return [];
-  return claims.filter((c) => c.node_id === paramId);
-}
-
 function findParamNodeByName(
   nodes: ExtractedNode[],
   claims: ExtractedClaim[],
@@ -215,6 +203,27 @@ describe("oneOf parameter type resolution — no integer branch (current behavio
       responses: BASE_RESPONSES,
     });
     const t = typeClaimForParam(claims, nodes, "body");
+    expect(t).toBe("unknown");
+  });
+
+  test("probe: nested oneOf inside oneOf (no integer at top level) → type claim is 'unknown'", () => {
+    // Deeply nested oneOf — the extractor should not recurse; no integer at the top level.
+    const { nodes, claims } = runEmit({
+      parameters: [
+        {
+          name: "nested",
+          in: "query",
+          schema: {
+            oneOf: [
+              { oneOf: [{ type: "integer" }] },
+              { type: "string" },
+            ],
+          },
+        },
+      ],
+      responses: BASE_RESPONSES,
+    });
+    const t = typeClaimForParam(claims, nodes, "nested");
     expect(t).toBe("unknown");
   });
 });

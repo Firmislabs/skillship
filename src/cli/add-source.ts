@@ -3,7 +3,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { parse as parseYaml, stringify as stringifyYaml } from "yaml";
 import { z } from "zod";
-import { inferSpecContentType } from "../discovery/specSniffer.js";
+import { inferSpecContentType, isGraphqlSdl } from "../discovery/specSniffer.js";
 import { extensionFor } from "../sources/store.js";
 import { scoreCoverage } from "../discovery/config.js";
 import type { SurfaceKind } from "../graph/types.js";
@@ -43,9 +43,16 @@ export interface AddSourceResult {
   readonly content_type: string;
   readonly sha256: string;
   readonly configPath: string;
+  readonly coverage: "bronze" | "silver" | "gold";
 }
 
 export type FetchImpl = (url: string, opts?: RequestInit) => Promise<Response>;
+
+// ---- valid surface kinds (mirrors SurfaceKind union) -----------------------
+
+const VALID_SURFACES: ReadonlySet<string> = new Set([
+  "rest", "grpc", "cli", "mcp", "sdk", "docs", "llms_txt",
+]);
 
 // ---- helpers ---------------------------------------------------------------
 
@@ -65,9 +72,7 @@ function inferSurface(contentType: string): SurfaceKind {
 
 function sniffContentType(bytes: Buffer, servedContentType: string): string {
   const bare = servedContentType.split(";")[0]?.trim().toLowerCase() ?? "";
-  // GraphQL SDL heuristic — check before passing to specSniffer
-  if (isGraphqlSdl(bytes)) return "application/graphql";
-  // Delegate OpenAPI/Swagger detection to specSniffer
+  // OpenAPI/Swagger classification FIRST (inferSpecContentType handles GraphQL too for yaml/json).
   if (
     bare === "application/json" ||
     bare === "application/yaml" ||
@@ -78,12 +83,14 @@ function sniffContentType(bytes: Buffer, servedContentType: string): string {
   ) {
     return inferSpecContentType(bytes, bare);
   }
+  // GraphQL SDL fallback for other text-ish content types.
+  if (isGraphqlSdl(bytes)) return "application/graphql";
   return servedContentType;
 }
 
-function isGraphqlSdl(bytes: Buffer): boolean {
-  const text = bytes.slice(0, 512).toString("utf8");
-  return /\btype\s+Query\b/.test(text) || /\bschema\s*\{/.test(text);
+function isBinaryish(servedContentType: string): boolean {
+  const bare = servedContentType.split(";")[0]?.trim().toLowerCase() ?? "";
+  return bare === "application/octet-stream" || extensionFor(bare) === "bin";
 }
 
 function readConfig(configPath: string): ValidatedConfig {
@@ -141,11 +148,36 @@ function storeCacheFile(
   sha256: string,
   ext: string,
   bytes: Buffer,
-): string {
+): void {
   mkdirSync(sourcesDir, { recursive: true });
-  const cachePath = join(sourcesDir, `${sha256}.${ext}`);
-  writeFileSync(cachePath, bytes);
-  return cachePath;
+  writeFileSync(join(sourcesDir, `${sha256}.${ext}`), bytes);
+}
+
+async function fetchBytes(
+  url: string,
+  fetchImpl: FetchImpl,
+  timeoutMs: number | undefined,
+): Promise<{ bytes: Buffer; servedContentType: string }> {
+  const controller = new AbortController();
+  const abortTimeout =
+    timeoutMs !== undefined
+      ? setTimeout(() => controller.abort(), timeoutMs)
+      : undefined;
+  let response: Response;
+  try {
+    response = await fetchImpl(url, { signal: controller.signal });
+  } finally {
+    if (abortTimeout !== undefined) clearTimeout(abortTimeout);
+  }
+  if (!response.ok) {
+    throw new Error(
+      `skillship add-source: fetch failed for ${url} — HTTP ${response.status}`,
+    );
+  }
+  const arrayBuffer = await response.arrayBuffer();
+  const bytes = Buffer.from(arrayBuffer);
+  const servedContentType = response.headers.get("content-type") ?? "application/octet-stream";
+  return { bytes, servedContentType };
 }
 
 // ---- core (testable) -------------------------------------------------------
@@ -154,46 +186,41 @@ export async function runAddSource(
   opts: AddSourceOptions,
   fetchImpl: FetchImpl,
 ): Promise<AddSourceResult> {
+  // 0. Validate --surface BEFORE any side effects.
+  if (opts.surface !== undefined && !VALID_SURFACES.has(opts.surface)) {
+    throw new Error(
+      `skillship add-source: invalid --surface "${opts.surface}"; valid values: ${[...VALID_SURFACES].join(", ")}`,
+    );
+  }
+
   const dir = opts.in ?? process.cwd();
   const configPath = join(dir, ".skillship", "config.yaml");
   const sourcesDir = join(dir, ".skillship", "sources");
 
-  // 1. Fetch
-  const controller = new AbortController();
-  const abortTimeout =
-    opts.timeoutMs !== undefined
-      ? setTimeout(() => controller.abort(), opts.timeoutMs)
-      : undefined;
+  // 1. Read + validate config FIRST (no side effects on error path).
+  const config = readConfig(configPath);
 
-  let response: Response;
-  try {
-    response = await fetchImpl(opts.url, { signal: controller.signal });
-  } finally {
-    if (abortTimeout !== undefined) clearTimeout(abortTimeout);
-  }
+  // 2. Fetch.
+  const { bytes, servedContentType } = await fetchBytes(opts.url, fetchImpl, opts.timeoutMs);
 
-  if (!response.ok) {
+  // 3. Sniff.
+  const sniffedContentType = sniffContentType(bytes, servedContentType);
+
+  // Error on binary-unknown with no --surface.
+  if (opts.surface === undefined && isBinaryish(servedContentType) && sniffedContentType === servedContentType) {
     throw new Error(
-      `skillship add-source: fetch failed for ${opts.url} — HTTP ${response.status}`,
+      `skillship add-source: cannot infer surface for binary content (${servedContentType}); pass --surface with one of: ${[...VALID_SURFACES].join(", ")}`,
     );
   }
 
-  const arrayBuffer = await response.arrayBuffer();
-  const bytes = Buffer.from(arrayBuffer);
-  const servedContentType =
-    response.headers.get("content-type") ?? "application/octet-stream";
-
-  // 2. Sniff
-  const sniffedContentType = sniffContentType(bytes, servedContentType);
   const surface: SurfaceKind = opts.surface ?? inferSurface(sniffedContentType);
 
-  // 3. SHA-256 + cache
+  // 4. SHA-256 + cache.
   const sha256 = createHash("sha256").update(bytes).digest("hex");
   const ext = extensionFor(sniffedContentType);
   storeCacheFile(sourcesDir, sha256, ext, bytes);
 
-  // 4. Config parse → upsert → recompute coverage → rewrite
-  const config = readConfig(configPath);
+  // 5. Upsert → recompute coverage → rewrite config.
   const newEntry = {
     surface,
     url: opts.url,
@@ -202,14 +229,15 @@ export async function runAddSource(
     fetched_at: new Date().toISOString(),
   };
   const updatedSources = upsertSource(config.sources, newEntry);
+  const coverage = scoreCoverage(updatedSources.length);
   const updatedConfig: ValidatedConfig = {
     ...config,
     sources: updatedSources,
-    coverage: scoreCoverage(updatedSources.length),
+    coverage,
   };
   writeConfigFile(configPath, updatedConfig);
 
-  return { surface, content_type: sniffedContentType, sha256, configPath };
+  return { surface, content_type: sniffedContentType, sha256, configPath, coverage };
 }
 
 // ---- thin CLI wrapper (called from index.ts) --------------------------------
@@ -218,13 +246,5 @@ export async function cliAddSource(
   opts: AddSourceOptions,
 ): Promise<string> {
   const result = await runAddSource(opts, fetch);
-  return `skillship add-source: added ${result.surface} source (coverage=${
-    (() => {
-      // Re-read fresh coverage from the config we just wrote
-      const parsed = parseYaml(
-        readFileSync(result.configPath, "utf8"),
-      ) as { coverage: string };
-      return parsed.coverage;
-    })()
-  })`;
+  return `skillship add-source: added ${result.surface} source (coverage=${result.coverage})`;
 }

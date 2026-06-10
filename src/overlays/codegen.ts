@@ -33,13 +33,18 @@ const Retries = z.object({
   retryableStatus: z.array(z.number().int()).default([408, 409, 429, 500, 502, 503, 504]),
 });
 
-const Auth = z.object({
-  mode: z.enum(["bearer", "apiKey", "oauth2-client-credentials"]),
-  in: z.enum(["header", "query"]).default("header"),
-  name: z.string().optional(),
-  tokenUrl: z.string().url().optional(),
-  valuePrefix: z.string().optional(),
-});
+const Auth = z
+  .object({
+    mode: z.enum(["bearer", "apiKey", "oauth2-client-credentials"]),
+    in: z.enum(["header", "query"]).default("header"),
+    name: z.string().optional(),
+    tokenUrl: z.string().url().optional(),
+    valuePrefix: z.string().optional(),
+  })
+  .refine(
+    (a) => a.valuePrefix === undefined || a.mode === "apiKey",
+    { message: "valuePrefix is only applicable when mode is 'apiKey'" },
+  );
 
 const Webhooks = z.object({
   scheme: z.enum(["hmac-sha256"]).default("hmac-sha256"),

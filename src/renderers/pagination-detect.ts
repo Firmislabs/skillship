@@ -136,12 +136,14 @@ function descendEnvelope(props: Record<string, OasSchema>): EnvelopeInfo | null 
   const arrayCount = Object.values(props).filter((p) => p.type === "array").length;
   if (arrayCount > 0) return null; // direct arrays present — no envelope descent
   const objectKeys = Object.keys(props).filter(
-    (k) => isObjectLikeSchema(props[k]!),
+    (k) => !k.includes(".") && isObjectLikeSchema(props[k]!),
   );
   if (objectKeys.length !== 1) return null; // ambiguous or absent envelope
   const envelopeKey = objectKeys[0]!;
   const innerProps = props[envelopeKey]!.properties ?? {};
-  const innerArrayKeys = Object.keys(innerProps).filter((k) => innerProps[k]?.type === "array");
+  const innerArrayKeys = Object.keys(innerProps).filter(
+    (k) => !k.includes(".") && innerProps[k]?.type === "array",
+  );
   if (innerArrayKeys.length !== 1) return null; // ambiguous items inside envelope
   return { envelopeKey, arrayKey: innerArrayKeys[0]!, innerProps };
 }

@@ -134,11 +134,14 @@ describe("Auth schema — valuePrefix (C3)", () => {
     expect(ovl.auth?.valuePrefix).toBe("token ");
   });
 
-  test("valuePrefix works on bearer mode (stored but unused by bearer path)", () => {
-    const result = CodegenOverlaySchema.parse({
-      auth: { mode: "bearer", valuePrefix: "CustomBearer " },
-    });
-    expect(result.auth?.valuePrefix).toBe("CustomBearer ");
+  test("valuePrefix on bearer mode is rejected with actionable message", () => {
+    // valuePrefix is only applicable for apiKey mode; using it with bearer is a
+    // configuration error — the .refine() guard rejects it early.
+    expect(() =>
+      CodegenOverlaySchema.parse({
+        auth: { mode: "bearer", valuePrefix: "CustomBearer " },
+      }),
+    ).toThrow(/valuePrefix.*apiKey/i);
   });
 
   test("applyOverlayToDoc stamps valuePrefix into x-skillship-codegen.auth", () => {

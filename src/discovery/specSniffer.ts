@@ -1,5 +1,10 @@
 const SNIFF_LIMIT = 512;
 
+export function isGraphqlSdl(bytes: Buffer): boolean {
+  const text = bytes.slice(0, SNIFF_LIMIT).toString("utf8");
+  return /\btype\s+Query\b/.test(text) || /\bschema\s*\{/.test(text);
+}
+
 export function inferSpecContentType(
   bytes: Buffer,
   declaredContentType: string,

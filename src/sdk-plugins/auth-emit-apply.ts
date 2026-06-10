@@ -38,8 +38,9 @@ function buildApplyBranches(schemes: readonly AuthSchemeDescriptor[]): string[] 
       lines.push('    if (auth.kind === "apiKey") {');
       const vp = s.valuePrefix ?? "";
       if (vp.length > 0) {
-        lines.push(`      if (auth.in === "header") headers[auth.name] = "${vp}" + auth.value;`);
-        lines.push(`      else searchParams.append(auth.name, "${vp}" + auth.value);`);
+        const vpLit = JSON.stringify(vp); // includes surrounding quotes; safe for any prefix content
+        lines.push(`      if (auth.in === "header") headers[auth.name] = ${vpLit} + auth.value;`);
+        lines.push(`      else searchParams.append(auth.name, ${vpLit} + auth.value);`);
       } else {
         lines.push('      if (auth.in === "header") headers[auth.name] = auth.value;');
         lines.push('      else searchParams.append(auth.name, auth.value);');

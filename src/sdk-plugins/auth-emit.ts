@@ -90,7 +90,7 @@ function buildEnvBranches(
     } else if (s.kind === "apiKey" && !seen.has("apiKey")) {
       seen.add("apiKey");
       lines.push(`  if (env.${prefix}_API_KEY) {`);
-      lines.push(`    return { kind: "apiKey", value: env.${prefix}_API_KEY, in: "${s.in}", name: "${s.name}" };`);
+      lines.push(`    return { kind: "apiKey", value: env.${prefix}_API_KEY, in: "${s.in}", name: ${JSON.stringify(s.name)} };`);
       lines.push("  }");
     } else if (s.kind === "basic" && !seen.has("basic")) {
       seen.add("basic");

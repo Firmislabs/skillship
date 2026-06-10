@@ -403,7 +403,7 @@ function loadAuthModule(
     },
   });
   const exports: Record<string, unknown> = {};
-  // require is not used in emitted auth module (self-contained except AuthError/ConfigError)
+  // The emitted auth module requires ./errors.js for AuthError/ConfigError; stub it here.
   const require2 = (mod: string): Record<string, unknown> => {
     if (mod === "./errors.js") {
       return {
@@ -502,5 +502,102 @@ describe("generateAuthModule — C3 valuePrefix runtime (auth.test.ts)", () => {
       if (origEnv === undefined) delete process.env["LISTMONK_API_KEY"];
       else process.env["LISTMONK_API_KEY"] = origEnv;
     }
+  });
+
+  // ── C3 emission-safety: prefix containing special characters ──────────────
+
+  test("prefix containing double-quote is safely escaped — transpiles and executes", async () => {
+    const schemes: readonly AuthSchemeDescriptor[] = [
+      { kind: "apiKey", id: "k1", in: "header", name: "Authorization", valuePrefix: 'say "hi" ' },
+    ];
+    // Must not throw on transpile (i.e., the emitted code must be valid TS/JS).
+    const exports = loadAuthModule(schemes, "TEST");
+    const { headers } = await runApplyAuth(exports, {
+      kind: "apiKey", value: "abc", in: "header", name: "Authorization",
+    });
+    expect(headers["Authorization"]).toBe('say "hi" abc');
+  });
+
+  test("prefix containing backslash is safely escaped — transpiles and executes", async () => {
+    const schemes: readonly AuthSchemeDescriptor[] = [
+      { kind: "apiKey", id: "k1", in: "header", name: "Authorization", valuePrefix: "path\\value " },
+    ];
+    const exports = loadAuthModule(schemes, "TEST");
+    const { headers } = await runApplyAuth(exports, {
+      kind: "apiKey", value: "key", in: "header", name: "Authorization",
+    });
+    expect(headers["Authorization"]).toBe("path\\value key");
+  });
+
+  test("benign prefix 'token ' — emitted source is valid TS and evaluates correctly", () => {
+    const schemes: readonly AuthSchemeDescriptor[] = [
+      { kind: "apiKey", id: "k1", in: "header", name: "Authorization", valuePrefix: "token " },
+    ];
+    const code = generateAuthModule(schemes, ENV_PREFIX);
+    // JSON.stringify("token ") === '"token "' — the emitted literal contains quotes.
+    // For a benign prefix the emitted expression is: = "token " + auth.value
+    expect(code).toContain('"token "');
+    // The emitted expression must be a proper JS string literal (not bare template interpolation).
+    // Specifically: the prefix must appear as a quoted JS string in the assignment.
+    expect(code).toMatch(/"token " \+ auth\.value/);
+  });
+});
+
+// ─── C3 coverage-gap tests ───────────────────────────────────────────────────
+
+describe("generateAuthModule — C3 coverage-gap tests", () => {
+  test("declared oauth2 NOT clobbered by apiKey overlay mode", () => {
+    // If both oauth2 and apiKey descriptors are present, both union members must appear.
+    const schemes: readonly AuthSchemeDescriptor[] = [
+      { kind: "oauth2ClientCredentials", id: "o1", tokenUrl: "https://auth.example.com/token", scopes: [] },
+      { kind: "apiKey", id: "k1", in: "header", name: "X-API-Key" },
+    ];
+    const code = generateAuthModule(schemes, ENV_PREFIX);
+    expect(code).toContain('kind: "oauth2"');
+    expect(code).toContain('kind: "apiKey"');
+    // oauth2 branch must appear in applyAuth
+    expect(code).toMatch(/auth\.kind\s*===\s*"oauth2"/);
+    // apiKey branch must also appear
+    expect(code).toMatch(/auth\.kind\s*===\s*"apiKey"/);
+  });
+
+  test("apiKey synthesized from zero (no declared schemes) — synthesis works with in: query", () => {
+    const schemes: readonly AuthSchemeDescriptor[] = [
+      { kind: "apiKey", id: "k1", in: "query", name: "token" },
+    ];
+    const code = generateAuthModule(schemes, "MYAPP");
+    expect(code).toContain('kind: "apiKey"');
+    expect(code).toContain('"query"');
+    expect(code).toContain('"token"');
+    // resolveAuthFromEnv must handle the query apiKey
+    expect(code).toContain("MYAPP_API_KEY");
+  });
+});
+
+// ─── C3 golden-bytes proof ───────────────────────────────────────────────────
+
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+
+describe("generateAuthModule — golden-bytes proof (C3)", () => {
+  test("bearer-only + envPrefix MIN_EXAMPLE output is byte-identical to sdk-minimal golden auth.ts (Prettier-formatted)", async () => {
+    // Pins the no-prefix / bearer-only emission path TODAY.
+    // The golden file is Prettier-formatted (sdk.ts runs prettier on all .ts files),
+    // so we format the emitter output with the same Prettier config before comparing.
+    // If Wave-2 regenerates auth.ts, this test updates with the regen — it exists to
+    // detect unintentional drift, not to block intentional changes.
+    const goldenPath = join(
+      process.cwd(),
+      "tests/fixtures/golden/sdk-minimal/src/auth.ts",
+    );
+    const golden = readFileSync(goldenPath, "utf8");
+    const raw = generateAuthModule(bearerOnly, "MIN_EXAMPLE");
+    const { format } = await import("prettier");
+    const actual = await format(raw, {
+      parser: "typescript",
+      semi: true,
+      singleQuote: false,
+    });
+    expect(actual).toBe(golden);
   });
 });

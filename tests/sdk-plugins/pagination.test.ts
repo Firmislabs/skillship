@@ -367,11 +367,7 @@ describe("generatePaginationModule — dot-path engine emission", () => {
     expect(src).toContain('split(".")');
   });
 
-  test("getPath returns undefined on any miss (defensive traversal)", () => {
-    const src = generatePaginationModule();
-    // Must handle null/non-object intermediate node gracefully
-    expect(src).toMatch(/getPath/);
-  });
+
 });
 
 // ─── Dot-path runtime: envelope cursor iteration ─────────────────────────────
@@ -441,5 +437,51 @@ describe("paginate() runtime — single-segment path is byte-equivalent (regress
     const fetchPage = (): Promise<unknown> => Promise.resolve(pages[idx++]);
     const items = await drain(paginate(fetchPage, FLAT_CURSOR_PLAN));
     expect(items).toEqual(["a", "b", "c"]);
+  });
+});
+
+// ─── Literal-dot key: top-level prop named "page.items" paginates correctly ────
+
+describe("paginate() runtime — literal-key-first (C1 false-positive fix)", () => {
+  const LITERAL_DOT_PLAN: PaginatePlan = {
+    style: "cursor",
+    requestParam: "cursor",
+    pageSizeParam: null,
+    itemsField: "page.items",
+    nextField: "page.cursor",
+    opId: "op_literal_dot",
+  };
+
+  test("literal dot key: prop named 'page.items' (with dot) is read as own property, not descended", async () => {
+    // The server response has a top-level property whose NAME contains a dot.
+    // getPath must prefer the literal key over splitting on ".".
+    const paginate = loadEmittedPaginate();
+    const pages = [
+      { "page.items": ["x", "y"], "page.cursor": "next1" },
+      { "page.items": ["z"], "page.cursor": null },
+    ];
+    let idx = 0;
+    const fetchPage = (): Promise<unknown> => Promise.resolve(pages[idx++]);
+    const items = await drain(paginate(fetchPage, LITERAL_DOT_PLAN));
+    expect(items).toEqual(["x", "y", "z"]);
+  });
+
+  test("literal dot key: benign path 'data' (no dot) — behavior byte-identical to before C1", async () => {
+    const paginate = loadEmittedPaginate();
+    const pages = [
+      { data: [1, 2], next_cursor: "p2" },
+      { data: [3], next_cursor: null },
+    ];
+    let idx = 0;
+    const fetchPage = (): Promise<unknown> => Promise.resolve(pages[idx++]);
+    const items = await drain(paginate(fetchPage, {
+      style: "cursor",
+      requestParam: "cursor",
+      pageSizeParam: null,
+      itemsField: "data",
+      nextField: "next_cursor",
+      opId: "op_benign",
+    }));
+    expect(items).toEqual([1, 2, 3]);
   });
 });

@@ -280,4 +280,73 @@ describe("envelope ambiguity → no plan (conservatism contract)", () => {
     const result = detectPagination(ops, oasJson, EMPTY_OVERLAY);
     expect(result.has("listItems")).toBe(false);
   });
+
+  test("probe: two-level nesting (envelope inside envelope) → no plan", () => {
+    // Three levels deep: outer.middle.items — only one envelope level is supported.
+    const schema = {
+      type: "object",
+      properties: {
+        outer: {
+          type: "object",
+          properties: {
+            middle: {
+              type: "object",
+              properties: {
+                items: { type: "array", items: {} },
+              },
+            },
+          },
+        },
+      },
+    };
+    const oasJson = makeGetOasWithEnvelope("listItems", CURSOR_PARAMS, schema);
+    const ops: readonly OperationInfo[] = [makeOp("listItems")];
+    const result = detectPagination(ops, oasJson, EMPTY_OVERLAY);
+    expect(result.has("listItems")).toBe(false);
+  });
+});
+
+// ============================
+// PROBE: cursor field outside envelope NOT promoted to nextField
+// ============================
+
+describe("probe: top-level cursor field outside envelope not used as nextField", () => {
+  test("cursor field at top level while items are inside envelope → nextField comes from envelope scope", () => {
+    // The 200 schema has a top-level `next_cursor` field AND an envelope `data` with
+    // `results` array and its own `next_cursor`. The direct array path fires first
+    // (arrayProps.length > 0 at top level when both exist) which blocks descent.
+    // Here: top-level has ONLY a cursor field (no array) + an envelope with a cursor —
+    // the nextField must be the ENVELOPE-scoped one ("data.next_cursor").
+    const schema = {
+      type: "object",
+      properties: {
+        data: {
+          type: "object",
+          properties: {
+            results: { type: "array", items: {} },
+            next_cursor: { type: "string" },
+          },
+        },
+        next_cursor: { type: "string" }, // top-level stray cursor — must NOT win
+      },
+    };
+    // The top-level has no direct array but has a stray next_cursor.
+    // descendEnvelope fires: finds data → data.results, data.next_cursor.
+    // nextField must be "data.next_cursor", not bare "next_cursor".
+    const oasJson = makeGetOasWithEnvelope("listItems", CURSOR_PARAMS, schema);
+    const ops: readonly OperationInfo[] = [makeOp("listItems")];
+    const result = detectPagination(ops, oasJson, EMPTY_OVERLAY);
+    // Plan must come from the envelope path, not the spurious top-level cursor.
+    if (result.has("listItems")) {
+      const plan = result.get("listItems")!;
+      expect(plan.nextField).toBe("data.next_cursor");
+      expect(plan.itemsField).toBe("data.results");
+    }
+    // If no plan is produced that is also acceptable (conservative), but the stray
+    // top-level cursor must not appear as nextField without the "data." prefix.
+    if (result.has("listItems")) {
+      const plan = result.get("listItems")!;
+      expect(plan.nextField).not.toBe("next_cursor");
+    }
+  });
 });

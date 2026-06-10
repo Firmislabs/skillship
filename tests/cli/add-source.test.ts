@@ -308,4 +308,98 @@ describe("runAddSource", () => {
 
     expect(capturedSignal).toBeDefined();
   });
+
+  it("AddSourceResult includes coverage field", async () => {
+    writeInitConfig(ctx.dir, LISTMONK_CONFIG_YAML);
+
+    const url = "https://example.com/openapi.yaml";
+    const fetchImpl = makeFetch({
+      [url]: { status: 200, contentType: "application/yaml", body: OPENAPI_YAML_BYTES },
+    });
+
+    const result = await runAddSource({ url, in: ctx.dir }, fetchImpl);
+
+    expect(result.coverage).toBeDefined();
+    expect(["bronze", "silver", "gold"]).toContain(result.coverage);
+  });
+
+  it("missing-config error leaves NO cache file behind", async () => {
+    // No .skillship/config.yaml — readConfig throws before any cache write.
+    const url = "https://example.com/openapi.yaml";
+    const fetchImpl = makeFetch({
+      [url]: { status: 200, contentType: "application/yaml", body: OPENAPI_YAML_BYTES },
+    });
+
+    await expect(
+      runAddSource({ url, in: ctx.dir }, fetchImpl),
+    ).rejects.toThrow(/config/i);
+
+    // The sources directory must not exist (no cache file written).
+    const sourcesDir = join(ctx.dir, ".skillship", "sources");
+    const { existsSync: exists } = await import("node:fs");
+    expect(exists(sourcesDir)).toBe(false);
+  });
+
+  it("invalid --surface → throws before fetch, no side effects", async () => {
+    writeInitConfig(ctx.dir, LISTMONK_CONFIG_YAML);
+
+    const url = "https://example.com/openapi.yaml";
+    let fetchCalled = false;
+    const fetchImpl = async (): Promise<Response> => {
+      fetchCalled = true;
+      return new Response(OPENAPI_YAML_BYTES, {
+        status: 200,
+        headers: { "content-type": "application/yaml" },
+      });
+    };
+
+    await expect(
+      runAddSource({ url, in: ctx.dir, surface: "invalid-kind" as import("../../src/graph/types.js").SurfaceKind }, fetchImpl),
+    ).rejects.toThrow(/invalid.*surface|valid values/i);
+
+    // fetch must NOT have been called (validation is pre-flight).
+    expect(fetchCalled).toBe(false);
+  });
+
+  it("binary-unknown with no --surface → error suggesting --surface", async () => {
+    writeInitConfig(ctx.dir, LISTMONK_CONFIG_YAML);
+
+    const binaryBytes = Buffer.from([0x00, 0x01, 0x02, 0x03, 0xff]);
+    const url = "https://example.com/data.bin";
+    const fetchImpl = makeFetch({
+      [url]: { status: 200, contentType: "application/octet-stream", body: binaryBytes },
+    });
+
+    await expect(
+      runAddSource({ url, in: ctx.dir }, fetchImpl),
+    ).rejects.toThrow(/--surface/i);
+  });
+
+  it("binary-unknown WITH --surface → succeeds (surface override bypasses binary check)", async () => {
+    writeInitConfig(ctx.dir, LISTMONK_CONFIG_YAML);
+
+    const binaryBytes = Buffer.from([0x00, 0x01, 0x02, 0x03, 0xff]);
+    const url = "https://example.com/data.bin";
+    const fetchImpl = makeFetch({
+      [url]: { status: 200, contentType: "application/octet-stream", body: binaryBytes },
+    });
+
+    const result = await runAddSource({ url, in: ctx.dir, surface: "docs" }, fetchImpl);
+    expect(result.surface).toBe("docs");
+  });
+
+  it("cliAddSource output line matches expected format", async () => {
+    writeInitConfig(ctx.dir, LISTMONK_CONFIG_YAML);
+
+    const url = "https://example.com/openapi.yaml";
+    const fetchImpl = makeFetch({
+      [url]: { status: 200, contentType: "application/yaml", body: OPENAPI_YAML_BYTES },
+    });
+
+    // Import the thin wrapper
+    const { runAddSource: run } = await import("../../src/cli/add-source.js");
+    const result = await run({ url, in: ctx.dir }, fetchImpl);
+    const line = `skillship add-source: added ${result.surface} source (coverage=${result.coverage})`;
+    expect(line).toMatch(/skillship add-source: added rest source \(coverage=(bronze|silver|gold)\)/);
+  });
 });

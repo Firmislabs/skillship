@@ -228,4 +228,66 @@ describe("auto-detect envelope descent", () => {
     expect(plan.itemsField).toBe("envelope.items");
     expect(plan.nextField).toBeNull();
   });
+
+  test("probe: type-less OAS 3.1 envelope (no 'type' on outer OR inner object) still descends", () => {
+    // OAS 3.1 makes type optional. Both outer and inner schemas may lack type:object.
+    const envelopeSchema = {
+      properties: {
+        data: {
+          properties: {
+            results: { type: "array", items: {} },
+            next_cursor: { type: "string" },
+          },
+        },
+      },
+    };
+    const oasJson = makeGetOasWithEnvelope("listItems", CURSOR_PARAMS, envelopeSchema);
+    const ops: readonly OperationInfo[] = [makeOp("listItems")];
+    const result = detectPagination(ops, oasJson, EMPTY_OVERLAY);
+    expect(result.has("listItems")).toBe(true);
+    const plan = result.get("listItems")!;
+    expect(plan.itemsField).toBe("data.results");
+  });
+
+  test("probe: envelope + scalar sibling → plan (scalar does not block descent)", () => {
+    // A scalar sibling alongside the envelope object does not block descent.
+    const schema = {
+      type: "object",
+      properties: {
+        data: {
+          type: "object",
+          properties: {
+            results: { type: "array", items: {} },
+            next_cursor: { type: "string" },
+          },
+        },
+        total: { type: "integer" },
+      },
+    };
+    const oasJson = makeGetOasWithEnvelope("listItems", CURSOR_PARAMS, schema);
+    const ops: readonly OperationInfo[] = [makeOp("listItems")];
+    const result = detectPagination(ops, oasJson, EMPTY_OVERLAY);
+    expect(result.has("listItems")).toBe(true);
+    const plan = result.get("listItems")!;
+    expect(plan.itemsField).toBe("data.results");
+  });
+
+  test("probe: dotted envelope key → no plan (conservatism guard)", () => {
+    // A property whose NAME contains "." is pathological; descendEnvelope must skip it.
+    const schema = {
+      type: "object",
+      properties: {
+        "data.items": {
+          type: "object",
+          properties: {
+            results: { type: "array", items: {} },
+          },
+        },
+      },
+    };
+    const oasJson = makeGetOasWithEnvelope("listItems", CURSOR_PARAMS, schema);
+    const ops: readonly OperationInfo[] = [makeOp("listItems")];
+    const result = detectPagination(ops, oasJson, EMPTY_OVERLAY);
+    expect(result.has("listItems")).toBe(false);
+  });
 });

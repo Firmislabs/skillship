@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import { inferSpecContentType } from "../../src/discovery/specSniffer.js";
+import { inferSpecContentType, isGraphqlSdl } from "../../src/discovery/specSniffer.js";
 
 describe("inferSpecContentType", () => {
   test("detects OpenAPI 3 YAML body", () => {
@@ -82,5 +82,27 @@ describe("inferSpecContentType", () => {
   test("does not misclassify plain text without GraphQL markers", () => {
     const bytes = Buffer.from("# Just a README\nHello world\n", "utf8");
     expect(inferSpecContentType(bytes, "text/plain")).toBe("text/plain");
+  });
+});
+
+describe("isGraphqlSdl (exported)", () => {
+  test("returns true for 'type Query { ... }' pattern", () => {
+    const bytes = Buffer.from("type Query {\n  hello: String\n}\n", "utf8");
+    expect(isGraphqlSdl(bytes)).toBe(true);
+  });
+
+  test("returns true for 'schema { ... }' pattern", () => {
+    const bytes = Buffer.from("schema {\n  query: Query\n}\n", "utf8");
+    expect(isGraphqlSdl(bytes)).toBe(true);
+  });
+
+  test("returns false for plain OpenAPI YAML", () => {
+    const bytes = Buffer.from("openapi: 3.0.0\ninfo:\n  title: x\n", "utf8");
+    expect(isGraphqlSdl(bytes)).toBe(false);
+  });
+
+  test("returns false for arbitrary text", () => {
+    const bytes = Buffer.from("Hello world\n", "utf8");
+    expect(isGraphqlSdl(bytes)).toBe(false);
   });
 });
