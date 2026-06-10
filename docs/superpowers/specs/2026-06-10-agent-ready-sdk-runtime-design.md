@@ -56,7 +56,7 @@ Three capabilities, in priority order:
   - `Pagination { style: cursor|offset|page, fields, perOperation }`
 - Synthetic OAS emits `oauth2` securitySchemes with placeholder `flows: {}`
   (`src/renderers/oas.ts:167-179`); the graph carries `flows` as a claim on
-  `AuthSchemeNode` (`src/graph/types.ts:144-150`) but the OAS renderer drops it.
+  `AuthSchemeNode` (`src/graph/types.ts:152-160`) but the OAS renderer drops it.
 - Fern path: `src/renderers/fern-project.ts` (generators.yml) +
   `src/renderers/fern-oas-rewrite.ts` (operationId/tags rewrite via
   `resolveAssignments`). No pagination/retry/auth config passed to Fern today.
@@ -89,6 +89,10 @@ Mapping from OAS `securitySchemes`:
 | `oauth2` with `flows.clientCredentials` | `oauth2ClientCredentials` (tokenUrl from the flow) |
 | `oauth2` other/empty flows | `oauth2ClientCredentials` with `tokenUrl: null` (user must supply `tokenUrl` or use tokenProvider) |
 | `openIdConnect`, `mutualTLS`, unknown | `external` — SDK still builds; README documents the tokenProvider path |
+
+An `external` descriptor contributes **no** member of its own to the generated
+`AuthConfig` union — such schemes are served exclusively by the always-present
+`tokenProvider` member (plus `defaultHeaders` for exotic header schemes).
 
 To make real `tokenUrl`s flow end-to-end, the OAS renderer
 (`src/renderers/oas.ts:securitySchemeFor`) is extended to project the graph's
@@ -124,9 +128,11 @@ OAuth2 client-credentials behavior (generated `src/auth.ts`, new file):
   endpoint URL. Never include `clientSecret` in any error message.
 
 **Env-var pickup.** `auth` becomes optional in `ClientOptions`. When omitted, the
-constructor resolves credentials from env vars using a deterministic prefix —
-`UPPER_SNAKE(productId)` (the existing sanitized product slug, uppercased,
-non-alphanumerics → `_`):
+constructor resolves credentials from env vars using a deterministic prefix:
+`UPPER_SNAKE(slugify(productName))` — the **same** `slugify(input.productName)`
+value already used for the package name in `src/renderers/sdk.ts:174`, uppercased
+with non-alphanumerics → `_`, so the npm package name and the env prefix can never
+disagree:
 
 | Scheme | Env vars |
 |---|---|
@@ -199,6 +205,12 @@ export interface PaginationPlan {
   readonly nextField: string | null;    // cursor style: response next-cursor property
 }
 ```
+
+The overlay `pagination.fields` record (`z.record(z.string())`, currently
+free-form) is given **fixed key names** matching `PaginationPlan`:
+`requestParam`, `pageSizeParam`, `itemsField`, `nextField`. Unknown keys are
+rejected at overlay parse time (the schema tightens from free-form record to an
+object with these optional keys).
 
 Resolution order per operation:
 
