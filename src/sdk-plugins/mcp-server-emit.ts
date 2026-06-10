@@ -38,7 +38,7 @@ export interface GatewayDeps {
   readonly env?: Record<string, string | undefined>;
 }
 
-const MAX_RESULT_BYTES = 50000;`;
+const MAX_RESULT_CHARS = 50000;`;
 }
 
 // ─── Scorer: tokenize + scoreEntry + closestIds ───────────────────────────────
@@ -69,10 +69,11 @@ function scoreEntry(entry: CatalogEntry, queryTokens: readonly string[]): number
 }
 
 // Closest ids to a bad id, by scoring CATALOG ids against the bad id's tokens.
+// Uses tokenize() so Items-Delete/items-delete find their neighbor via case-fold + non-alphanum split.
 function closestIds(badId: string, n: number): readonly string[] {
-  const tokens = badId.split("_").filter((t) => t.length > 0);
+  const tokens = tokenize(badId);
   const scored = CATALOG.map((e) => {
-    const ids = new Set(e.id.split("_").filter((t) => t.length > 0));
+    const ids = new Set(tokenize(e.id));
     let s = 0;
     for (const t of tokens) if (ids.has(t)) s += 1;
     return { id: e.id, s };
@@ -103,7 +104,7 @@ export function createGateway(
   const getClient = (): Gateway => {
     if (cached !== null) return cached;
     const baseUrl = resolveBaseUrl(env);
-    if (baseUrl === null) throw new Error("base_url_not_set");
+    if (baseUrl === null) throw new Error("base_url_not_set"); // unreachable: runInvoke checks first
     cached = attachResources(
       new Client({ baseUrl, ...(deps?.fetchImpl ? { fetch: deps.fetchImpl } : {}) }),
     );
@@ -113,7 +114,7 @@ export function createGateway(
     if (name === "search_operations") return Promise.resolve(runSearch(args));
     if (name === "describe_operation") return Promise.resolve(runDescribe(args));
     if (name === "invoke_operation") return runInvoke(args, env, getClient);
-    return Promise.resolve(text("unknown tool: " + name, true));
+    return Promise.resolve(text("unknown tool: " + name, true)); // unreachable: protocol layer pre-filters unknown tools
   };
   return makeProtocolHandler({
     serverName: ${lit(serverName)},

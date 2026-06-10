@@ -25,7 +25,6 @@ const CATALOG_ENTRY_INTERFACE = `export interface CatalogEntry {
   readonly path: string;
   readonly summary: string;
   readonly description: string;
-  readonly searchText: string;
   readonly params: readonly CatalogParam[];
   readonly annotations: {
     readonly destructive: boolean;
@@ -124,7 +123,6 @@ function serializeEntry(e: CatalogEntry): string {
     `${p}path: ${serializeString(e.path)},`,
     `${p}summary: ${serializeString(e.summary)},`,
     `${p}description: ${serializeString(e.description)},`,
-    `${p}searchText: ${serializeString(e.searchText)},`,
     `${p}params: ${serializeParams(e.params, itemDepth)},`,
     `${p}annotations: ${serializeAnnotations(e.annotations, itemDepth)},`,
     `${p}paginated: ${serializeBoolean(e.paginated)},`,

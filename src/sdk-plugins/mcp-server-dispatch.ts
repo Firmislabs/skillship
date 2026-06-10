@@ -96,10 +96,11 @@ export function buildDescribe(
   const baseUrlEnv = `${envPrefix}_BASE_URL`;
   const authNames = authEnvVars.length > 0 ? authEnvVars.join(", ") : "(none)";
   // The base-url note only fires when the baked default is null.
+  // Compose the full string at generation time (M1: no runtime string concat of constants).
   const baseUrlNote =
     baseUrl === null
-      ? `lines.push("Base URL: not baked in — set " + ${lit(baseUrlEnv)} + ".");`
-      : `lines.push("Base URL: " + ${lit(baseUrl)} + " (override with " + ${lit(baseUrlEnv)} + ").");`;
+      ? `lines.push(${lit("Base URL: not baked in — set " + baseUrlEnv + ".")});`
+      : `lines.push(${lit("Base URL: " + baseUrl + " (override with " + baseUrlEnv + ")")});`;
   return `
 function runDescribe(args: Record<string, unknown>): ToolResult {
   const id = typeof args["id"] === "string" ? args["id"] : "";
@@ -127,7 +128,7 @@ function runDescribe(args: Record<string, unknown>): ToolResult {
   if (entry.paginated) {
     lines.push("Pagination: accepts cursor/offset params; the SDK exposes a " + entry.accessor[1] + "Pages helper.");
   }
-  lines.push("Auth: set " + ${lit(authNames)} + ".");
+  lines.push(${lit("Auth: set " + authNames + ".")});
   ${baseUrlNote}
   if (a.destructive) {
     lines.push("Destructive: invoke_operation requires confirm: true.");
@@ -146,11 +147,13 @@ export function buildInvoke(envPrefix: string, baseUrl: string | null): string {
 function buildInvokeHelpers(envPrefix: string, baseUrl: string | null): string {
   const baseUrlEnv = `${envPrefix}_BASE_URL`;
   const bakedBaseUrl = baseUrl === null ? "null" : lit(baseUrl);
+  // Compose the env-var key as a literal (M1: generation-time constant, no runtime concat).
+  const baseUrlEnvLit = lit(baseUrlEnv);
   return `
 type Gateway = ReturnType<typeof attachResources>;
 
 function resolveBaseUrl(env: Record<string, string | undefined>): string | null {
-  return env[${lit(baseUrlEnv)}] ?? ${bakedBaseUrl};
+  return env[${baseUrlEnvLit}] ?? ${bakedBaseUrl};
 }
 
 function routeArgs(
@@ -162,6 +165,11 @@ function routeArgs(
   if (unknown.length > 0) {
     const names = entry.params.map((p) => p.name).join(", ") || "(none)";
     return { ok: false, message: "unknown_args: " + unknown.join(", ") + ". Valid params: " + names };
+  }
+  const missing = entry.params.filter((p) => p.required && !(p.name in args));
+  if (missing.length > 0) {
+    const names = missing.map((p) => p.name + " (" + p.in + ")").join(", ");
+    return { ok: false, message: "missing_args: " + entry.id + " requires: " + names };
   }
   const pathParams: Record<string, unknown> = {};
   const query: Record<string, unknown> = {};
@@ -186,6 +194,9 @@ function routeArgs(
 function buildRunInvoke(envPrefix: string): string {
   const baseUrlEnv = `${envPrefix}_BASE_URL`;
   const allowEnv = `${envPrefix}_MCP_ALLOW_DESTRUCTIVE`;
+  // Compose generation-time constants as single literals (M1: no runtime string concat).
+  const allowEnvLit = lit(allowEnv);
+  const baseUrlNotSetMsg = lit("base_url_not_set: set " + baseUrlEnv + ".");
   return `
 async function runInvoke(
   args: Record<string, unknown>,
@@ -202,7 +213,7 @@ async function runInvoke(
       ? (args["args"] as Record<string, unknown>)
       : {};
   const confirm = args["confirm"] === true;
-  if (entry.annotations.destructive && !confirm && env[${lit(allowEnv)}] !== "1") {
+  if (entry.annotations.destructive && !confirm && env[${allowEnvLit}] !== "1") {
     return text(
       "destructive_confirmation_required: " + entry.id + " is destructive (" +
         entry.httpMethod + " " + entry.path +
@@ -214,7 +225,7 @@ async function runInvoke(
   if (!routed.ok) return text(routed.message, true);
   const baseUrl = resolveBaseUrl(env);
   if (baseUrl === null) {
-    return text("base_url_not_set: set " + ${lit(baseUrlEnv)} + " or bake a default.", true);
+    return text(${baseUrlNotSetMsg}, true);
   }
   try {
     const client = getClient();
@@ -224,8 +235,8 @@ async function runInvoke(
     >;
     const result = await ns[entry.accessor[1]](routed.opts);
     let out = JSON.stringify(result, null, 2);
-    if (out.length > MAX_RESULT_BYTES) {
-      out = out.slice(0, MAX_RESULT_BYTES) + "\\n…[truncated — response exceeded 50KB]";
+    if (out.length > MAX_RESULT_CHARS) {
+      out = out.slice(0, MAX_RESULT_CHARS) + "\\n…[truncated — response exceeded 50,000 characters]";
     }
     return text(out);
   } catch (err: unknown) {

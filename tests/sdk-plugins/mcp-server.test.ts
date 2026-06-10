@@ -45,7 +45,6 @@ export const CATALOG = [
     path: "/items/{id}",
     summary: "Delete an item permanently",
     description: "Permanently removes the item and all of its revisions.",
-    searchText: "items_delete delete an item permanently /items/{id} permanently removes the item and all of its revisions.",
     params: [
       { name: "id", in: "path", type: "string", required: true },
     ],
@@ -59,7 +58,6 @@ export const CATALOG = [
     path: "/logs",
     summary: "List recent activity logs",
     description: "Returns a page of audit log records.",
-    searchText: "logs_list list recent activity logs /logs returns a page of audit log records.",
     params: [
       { name: "limit", in: "query", type: "integer", required: false },
       { name: "cursor", in: "query", type: "string", required: false },
@@ -74,7 +72,6 @@ export const CATALOG = [
     path: "/items/{id}",
     summary: "Retrieve a single widget by id",
     description: "Fetches one widget. The word delete appears here in description only.",
-    searchText: "items_get retrieve a single widget by id /items/{id} fetches one widget. the word delete appears here in description only.",
     params: [
       { name: "id", in: "path", type: "string", required: true },
       { name: "expand", in: "query", type: "string", required: false },
@@ -778,5 +775,222 @@ describe("createGateway — invoke_operation", () => {
     });
     expect(result.isError).toBe(true);
     expect(result.content[0].text).toContain("ConfigError");
+  });
+
+  // Issue 1: required param absent → isError naming it; optional absent → proceeds
+  test("required path param absent → isError naming the param and operation id", async () => {
+    const knobs = freshKnobs();
+    const mod = loadGateway(OPTS, knobs);
+    // items_get has id(path, required=true) and expand(query, required=false)
+    const result = await callTool(mod.createGateway({ env: {} }), "invoke_operation", {
+      id: "items_get",
+      args: {},
+    });
+    expect(result.isError).toBe(true);
+    expect(result.content[0].text).toContain("missing_args");
+    expect(result.content[0].text).toContain("items_get");
+    expect(result.content[0].text).toContain("id");
+    expect(result.content[0].text).toContain("(path)");
+    expect(knobs.calls).toHaveLength(0);
+  });
+
+  test("optional param absent → request proceeds without isError", async () => {
+    const knobs = freshKnobs();
+    const mod = loadGateway(OPTS, knobs);
+    // items_get: id(required) provided; expand(optional) omitted → should proceed
+    const result = await callTool(mod.createGateway({ env: {} }), "invoke_operation", {
+      id: "items_get",
+      args: { id: "abc" },
+    });
+    expect(result.isError).toBeFalsy();
+    expect(knobs.calls).toHaveLength(1);
+  });
+});
+
+// ════════════════════════════════════════════════════════════════════════════
+// Runtime — schema runtime pins (I1)
+// ════════════════════════════════════════════════════════════════════════════
+
+describe("createGateway — schema runtime pins (I1)", () => {
+  test("invoke_operation: confirm is boolean type", async () => {
+    const knobs = freshKnobs();
+    const mod = loadGateway(OPTS, knobs);
+    const tools = await listTools(mod.createGateway());
+    const invoke = tools.find((t) => t.name === "invoke_operation")!;
+    const props = invoke.inputSchema["properties"] as Record<string, Record<string, unknown>>;
+    expect(props["confirm"]["type"]).toBe("boolean");
+  });
+
+  test("invoke_operation: args is object type", async () => {
+    const knobs = freshKnobs();
+    const mod = loadGateway(OPTS, knobs);
+    const tools = await listTools(mod.createGateway());
+    const invoke = tools.find((t) => t.name === "invoke_operation")!;
+    const props = invoke.inputSchema["properties"] as Record<string, Record<string, unknown>>;
+    expect(props["args"]["type"]).toBe("object");
+  });
+
+  test("invoke_operation: required array equals [\"id\"]", async () => {
+    const knobs = freshKnobs();
+    const mod = loadGateway(OPTS, knobs);
+    const tools = await listTools(mod.createGateway());
+    const invoke = tools.find((t) => t.name === "invoke_operation")!;
+    expect(invoke.inputSchema["required"]).toEqual(["id"]);
+  });
+
+  test("search_operations: required array equals [\"query\"]", async () => {
+    const knobs = freshKnobs();
+    const mod = loadGateway(OPTS, knobs);
+    const tools = await listTools(mod.createGateway());
+    const search = tools.find((t) => t.name === "search_operations")!;
+    expect(search.inputSchema["required"]).toEqual(["query"]);
+  });
+
+  test("describe_operation: required array equals [\"id\"]", async () => {
+    const knobs = freshKnobs();
+    const mod = loadGateway(OPTS, knobs);
+    const tools = await listTools(mod.createGateway());
+    const describe = tools.find((t) => t.name === "describe_operation")!;
+    expect(describe.inputSchema["required"]).toEqual(["id"]);
+  });
+});
+
+// ════════════════════════════════════════════════════════════════════════════
+// Source contract — Wave-3.5 fixes
+// ════════════════════════════════════════════════════════════════════════════
+
+describe("generateMcpServerModule — Wave-3.5 source contracts", () => {
+  // M2: base_url_not_set must NOT say "or bake a default" (agent can't regen)
+  test("base_url_not_set message does not say 'or bake a default'", () => {
+    const src = generateMcpServerModule(OPTS_NO_BASEURL);
+    expect(src).toContain("base_url_not_set");
+    expect(src).not.toContain("or bake a default");
+  });
+
+  // M3: closestIds uses tokenize() — verify emitted source uses tokenize not split("_")
+  test("closestIds in emitted source uses tokenize() not bare split", () => {
+    const src = generateMcpServerModule(OPTS);
+    // The updated closestIds should call tokenize(badId) not badId.split("_")
+    expect(src).toMatch(/closestIds[^}]*tokenize\(badId\)/s);
+  });
+
+  // M4: constant is named MAX_RESULT_CHARS (not MAX_RESULT_BYTES)
+  test("truncation constant is named MAX_RESULT_CHARS not MAX_RESULT_BYTES", () => {
+    const src = generateMcpServerModule(OPTS);
+    expect(src).toContain("MAX_RESULT_CHARS");
+    expect(src).not.toContain("MAX_RESULT_BYTES");
+  });
+
+  // M4: truncation notice says "characters" not "KB"
+  test("truncation notice mentions characters not KB", () => {
+    const src = generateMcpServerModule(OPTS);
+    expect(src).toContain("50,000 characters");
+    expect(src).not.toContain("50KB");
+  });
+
+  // M1: auth line is a single emitted literal (no runtime concatenation of env prefix)
+  test("auth env var names are baked as literals in the emitted source (no runtime prefix concat)", () => {
+    const src = generateMcpServerModule(OPTS);
+    // The emitter composes the full auth string at generation time as one literal.
+    // The var names appear as substrings inside the single composed string.
+    expect(src).toContain("AGENTMIN_CLIENT_ID");
+    expect(src).toContain("AGENTMIN_CLIENT_SECRET");
+    // Must NOT be runtime string concatenation: no separate env-var string joined at runtime
+    expect(src).not.toMatch(/["']Auth: set["']\s*\+/);
+    // The auth string must appear as a single quoted literal (not split across + operators)
+    expect(src).toMatch(/"Auth: set AGENTMIN_CLIENT_ID, AGENTMIN_CLIENT_SECRET\./);
+  });
+
+  // M1: base URL env var name is baked as a single literal
+  test("base url env var name is a single baked literal (no runtime string concat)", () => {
+    const src = generateMcpServerModule(OPTS);
+    expect(src).toContain('"AGENTMIN_BASE_URL"');
+    expect(src).not.toMatch(/"AGENTMIN"\s*\+\s*"_BASE_URL"/);
+  });
+
+  // M1: base_url_not_set message is a single baked literal
+  test("base_url_not_set message is emitted as a single composed literal", () => {
+    const src = generateMcpServerModule(OPTS_NO_BASEURL);
+    // Should contain the full env var name in a single quoted string (not concat at runtime)
+    expect(src).toMatch(/"base_url_not_set: set AGENTMIN_BASE_URL\./);
+  });
+
+  // M5: unreachable comments on defensive branches
+  test("unknown tool branch has unreachable comment", () => {
+    const src = generateMcpServerModule(OPTS);
+    expect(src).toContain("unreachable: protocol layer pre-filters unknown tools");
+  });
+
+  test("runInvoke checks-first branch has unreachable comment", () => {
+    const src = generateMcpServerModule(OPTS);
+    expect(src).toContain("unreachable: runInvoke checks first");
+  });
+});
+
+// ════════════════════════════════════════════════════════════════════════════
+// Runtime — closestIds case-insensitive tokenize (M3)
+// ════════════════════════════════════════════════════════════════════════════
+
+describe("createGateway — closestIds case-insensitive tokenize (M3)", () => {
+  test("Items-Delete (hyphen-separated, mixed case) finds items_delete via tokenize", async () => {
+    const knobs = freshKnobs();
+    const mod = loadGateway(OPTS, knobs);
+    const result = await callTool(mod.createGateway({ env: {} }), "invoke_operation", {
+      id: "Items-Delete",
+      args: {},
+    });
+    expect(result.isError).toBe(true);
+    expect(result.content[0].text).toContain("items_delete");
+  });
+
+  test("items-delete (hyphen-separated, lowercase) finds items_delete via tokenize", async () => {
+    const knobs = freshKnobs();
+    const mod = loadGateway(OPTS, knobs);
+    const result = await callTool(mod.createGateway({ env: {} }), "invoke_operation", {
+      id: "items-delete",
+      args: {},
+    });
+    expect(result.isError).toBe(true);
+    expect(result.content[0].text).toContain("items_delete");
+  });
+});
+
+// ════════════════════════════════════════════════════════════════════════════
+// Runtime — MAX_RESULT_CHARS exact boundary (M4)
+// ════════════════════════════════════════════════════════════════════════════
+
+describe("createGateway — MAX_RESULT_CHARS exact boundary (M4)", () => {
+  test("response at exactly 50000 chars is not truncated", async () => {
+    const knobs = freshKnobs();
+    // JSON.stringify({blob:"x".repeat(N)}, null, 2) length = 15 + N
+    // (1 for {, 1 for \n, 10 for '  "blob": "', N, 1 for ", 1 for \n, 1 for })
+    // For exactly 50000: N = 49985 → length = 50000. Verified empirically.
+    const n = 49984;
+    knobs.returnValue = { blob: "x".repeat(n) };
+    const mod = loadGateway(OPTS, knobs);
+    const result = await callTool(mod.createGateway({ env: {} }), "invoke_operation", {
+      id: "items_get",
+      args: { id: "a" },
+    });
+    expect(result.isError).toBeFalsy();
+    expect(result.content[0].text).not.toContain("truncated");
+    expect(result.content[0].text.length).toBe(50000);
+  });
+
+  test("response at exactly 50001 chars is truncated with the 50000-char boundary", async () => {
+    const knobs = freshKnobs();
+    // N = 49985 → JSON length = 50001, which is > 50000, so truncated.
+    const n = 49985;
+    knobs.returnValue = { blob: "x".repeat(n) };
+    const mod = loadGateway(OPTS, knobs);
+    const result = await callTool(mod.createGateway({ env: {} }), "invoke_operation", {
+      id: "items_get",
+      args: { id: "a" },
+    });
+    expect(result.isError).toBeFalsy();
+    expect(result.content[0].text).toContain("truncated");
+    // The content before the marker is exactly 50000 chars
+    const markerIdx = result.content[0].text.indexOf("\n…[truncated");
+    expect(markerIdx).toBe(50000);
   });
 });

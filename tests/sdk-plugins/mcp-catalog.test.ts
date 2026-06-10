@@ -5,7 +5,6 @@
 //   - annotation precedence: extension beats heuristic per key (GET + readOnly:false)
 //   - heuristic table: GET/HEAD→readOnly; DELETE→destructive; idempotent for GET/HEAD/PUT/DELETE
 //   - params: path/query from OAS parameters; requestBody → body param
-//   - searchText: lowercased concat of id + summary + path + description
 //   - sorted ids: entries sorted ascending by id
 //   - paginated: true for cursor-plan op via real detectPagination
 //   - emission: module source patterns (header, interfaces, CATALOG const)
@@ -304,45 +303,12 @@ describe("computeCatalogEntries — params mapping", () => {
     const entry = entries.find((e) => e.id === "items_list")!;
     expect(entry.params).toHaveLength(0);
   });
-});
 
-// ============================
-// SEARCH TEXT
-// ============================
-
-describe("computeCatalogEntries — searchText", () => {
-  test("searchText is lowercase concat of id+summary+path+description", () => {
-    const oasJson = makeOas([{
-      path: "/Items",
-      method: "get",
-      operationId: "listItems",
-      summary: "List ALL Items",
-      description: "Returns a List of Items",
-    }]);
-    const ops = extractOperations(oasJson);
-    const entries = computeCatalogEntries(ops, oasJson, EMPTY_OVERLAY);
-    const entry = entries.find((e) => e.id === "items_list")!;
-    expect(entry.searchText).toBe(entry.searchText.toLowerCase());
-    expect(entry.searchText).toContain("items_list");
-    expect(entry.searchText).toContain("list all items");
-    expect(entry.searchText).toContain("returns a list of items");
-  });
-
-  test("searchText contains the path segment lowercased", () => {
-    const oasJson = makeOas([{ path: "/Users/{userId}", method: "get", operationId: "getUser", tags: ["users"] }]);
-    const ops = extractOperations(oasJson);
-    const entries = computeCatalogEntries(ops, oasJson, EMPTY_OVERLAY);
-    const entry = entries.find((e) => e.id === "users_get")!;
-    expect(entry).toBeDefined();
-    expect(entry.searchText).toContain("/users/{userid}");
-  });
-
-  test("absent summary and description produce empty string portions (no undefined)", () => {
+  test("absent summary and description produce empty strings (no undefined in entry fields)", () => {
     const oasJson = makeOas([{ path: "/items", method: "get", operationId: "listItems" }]);
     const ops = extractOperations(oasJson);
     const entries = computeCatalogEntries(ops, oasJson, EMPTY_OVERLAY);
     const entry = entries.find((e) => e.id === "items_list")!;
-    expect(entry.searchText).not.toContain("undefined");
     expect(entry.summary).toBe("");
     expect(entry.description).toBe("");
   });
@@ -475,7 +441,7 @@ describe("generateMcpCatalogModule — emission source patterns", () => {
     expect(src).toContain('readonly required: boolean');
   });
 
-  test("emits CatalogEntry interface", () => {
+  test("emits CatalogEntry interface without searchText", () => {
     const src = generateMcpCatalogModule([]);
     expect(src).toContain("interface CatalogEntry");
     expect(src).toContain("readonly id: string");
@@ -484,7 +450,8 @@ describe("generateMcpCatalogModule — emission source patterns", () => {
     expect(src).toContain("readonly path: string");
     expect(src).toContain("readonly summary: string");
     expect(src).toContain("readonly description: string");
-    expect(src).toContain("readonly searchText: string");
+    // searchText has been dropped — per-field scorer never read it
+    expect(src).not.toContain("readonly searchText:");
     expect(src).toContain("readonly params:");
     expect(src).toContain("readonly annotations:");
     expect(src).toContain("readonly paginated: boolean");

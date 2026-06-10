@@ -35,7 +35,6 @@ export interface CatalogEntry {
   readonly path: string;
   readonly summary: string;
   readonly description: string;
-  readonly searchText: string;
   readonly params: readonly CatalogParam[];
   readonly annotations: {
     readonly destructive: boolean;
@@ -191,7 +190,6 @@ export function computeCatalogEntries(
     const params = oasOp ? extractParams(oasOp) : [];
     const annotations = computeAnnotations(op.method, oasOp ?? {});
     const paginated = plans.has(op.operationId);
-    const searchText = `${id} ${summary} ${op.path} ${description}`.toLowerCase();
 
     entries.push({
       id,
@@ -200,7 +198,6 @@ export function computeCatalogEntries(
       path: op.path,
       summary,
       description,
-      searchText,
       params,
       annotations,
       paginated,
