@@ -78,7 +78,7 @@ Python: `max_retries` constructor param (default 2 — matches overlay default) 
 | `src/renderers/fern-oas-rewrite.ts` (M) | Stamps `x-fern-pagination` per shared plans |
 | `src/renderers/fern-project.ts` (M) | Conditional `auth-schemes` OAuth block + `api.auth` |
 | `src/renderers/sdk-templates/README.md.tpl` (M) | Auth section: env-var table, oauth2/tokenProvider usage |
-| `tests/fixtures/sdk-agent-minimal/**` (C) | New ingest fixture: oauth2 cc scheme + token op + cursor-list + offset-list + plain POST |
+| `tests/fixtures/openapi3/agent-minimal.yaml` (C) | New ingest fixture spec (single file, repo convention): oauth2 cc scheme + token op + cursor-list + offset-list + plain POST; productName `agentmin` |
 | `tests/fixtures/golden/sdk-agent-minimal/**` (C) | New TS golden tree + `.manifest.json` |
 | `tests/fixtures/golden/sdk-{python,rust}-agent-minimal/**` (C) | New Fern golden trees + manifests |
 | `tests/sdk-plugins/auth.test.ts` (C) | Source assertions on emitted auth module |
@@ -104,7 +104,7 @@ Run all commands from the worktree root. After each task: commit (exact messages
 - Modify: `tests/renderers/fern-images.test.ts`
 - Regenerate: `tests/fixtures/golden/sdk-{python,rust}-{minimal,graphql-minimal}/**` + 4 `.manifest.json`
 
-- [ ] **Step 1: Write the failing pin tests.** In `tests/renderers/fern-images.test.ts`, update expected values: `FERN_PINS.cliVersion === "5.40.0"` → `"5.45.3"`; python tag `5.14.4` → `5.14.12` and its digest → `sha256:2a2eb231fcb8726abc42f9a6244b65beb9376a59ad98cc87b5853ec85b5f8a1b`; rust tag `0.36.8` → `0.40.4` and digest → `sha256:62f87e526256e9378cc844ef9084392235968239d2c6cf5bd6fee59698f3d1bb`. Keep the existing `image === name:tag` sync guard untouched.
+- [ ] **Step 1: Write the failing pin tests.** In `tests/renderers/fern-images.test.ts`, ADD exact-pin assertions (the file currently asserts only shape/sync invariants, not exact versions): `FERN_PINS.cliVersion === "5.40.0"` → `"5.45.3"`; python tag `5.14.4` → `5.14.12` and its digest → `sha256:2a2eb231fcb8726abc42f9a6244b65beb9376a59ad98cc87b5853ec85b5f8a1b`; rust tag `0.36.8` → `0.40.4` and digest → `sha256:62f87e526256e9378cc844ef9084392235968239d2c6cf5bd6fee59698f3d1bb`. Keep the existing `image === name:tag` sync guard untouched.
 - [ ] **Step 2: Run to verify failure.** `npx vitest run tests/renderers/fern-images.test.ts` → FAIL (old pins).
 - [ ] **Step 3: Update `FERN_PINS`** in `src/renderers/fern-images.ts` to the three new versions + two new digests (tag-pinned generation unchanged; digests are recorded for verification only — preserve the existing comment saying so).
 - [ ] **Step 4: Run to verify pass.** Same command → PASS. Also `npx vitest run tests/renderers/fern-project.test.ts tests/renderers/fern-docker.test.ts` → PASS (they read pins dynamically; if any hardcodes `5.40.0`, update the expectation in the same spirit).
@@ -153,8 +153,10 @@ Run all commands from the worktree root. After each task: commit (exact messages
 
 **Files:**
 - Create: `src/sdk-plugins/auth.ts` — `generateAuthModule(schemes: readonly AuthSchemeDescriptor[], envPrefix: string): string`
-- Modify: `src/sdk-plugins/errors.ts` (emit `AuthError`, `ConfigError` classes), `src/renderers/sdk.ts` (write `src/auth.ts`, compute `envPrefix = slugify(productName).toUpperCase().replace(/-/g, "_")`)
+- Modify: `src/sdk-plugins/errors.ts` (emit `AuthError`, `ConfigError` classes — the existing `UnauthorizedError` at `src/sdk-plugins/errors.ts:25` is REUSED for 401-after-refresh; do NOT invent `AuthenticationError`)
 - Test: `tests/sdk-plugins/auth.test.ts` (source assertions, mirror style of `tests/sdk-plugins/runtime.test.ts`)
+
+> **Wiring deferral (Tasks 5–8):** none of Tasks 5–8 touches `src/renderers/sdk.ts`. The pipeline wiring (write `src/auth.ts`/`src/pagination.ts`, pass retries config, compute `envPrefix = slugify(productName).toUpperCase().replace(/-/g, "_")`) all happens in **Task 9** in one step, so existing TS goldens change exactly once (reviewed + re-locked there) and `npm test` stays green at every intermediate commit.
 
 Emitted module contract (assert each via source patterns):
 - `export type AuthConfig = <one member per declared scheme> | { kind: "tokenProvider"; getToken: () => Promise<string> }` — tokenProvider ALWAYS present; `external` descriptors contribute no member.
@@ -173,14 +175,13 @@ Emitted module contract (assert each via source patterns):
 ### Task 6: Retry loop in generated runtime
 
 **Files:**
-- Modify: `src/sdk-plugins/runtime.ts` (signature becomes `generateRuntimeModule(schemes, retries: RetriesConfig)` where `RetriesConfig` is the overlay type with defaults applied)
-- Modify: `src/renderers/sdk.ts` (pass `overlay.retries` defaults through)
+- Modify: `src/sdk-plugins/runtime.ts` (signature becomes `generateRuntimeModule(schemes, retries: RetriesConfig)` where `RetriesConfig` is the overlay type with defaults applied; `src/renderers/sdk.ts` wiring deferred to Task 9)
 - Test: `tests/sdk-plugins/runtime.test.ts`
 
 Emitted contract (spec §4.2), assert as source patterns:
 - `ClientOptions.sleep?: (ms: number) => Promise<void>` and a module default.
 - Constants emitted from config: `MAX_RETRIES`, `RETRYABLE_STATUS` (literal array), `BASE_DELAY_MS = 500`, `MAX_DELAY_MS = 30000`.
-- Loop: full-jitter backoff `random(0, min(cap, base * 2**attempt))`; `Retry-After` (integer seconds OR http-date) overrides when `honorRetryAfter`, capped at MAX_DELAY_MS; idempotent methods (`GET|HEAD|PUT|DELETE|OPTIONS`) retry full list + network errors; `POST|PATCH` retry only 408/429, never network errors; fresh `Request` constructed per attempt (bodies are single-use); `onResponse` only on the final response; exhaustion rethrows final typed error with `(after N attempts)` suffix; auth 401 single-refresh retry handled via `AuthManager.onUnauthorized()` OUTSIDE the retry counter; runtime imports from `./auth.js` (auth injection moves out of runtime.ts into `AuthManager.applyAuth`).
+- Loop: full-jitter backoff `random(0, min(cap, base * 2**attempt))`; `Retry-After` (integer seconds OR http-date) overrides when `honorRetryAfter`, capped at MAX_DELAY_MS; an **unparseable** `Retry-After` falls back to the computed backoff; idempotent methods (`GET|HEAD|PUT|DELETE|OPTIONS`) retry full list + network errors, and a **per-attempt timeout counts as retryable** for them; `POST|PATCH` retry only 408/429, never network errors or timeouts; fresh `Request` constructed per attempt (bodies are single-use); `onResponse` only on the final response; exhaustion rethrows final typed error with `(after N attempts)` suffix; auth 401 single-refresh retry handled via `AuthManager.onUnauthorized()` OUTSIDE the retry counter (second 401 surfaces as the existing `UnauthorizedError`); runtime imports from `./auth.js` (auth injection moves out of runtime.ts into `AuthManager.applyAuth`).
 - runtime.ts emitted file stays <300 lines (auth logic has moved to auth.ts — verify with a line-count assertion in the golden test if convenient, else by inspection).
 
 - [ ] **Step 1: Failing tests** (extend existing runtime.test.ts; keep all existing assertions that still apply; the bearer-injection assertions MOVE to auth.test.ts form).
@@ -206,6 +207,7 @@ export interface PaginationPlan {
   readonly nextField: string | null;
 }
 export function detectPagination(
+  ops: readonly SdkOperation[],   // from extractOperations(oasJson) — same type the other renderers use
   oasJson: string,
   overlay: CodegenOverlay,
 ): ReadonlyMap<string, PaginationPlan>;  // key: operationId
@@ -221,7 +223,7 @@ export function detectPagination(
 
 **Files:**
 - Create: `src/sdk-plugins/pagination.ts` — `generatePaginationModule(): string` (generic engine) and the per-op glue contract
-- Modify: `src/sdk-plugins/resource-tree.ts` (resource emission adds `<method>Pages` when a plan exists for the op), `src/renderers/sdk.ts` (compute plans via `detectPagination`, thread into plugins, write `src/pagination.ts`)
+- Modify: `src/sdk-plugins/resource-tree.ts` (resource emission adds `<method>Pages` when a plan exists for the op; `src/renderers/sdk.ts` wiring deferred to Task 9)
 - Test: `tests/sdk-plugins/pagination.test.ts` + extend `tests/sdk-plugins/resource-tree.test.ts`
 
 Emitted engine contract: `export async function* paginate<Item>(fetchPage: (cursorOrOffset: ...) => Promise<Response>, plan: {...literal...}): AsyncGenerator<Item>` — cursor: stop on null/missing/empty next value AND on repeated cursor (guard); offset/page: stop when page yields fewer items than requested or zero; missing itemsField → typed error naming op + field. Resource glue: `listPages(args)` delegating to plain method's request with plan literals baked in; plain methods byte-unchanged when no plans exist.
@@ -229,31 +231,35 @@ Emitted engine contract: `export async function* paginate<Item>(fetchPage: (curs
 - [ ] **Step 1: Failing tests** (source assertions: generator emits the guard `if (next === prev) return;`, the three stop conditions, `*Pages` method appears in resources output only for planned ops, absent otherwise — assert the no-plan case emits resources byte-identical to before).
 - [ ] **Step 2: Run → FAIL.**
 - [ ] **Step 3: Implement.**
-- [ ] **Step 4: Run → PASS** + typecheck + `npx vitest run tests/renderers/sdk-golden.test.ts` (existing TS goldens MUST stay byte-identical — existing fixtures have no pagination plans; `src/pagination.ts` is only written when plans exist, so existing trees gain no file).
+- [ ] **Step 4: Run → PASS** + typecheck. The no-plan invariant is asserted at UNIT level: resource emission called with an empty plan map produces byte-identical output to the pre-change emission (snapshot the before-string in the test). Do NOT run the golden lock here — goldens regenerate once, in Task 9, after wiring.
 - [ ] **Step 5: Commit.** `feat(sdk): *Pages async-generator emission for planned operations`
 
-### Task 9: `sdk-agent-minimal` fixture + TS golden + behavioral suite
+### Task 9: Pipeline wiring + `agent-minimal` fixture + TS golden regen (all trees) + behavioral suite
 
 **Files:**
-- Create: `tests/fixtures/sdk-agent-minimal/**` — ingest fixture (model on `tests/fixtures/` REST minimal fixture; copy its config/source shape): OpenAPI 3.1 doc with oauth2 clientCredentials scheme (tokenUrl `https://api.agentmin.test/oauth/token`) + `POST /oauth/token` op + `GET /items` cursor-paginated (params `cursor`,`limit`; response `{data: [...], next_cursor}`) + `GET /logs` offset-paginated (`offset`,`limit`) + `POST /items` plain
-- Modify: `tests/renderers/sdk-golden-helpers.ts` (add `AGENT_FIXTURE_ARGS` + `renderSdkGoldenAgent(outDir)`), `scripts/gen-sdk-goldens.mts` (include agent fixture), `tests/renderers/sdk-golden.test.ts` (third tree in lock + tsc gate)
-- Create: `tests/fixtures/golden/sdk-agent-minimal/**` (generated, committed)
+- Modify: `src/renderers/sdk.ts` — THE wiring step (deferred from Tasks 5–8): compute `envPrefix = slugify(productName).toUpperCase().replace(/-/g, "_")`; call `extractOperations` once, run `detectPagination(ops, oasJson, overlay)`; write generated `src/auth.ts` (always) and `src/pagination.ts` (only when plans exist); pass retries config (overlay defaults) to `generateRuntimeModule`; pass plans to resource emission. Keep `renderSdkPackage`'s function under 50 lines by extracting private helpers.
+- Create: `tests/fixtures/openapi3/agent-minimal.yaml` — single spec file per repo convention (model on `tests/fixtures/openapi3/minimal.yaml`): oauth2 clientCredentials scheme (tokenUrl `https://api.agentmin.test/oauth/token`) + `POST /oauth/token` op + `GET /items` cursor-paginated (params `cursor`,`limit`; response `{data: [...], next_cursor}`) + `GET /logs` offset-paginated (`offset`,`limit`) + `POST /items` plain. **productName MUST be exactly `agentmin`** (slugifies to `agentmin` → env prefix `AGENTMIN_`; a dotted name would yield `AGENTMIN_TEST_` and break the env assertions).
+- Modify: `tests/renderers/sdk-golden-helpers.ts` (add `AGENT_FIXTURE_ARGS` + `renderSdkGoldenAgent(outDir)` following `REST_FIXTURE_ARGS` shape), `scripts/gen-sdk-goldens.mts` (include agent fixture), `tests/renderers/sdk-golden.test.ts` (third tree in lock + tsc gate)
+- Create: `tests/fixtures/golden/sdk-agent-minimal/**` (generated, committed); regenerate `tests/fixtures/golden/sdk-minimal/**` and `sdk-graphql-minimal/**` (they gain `src/auth.ts` + changed `runtime.ts`/`errors.ts`)
 - Create: `tests/renderers/sdk-runtime-behavior.test.ts`
 
-- [ ] **Step 1: Build the fixture** (RED = `renderSdkGoldenAgent` doesn't exist; golden lock fails on missing tree).
-- [ ] **Step 2: Generate the golden.** `npx tsx scripts/gen-sdk-goldens.mts` → review the new tree: `src/auth.ts` + `src/pagination.ts` + `runtime.ts` with retry loop + `itemsPages`/`logsPages` in resources; `AuthConfig` has oauth2 + tokenProvider members; README env table present. Verify emitted files <300 lines each.
-- [ ] **Step 3: Lock + gates.** Golden lock + `tsc --noEmit` on the new tree → PASS.
-- [ ] **Step 4: Behavioral suite** — `tests/renderers/sdk-runtime-behavior.test.ts` imports DIRECTLY from the committed golden sources (`../fixtures/golden/sdk-agent-minimal/src/index.js` resolution via vitest TS transform — import the `.ts` files with their emitted `.js` specifiers; if vitest cannot resolve, import concrete modules `runtime.ts`/`auth.ts` paths directly). Tests (all with injected fake `fetch` and recorded `sleep`, zero real timers):
+- [ ] **Step 1: Wire `src/renderers/sdk.ts`** (failing state: golden lock goes RED because fresh renders now differ from committed trees — that is the expected RED for this task).
+- [ ] **Step 2: Build the fixture + helpers** (`AGENT_FIXTURE_ARGS`, `renderSdkGoldenAgent`, script + lock-test wiring).
+- [ ] **Step 3: Regenerate ALL THREE TS trees.** `npx tsx scripts/gen-sdk-goldens.mts`. Review by category: existing two trees gain `src/auth.ts` (bearer member + tokenProvider + env pickup) and a retry-loop `runtime.ts`, NO `pagination.ts` (no plans); agent tree additionally has `src/pagination.ts`, `itemsPages`/`logsPages` in resources, oauth2 AuthConfig member. Verify every emitted file <300 lines.
+- [ ] **Step 4: Lock + gates.** Golden lock (3 trees) + `tsc --noEmit` on all three → PASS.
+- [ ] **Step 5: Behavioral suite** — `tests/renderers/sdk-runtime-behavior.test.ts` imports DIRECTLY from the committed golden sources (import the `.ts` modules, e.g. `../fixtures/golden/sdk-agent-minimal/src/runtime.js` via vitest's TS resolution of `.js` specifiers; if specifier resolution fights, import `runtime.ts`/`auth.ts`/`pagination.ts` paths directly). Tests (all with injected fake `fetch` and recorded `sleep`, zero real timers):
   1. oauth2: first API call POSTs tokenUrl once (Basic header, form body), Authorization Bearer on API call; second call reuses cache (token endpoint hit exactly once).
   2. single-flight: two concurrent calls → one token fetch.
-  3. 401 → cache invalidated → token re-fetched → request retried once → success; second 401 → AuthenticationError.
-  4. env pickup: `AGENTMIN_CLIENT_ID/SECRET` set (use `vi.stubEnv`), no `auth` option → works; nothing set → ConfigError message contains `AGENTMIN_CLIENT_ID`.
-  5. 429 with `Retry-After: 1` → recorded sleep `[1000]` → attempt 2 succeeds.
-  6. GET 500,500,200 → two backoff sleeps each within `[0, min(30000, 500·2^n)]` → success; POST 500 → immediate throw, zero sleeps.
+  3. 401 → cache invalidated → token re-fetched → request retried once → success; second 401 → `UnauthorizedError` (the existing emitted class — NOT a new `AuthenticationError`).
+  4. env pickup: `AGENTMIN_CLIENT_ID`/`AGENTMIN_CLIENT_SECRET` set (use `vi.stubEnv`), no `auth` option → works; nothing set → ConfigError message contains `AGENTMIN_CLIENT_ID`.
+  5. 429 with `Retry-After: 1` → recorded sleep `[1000]` → attempt 2 succeeds; 429 with `Retry-After: garbage` → computed-backoff sleep within jitter bounds (fallback verified).
+  6. GET 500,500,200 → two backoff sleeps each within `[0, min(30000, 500·2^n)]` → success; POST 500 → immediate throw, zero sleeps; GET per-attempt timeout → retried (idempotent-timeout rule).
   7. `itemsPages()`: 3 pages then `next_cursor: null` → yields all items, fetch called 3×; repeated-cursor page → iteration stops, no hang (use a timeout guard).
   8. tokenProvider: `getToken` called, Bearer applied.
-- [ ] **Step 5: Run everything.** behavior suite + golden lock + `npm test` → `TEST_EXIT_CODE=0`. Any behavioral failure = fix the EMITTER (Tasks 5–8 code), regenerate golden, re-lock — never hand-edit the golden.
-- [ ] **Step 6: Commit.** `test(sdk): agent fixture, TS golden, behavioral runtime suite`
+- [ ] **Step 6: Run everything.** behavior suite + golden lock + `npm test` → `TEST_EXIT_CODE=0`. Any behavioral failure = fix the EMITTER (Tasks 5–8 code), regenerate goldens, re-lock — never hand-edit a golden.
+- [ ] **Step 7: Commit.** `feat(sdk): wire auth/retries/pagination into pipeline; agent fixture, regenerated goldens, behavioral suite`
+
+Note: the README env table is NOT yet present in these trees — it arrives in Task 10, which regenerates and re-locks again. Do not assert README content in this task.
 
 ### Task 10: README template — auth + pagination documentation
 
@@ -297,7 +303,11 @@ Emitted engine contract: `export async function* paginate<Item>(fetchPage: (curs
 **Files:**
 - Modify: `.github/workflows/sdk-docker.yml` (paths: + `src/renderers/pagination-detect.ts`, `src/sdk-plugins/auth.ts`, `src/sdk-plugins/pagination.ts`, agent golden paths), `KNOWN_GAPS.md`, `docs/ARCHITECTURE.md` (renderer list), `README.md` (feature bullets if present)
 
-- [ ] **Step 1: CI paths** — extend both `push`/`pull_request` path filters and the regen step to include the agent fixture trees.
+- [ ] **Step 1: CI updates** (the workflow is nightly `schedule` + `pull_request` — there is NO push trigger; do not add one):
+  - `pull_request.paths`: add `src/renderers/pagination-detect.ts`, `src/sdk-plugins/auth.ts`, `src/sdk-plugins/pagination.ts`, and the agent golden tree paths.
+  - The **byte-diff step** hardcodes the four existing tree dirs — add `sdk-python-agent-minimal` and `sdk-rust-agent-minimal` to that list.
+  - The **cargo-check loop** and the **compileall loop** hardcode tree names — add the agent trees to both, otherwise the new trees are never compile-gated (success criterion 5 would silently fail).
+  - The regen step itself needs no change (Task 12 already extended `scripts/gen-sdk-goldens.mts`).
 - [ ] **Step 2: KNOWN_GAPS.md** — new section "Agent-ready SDK runtime (2026-06-10)": python OAuth not generator-wired (token callable + README snippet); env pickup TS-only; rust retry default 3 vs overlay 2; pagination pager emission status per S2 verdict; page-style stamped as offset for Fern; v1.1 deferrals (device flow, token cache on disk, streaming, webhooks, idempotency auto-injection).
 - [ ] **Step 3: Docs sweep** — ARCHITECTURE renderer list + spec status update (Approved → Implemented).
 - [ ] **Step 4: Full verification.** `npm run typecheck && npm test && npm run build; echo EXIT=$?` → all 0. Confirm existing golden byte-stability where promised (Tasks 4, 8).

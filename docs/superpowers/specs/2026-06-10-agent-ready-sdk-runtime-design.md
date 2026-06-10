@@ -286,7 +286,7 @@ along the module boundaries above), no `any`, explicit return types on exports.
 | No auth option + no env vars | Construction-time `ConfigError` listing expected env var names |
 | Token endpoint returns non-2xx | `AuthError` (status + endpoint URL, secret never echoed) |
 | Token response missing `access_token` | `AuthError` ("malformed token response") |
-| 401 with oauth2/tokenProvider | One forced-refresh retry, then `AuthenticationError` |
+| 401 with oauth2/tokenProvider | One forced-refresh retry, then the existing `UnauthorizedError` |
 | Retry exhaustion | Final typed error re-thrown, message notes attempt count |
 | `Retry-After` unparseable | Fall back to computed backoff |
 | Pagination cursor repeats | Stop iteration cleanly (no error, no infinite loop) |
