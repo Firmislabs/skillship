@@ -207,6 +207,27 @@ export function detectPagination(
 - [ ] **Step 4: Run → PASS** + typecheck.
 - [ ] **Step 5: Commit.** `feat(sdk): shared pagination detection (overlay-first, conservative auto-detect)`
 
+### Task 6b: Inline response-schema passthrough (prerequisite discovered by Task 6 review)
+
+**Why (verified):** the synthetic OAS never carries response-schema `properties` — `pushResponseClaims` (`src/extractors/openapi3-ops.ts` ~line 314) persists only a `schema_ref` claim (and only for `$ref` schemas; inline schemas produce nothing), and `buildResponses` (`src/renderers/oas.ts:160`) emits `$ref`-to-stub or bare `{ type: "object" }`. Without this task, pagination tiers 2–3 are dead code in the real pipeline and Task 8's fixture expectations fail.
+
+**Scope decision:** inline schemas ONLY. When an operation's JSON response schema is an INLINE object (not `$ref`), persist it verbatim as a `schema_json` claim and project it verbatim in `buildResponses`. `$ref` schemas keep today's stub behavior (component-schema preservation is future work — Task 12 records it in KNOWN_GAPS; detection not firing for `$ref` specs is an acceptable false negative under the conservatism contract). Existing fixtures are `$ref`-style → OAS goldens and TS goldens stay BYTE-IDENTICAL (verify — that is the golden-lock proof this task is safe).
+
+**Files:**
+- Modify: `src/extractors/openapi3-ops.ts` (`pushResponseClaims`: inline-object schema → `schema_json` claim, verbatim JSON, attested confidence, span_path consistent with siblings)
+- Modify: `src/renderers/oas.ts` (`buildResponses`: when a `schema_json` claim exists and parses to an object, emit it verbatim as the response schema; precedence below `schema_ref`)
+- Test: `tests/extractors/` (wherever pushResponseClaims is covered) + `tests/renderers/oas.test.ts`
+- Cleanups from Task 6 quality review (same commit, `src/renderers/pagination-detect.ts`): remove the dead `oasJson.trim() === "{}"` ternary; collapse `planFromOverlayStyle`'s copy-paste branches via a `STYLE_DEFAULTS` lookup; hoist the duplicated exactly-one-array-prop computation out of the two auto-detect helpers. Split `tests/renderers/pagination-detect.test.ts` (651 lines) into `pagination-detect-overlay.test.ts` + `pagination-detect-auto.test.ts` sharing builders via a non-test helper module (house 300-line rule).
+
+- [ ] **Step 1: Failing extractor test** — ingesting a spec with an INLINE 200 response schema (object with `data` array + `next_cursor`) produces a `schema_json` claim carrying it verbatim; `$ref` responses still produce `schema_ref` only.
+- [ ] **Step 2: RED → implement extractor → GREEN.**
+- [ ] **Step 3: Failing renderer test** — graph with a `schema_json` claim → synthetic OAS response carries the schema verbatim; without it → stub (unchanged); with both `schema_ref` and `schema_json` → ref wins.
+- [ ] **Step 4: RED → implement renderer → GREEN.**
+- [ ] **Step 5: End-to-end pin** — one test: ingest inline-schema spec → render synthetic OAS → `detectPagination` (real modules, no hand-built OAS) returns a cursor plan for the list op. This is the test C1 said was missing.
+- [ ] **Step 6: Byte-stability proof.** `set -o pipefail; npx vitest run tests/renderers/oas-golden.test.ts tests/renderers/sdk-golden.test.ts 2>&1 | tail -3; echo EXIT=$?` → 0, byte-identical (existing fixtures are `$ref`-style). If NOT byte-identical, STOP — report BLOCKED.
+- [ ] **Step 7: Cleanups + test split** (listed above), suite green, typecheck 0.
+- [ ] **Step 8: Commit.** `feat(oas): inline response-schema passthrough (schema_json claim) + pagination-detect cleanups`
+
 ### Task 7: Generated `pagination.ts` + `*Pages()` resource methods
 
 **Files:**
@@ -310,7 +331,7 @@ Note: the README env table is NOT yet present in these trees — it arrives in T
   - The **byte-diff step** hardcodes the four existing tree dirs — add `sdk-python-agent-minimal` and `sdk-rust-agent-minimal` to that list.
   - The **cargo-check loop** and the **compileall loop** hardcode tree names — add the agent trees to both, otherwise the new trees are never compile-gated (success criterion 5 would silently fail).
   - The regen step itself needs no change (Task 11 already extended `scripts/gen-sdk-goldens.mts`).
-- [ ] **Step 2: KNOWN_GAPS.md** — new section "Agent-ready SDK runtime (2026-06-10)": python OAuth not generator-wired (token callable + README snippet); env pickup TS-only; rust retry default 3 vs overlay 2; pagination pager emission status per S2 verdict; page-style stamped as offset for Fern; v1.1 deferrals (device flow, token cache on disk, streaming, webhooks, idempotency auto-injection).
+- [ ] **Step 2: KNOWN_GAPS.md** — new section "Agent-ready SDK runtime (2026-06-10)": python OAuth not generator-wired (token callable + README snippet); env pickup TS-only; rust retry default 3 vs overlay 2; pagination pager emission status per S2 verdict; page-style stamped as offset for Fern; pagination auto-detect requires INLINE response schemas (`$ref`'d component schemas remain stubs in the synthetic OAS — full component preservation is future work, Task 6b decision); v1.1 deferrals (device flow, token cache on disk, streaming, webhooks, idempotency auto-injection).
 - [ ] **Step 3: Docs sweep** — ARCHITECTURE renderer list + spec status update (Approved → Implemented).
 - [ ] **Step 4: Full verification.** `npm run typecheck && npm test && npm run build; echo EXIT=$?` → all 0. Confirm existing golden byte-stability where promised (Tasks 4, 8).
 - [ ] **Step 5: Commit.** `docs+ci: agent-ready SDK runtime gaps, paths, architecture notes`
