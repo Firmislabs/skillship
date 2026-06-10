@@ -18,7 +18,31 @@
 
 **Erasability:** ALL committed golden SDK sources are fully erasable (no enums/namespaces/parameter-properties/decorators/`import =`). No Spec A emitter changes needed for erasability.
 
-**THE HARD FINDING — import specifiers:** Node's ESM resolver does NOT map `.js` specifiers to `.ts` files (`ERR_MODULE_NOT_FOUND`; docs require literal `.ts` specifiers under stripping). The SDK's internal imports are all `.js`-specifier — so an MCP entry that imports the SDK cannot run under plain stripping. **Spike S1b (running) decides between:** (d) a ≤25-line zero-dep resolve-hook loader registered via `module.register()` in `bin/mcp.js` mapping `.js`→`.ts` for relative in-package specifiers (no Spec A churn), vs (a) switching ALL generated specifiers to `.ts` + `allowImportingTsExtensions`/`noEmit` tsconfig (golden churn, consumer-contract shift). **S1B-PLACEHOLDER** — the verdict + exact launcher/loader text replaces this sentence before execution; Tasks 4/5/6 consume it.
+**THE HARD FINDING — import specifiers:** Node's ESM resolver does NOT map `.js` specifiers to `.ts` files. **S1b VERDICT (verified end-to-end with real golden SDK files — errors/runtime/auth chain loaded, ping round-trip, exit 0): file-based loader hook.** ALL generated modules (SDK and MCP alike) keep standard `.js` specifiers; the launcher registers a 22-line zero-dep resolve hook (`bin/loader.mjs` via `module.register("./loader.mjs", import.meta.url)`) that rewrites a relative `.js` specifier to `.ts` ONLY when the `.js` file is absent and the `.ts` sibling exists — it cannot intercept `node:*`/bare/absolute/`data:` specifiers and cannot shadow a genuine `.js` file. Golden tsconfig UNCHANGED (the `.js`-specifier sources pass the existing gate with zero modifications; `allowImportingTsExtensions` is NOT needed). ~20ms hooks-thread startup cost (70ms total), irrelevant for a long-lived stdio server. Edge checks all green incl. cwd-independence and no-stdin clean exit. Tasks 4/5/6 consume the verified launcher + loader text below.
+
+**Verified `bin/loader.mjs` (T6 emits exactly this):**
+
+```js
+import { existsSync } from "node:fs";
+import { fileURLToPath, URL } from "node:url";
+
+export async function resolve(specifier, context, nextResolve) {
+  if (!specifier.startsWith(".") || !specifier.endsWith(".js")) {
+    return nextResolve(specifier, context);
+  }
+  const resolved = new URL(specifier, context.parentURL ?? import.meta.url);
+  const jsPath = fileURLToPath(resolved);
+  if (!existsSync(jsPath)) {
+    const tsPath = jsPath.replace(/\.js$/, ".ts");
+    if (existsSync(tsPath)) {
+      return nextResolve(specifier.replace(/\.js$/, ".ts"), context);
+    }
+  }
+  return nextResolve(specifier, context);
+}
+```
+
+**Verified `bin/mcp.js` shape (T6 emits this, minus the data-URL alternate):** version gate (floor 23.6, actionable stderr, exit 1) → `register("./loader.mjs", import.meta.url)` → `await import(new URL("../src/mcp-server.ts", import.meta.url).href)`.
 
 **Launcher skeleton (verified, mechanism-independent parts):** `#!/usr/bin/env node` JS file in a `"type":"module"` package; version gate comparing `process.versions.node` against 23.6 with an actionable 3-line stderr message + exit 1; entry via `await import(new URL("../src/mcp-server.ts", import.meta.url).href)` (cwd-independent); `echo '{"jsonrpc":"2.0","id":1,"method":"ping"}' | node bin/mcp.js` round-trips.
 
@@ -203,7 +227,7 @@ Annotation resolution inside `computeCatalogEntries`: `x-skillship-annotations` 
 - Modify: `src/renderers/sdk-templates/render.ts` + `package.json.tpl` (conditional `bin` entry `{ "<product>-mcp": "bin/mcp.js" }`) + `README.md.tpl` (conditional "Use with Claude Code" section: .mcp.json snippet + env table reference)
 - Modify: `src/cli/index.ts` + `src/cli/build.ts` (`--skip-mcp` boolean threaded to `RenderSdkInput.skipMcp`)
 - Modify: `src/renderers/mcpJson.ts` (when MCP emitted: add `"<productId>": { "command": "node", "args": ["sdk/bin/mcp.js"] }` — RELATIVE path from the `.mcp.json` location; existing vendor entries unchanged)
-- Create (emitted into trees): `bin/mcp.js` with the EXACT S1 launcher text
+- Create (emitted into trees): `bin/mcp.js` + `bin/loader.mjs` with the EXACT S1/S1b verified text (loader byte-verbatim from the spike section)
 - Regenerate: all 3 TS golden trees; extend `tests/renderers/sdk-golden.test.ts` if the tree file-list assertions need the new files
 - Test: extend `tests/renderers/sdk-templates.test.ts` (conditional sections), `tests/renderers/mcpJson.test.ts` (new entry + skip case), new `tests/renderers/sdk-skip-mcp.test.ts` (render with `skipMcp: true` → tree contains NO mcp files, NO bin, package.json has no bin key, README has no MCP section — byte-equivalent to pre-T6 content shape)
 
