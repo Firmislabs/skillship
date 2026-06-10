@@ -99,7 +99,25 @@ function buildOperation(db: Sqlite3Database, opId: string, schemas: Record<strin
   if (sec.length > 0) op.security = sec;
   const tags = buildTags(db, opId, isGraphql);
   if (tags.length > 0) op.tags = tags;
+  const ann = buildAnnotations(db, opId);
+  if (ann !== undefined) op["x-skillship-annotations"] = ann;
   return op;
+}
+
+/** Maps graph claim fields back to their x-skillship-annotations key names. */
+const ANNOTATION_CLAIM_KEYS: ReadonlyArray<[string, string]> = [
+  ["is_destructive", "destructive"],
+  ["is_read_only", "readOnly"],
+  ["is_idempotent", "idempotent"],
+];
+
+function buildAnnotations(db: Sqlite3Database, opId: string): Record<string, boolean> | undefined {
+  const out: Record<string, boolean> = {};
+  for (const [field, key] of ANNOTATION_CLAIM_KEYS) {
+    const raw = readJson(db, opId, field);
+    if (typeof raw === "boolean") out[key] = raw;
+  }
+  return Object.keys(out).length > 0 ? out : undefined;
 }
 
 function buildParams(db: Sqlite3Database, opId: string, isGraphql: boolean, schemas: Record<string, unknown>): {

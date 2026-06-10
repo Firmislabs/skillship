@@ -434,3 +434,94 @@ describe("renderSyntheticOpenApi — oauth2 flows projection (T4)", () => {
     expect(schemeValue["flows"]).toEqual({});
   });
 });
+
+// ---- Annotation projection tests (Task 1) ----
+
+describe("renderSyntheticOpenApi — x-skillship-annotations projection", () => {
+  let tmp: string; let graph: GraphDb;
+  beforeEach(() => { tmp = mkdtempSync(join(tmpdir(), "sk-oas-ann-")); graph = openGraph(join(tmp, "g.db")); });
+  afterEach(() => { graph.close(); rmSync(tmp, { recursive: true, force: true }); });
+
+  const NOW_TS = "2026-06-10T00:00:00.000Z";
+  const PRODUCT_ID = "p-ann";
+  const SURFACE_ID = "sfc_ann_surface";
+  const SOURCE_ID = "src_fake_ann";
+
+  function seedOp(opId: string, path: string, annotationClaims: Record<string, boolean>): void {
+    const db = graph.db;
+    db.prepare(
+      `INSERT OR IGNORE INTO sources (id, surface, url, content_type, fetched_at, bytes, cache_path)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+    ).run(SOURCE_ID, "rest", "https://ann.example/openapi.yaml", "application/openapi+yaml", NOW_TS, 0, ".skillship/sources/fake.yaml");
+    db.prepare(
+      `INSERT OR IGNORE INTO nodes (id, kind, parent_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?)`,
+    ).run(SURFACE_ID, "surface", PRODUCT_ID, NOW_TS, NOW_TS);
+    db.prepare(
+      `INSERT INTO nodes (id, kind, parent_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?)`,
+    ).run(opId, "operation", SURFACE_ID, NOW_TS, NOW_TS);
+
+    const insertClaim = (field: string, value: unknown, claimId: string): void => {
+      db.prepare(
+        `INSERT INTO claims
+           (id, node_id, field, value_json, source_id, extractor, extracted_at,
+            span_start, span_end, span_path, confidence, chosen, rejection_rationale)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      ).run(claimId, opId, field, JSON.stringify(value), SOURCE_ID, "openapi@3", NOW_TS, null, null, null, "attested", 0, null);
+    };
+
+    insertClaim("method", "POST", `cl_${opId}_method`);
+    insertClaim("path_or_name", path, `cl_${opId}_path`);
+    for (const [field, val] of Object.entries(annotationClaims)) {
+      insertClaim(field, val, `cl_${opId}_${field}`);
+    }
+  }
+
+  test("is_destructive:true claim → operation carries x-skillship-annotations.destructive = true", () => {
+    seedOp("op_ann_destr", "/items", { is_destructive: true });
+    const doc = JSON.parse(
+      renderSyntheticOpenApi({ db: graph.db, productId: PRODUCT_ID, productName: "ann.example", overlay: CodegenOverlaySchema.parse({}) }),
+    );
+    const ann = doc.paths["/items"].post["x-skillship-annotations"] as Record<string, unknown>;
+    expect(ann).toBeDefined();
+    expect(ann["destructive"]).toBe(true);
+  });
+
+  test("is_read_only:false claim → operation carries x-skillship-annotations.readOnly = false", () => {
+    seedOp("op_ann_ro", "/items", { is_read_only: false });
+    const doc = JSON.parse(
+      renderSyntheticOpenApi({ db: graph.db, productId: PRODUCT_ID, productName: "ann.example", overlay: CodegenOverlaySchema.parse({}) }),
+    );
+    const ann = doc.paths["/items"].post["x-skillship-annotations"] as Record<string, unknown>;
+    expect(ann).toBeDefined();
+    expect(ann["readOnly"]).toBe(false);
+  });
+
+  test("is_idempotent:true claim → operation carries x-skillship-annotations.idempotent = true", () => {
+    seedOp("op_ann_idemp", "/items", { is_idempotent: true });
+    const doc = JSON.parse(
+      renderSyntheticOpenApi({ db: graph.db, productId: PRODUCT_ID, productName: "ann.example", overlay: CodegenOverlaySchema.parse({}) }),
+    );
+    const ann = doc.paths["/items"].post["x-skillship-annotations"] as Record<string, unknown>;
+    expect(ann).toBeDefined();
+    expect(ann["idempotent"]).toBe(true);
+  });
+
+  test("op with no annotation claims: no x-skillship-annotations key in rendered output", () => {
+    seedOp("op_ann_none", "/items", {});
+    const doc = JSON.parse(
+      renderSyntheticOpenApi({ db: graph.db, productId: PRODUCT_ID, productName: "ann.example", overlay: CodegenOverlaySchema.parse({}) }),
+    );
+    expect(doc.paths["/items"].post["x-skillship-annotations"]).toBeUndefined();
+  });
+
+  test("multiple annotation claims render as combined extension object", () => {
+    seedOp("op_ann_multi", "/items", { is_destructive: true, is_idempotent: false });
+    const doc = JSON.parse(
+      renderSyntheticOpenApi({ db: graph.db, productId: PRODUCT_ID, productName: "ann.example", overlay: CodegenOverlaySchema.parse({}) }),
+    );
+    const ann = doc.paths["/items"].post["x-skillship-annotations"] as Record<string, unknown>;
+    expect(ann).toBeDefined();
+    expect(ann["destructive"]).toBe(true);
+    expect(ann["idempotent"]).toBe(false);
+  });
+});

@@ -66,6 +66,7 @@ export function emitOperation(a: EmitOperationArgs): void {
     });
   }
 
+  pushAnnotationClaims(a.claims, opId, a.opDef, base);
   emitRequestExample(opId, a.opDef, base, a.claims);
   emitParameters(opId, a.opDef, base, a.nodes, a.claims, a.edges);
   emitRequestBodyParameter(opId, a.opDef, base, a.nodes, a.claims, a.edges);
@@ -159,6 +160,40 @@ function pushBoolClaim(
   if (typeof v === "boolean") {
     claims.push({
       node_id: nodeId,
+      field,
+      value: v,
+      span_path: spanPath,
+      confidence: "attested",
+    });
+  }
+}
+
+/** Maps x-skillship-annotations boolean keys to their graph field names. */
+const ANNOTATION_FIELDS: ReadonlyMap<string, string> = new Map([
+  ["destructive", "is_destructive"],
+  ["readOnly", "is_read_only"],
+  ["idempotent", "is_idempotent"],
+]);
+
+/**
+ * Reads `x-skillship-annotations` from the op definition and pushes one
+ * attested claim per known boolean key. Unknown keys and non-boolean values
+ * are silently ignored so the extension is forward-compatible.
+ */
+function pushAnnotationClaims(
+  claims: ExtractedClaim[],
+  opId: string,
+  opDef: Record<string, unknown>,
+  base: string,
+): void {
+  const ext = opDef["x-skillship-annotations"];
+  if (!isObject(ext)) return;
+  const spanPath = `${base}.x-skillship-annotations`;
+  for (const [key, field] of ANNOTATION_FIELDS) {
+    const v = ext[key];
+    if (typeof v !== "boolean") continue;
+    claims.push({
+      node_id: opId,
       field,
       value: v,
       span_path: spanPath,

@@ -228,3 +228,77 @@ describe("buildFernOas — x-fern-pagination stamping", () => {
     expect(JSON.parse(oasPagination).paths["/items"].get["x-fern-pagination"]).toBeUndefined();
   });
 });
+
+// ---- x-skillship-annotations strip tests (Task 1) ----
+
+describe("buildFernOas — x-skillship-annotations stripping", () => {
+  const oasWithAnnotations = JSON.stringify({
+    openapi: "3.1.0",
+    paths: {
+      "/items": {
+        get: {
+          operationId: "op_list",
+          tags: ["items"],
+          "x-skillship-annotations": { destructive: false, readOnly: true },
+        },
+        post: {
+          operationId: "op_create",
+          tags: ["items"],
+          "x-skillship-annotations": { destructive: true },
+        },
+      },
+      "/logs": {
+        get: {
+          operationId: "op_logs",
+          tags: ["logs"],
+          // no x-skillship-annotations — must remain untouched (no key added)
+        },
+      },
+    },
+  });
+
+  test("x-skillship-annotations is absent from all operations in Fern output", () => {
+    const ops = extractOperations(oasWithAnnotations);
+    const out = buildFernOas(oasWithAnnotations, ops, CodegenOverlaySchema.parse({}), new Map());
+    const doc = JSON.parse(out);
+
+    expect(doc.paths["/items"].get["x-skillship-annotations"]).toBeUndefined();
+    expect(doc.paths["/items"].post["x-skillship-annotations"]).toBeUndefined();
+    expect(doc.paths["/logs"].get["x-skillship-annotations"]).toBeUndefined();
+  });
+
+  test("stripping does not affect other extension keys (x-fern-pagination survives)", () => {
+    const cursorPlan: PaginationPlan = {
+      style: "cursor",
+      requestParam: "cursor",
+      pageSizeParam: null,
+      itemsField: "data",
+      nextField: "next_cursor",
+    };
+    const ops = extractOperations(oasWithAnnotations);
+    const plans = new Map<string, PaginationPlan>([["op_list", cursorPlan]]);
+    const out = buildFernOas(oasWithAnnotations, ops, CodegenOverlaySchema.parse({}), plans);
+    const doc = JSON.parse(out);
+
+    // x-fern-pagination should be stamped by the plan
+    expect(doc.paths["/items"].get["x-fern-pagination"]).toBeDefined();
+    // x-skillship-annotations must still be gone
+    expect(doc.paths["/items"].get["x-skillship-annotations"]).toBeUndefined();
+  });
+
+  test("input OAS string is not mutated (annotations still present in original)", () => {
+    const ops = extractOperations(oasWithAnnotations);
+    buildFernOas(oasWithAnnotations, ops, CodegenOverlaySchema.parse({}), new Map());
+    // Original must still have the annotations
+    const original = JSON.parse(oasWithAnnotations);
+    expect(original.paths["/items"].get["x-skillship-annotations"]).toBeDefined();
+    expect(original.paths["/items"].post["x-skillship-annotations"]).toBeDefined();
+  });
+
+  test("op without annotations in input has no x-skillship-annotations in output", () => {
+    const ops = extractOperations(oasWithAnnotations);
+    const out = buildFernOas(oasWithAnnotations, ops, CodegenOverlaySchema.parse({}), new Map());
+    const doc = JSON.parse(out);
+    expect(doc.paths["/logs"].get["x-skillship-annotations"]).toBeUndefined();
+  });
+});

@@ -85,6 +85,8 @@ paths:
     post:
       operationId: createItem
       summary: Create an item
+      x-skillship-annotations:
+        destructive: true
       requestBody:
         required: true
         content:

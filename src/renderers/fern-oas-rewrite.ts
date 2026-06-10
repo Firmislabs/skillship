@@ -115,6 +115,9 @@ export function buildFernOas(
           op["x-fern-pagination"] = stamp;
         }
       }
+      // Strip our internal extension — Fern generators do not recognise it and
+      // keeping it would cause the nightly Docker lane to drift on each build.
+      delete op["x-skillship-annotations"];
     }
   }
   return JSON.stringify(doc, null, 2);
