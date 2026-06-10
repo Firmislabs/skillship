@@ -29,7 +29,7 @@ describe("loadCodegenOverlay", () => {
         "  op_a: { namespace: users, rename: list }",
         "pagination:",
         "  style: cursor",
-        "  fields: { cursor: next_cursor, items: data, hasMore: has_more }",
+        "  fields: { requestParam: cursor, itemsField: data, nextField: next_cursor }",
         "retries: { maxRetries: 3, idempotencyHeader: Idempotency-Key }",
         "streaming: [op_b]",
       ].join("\n"),
@@ -68,4 +68,79 @@ test("applyOverlayToDoc stamps document-level x-skillship-codegen", () => {
   applyOverlayToDoc(doc, CodegenOverlaySchema.parse({ pagination: { style: "cursor" }, streaming: ["op_b"] }));
   expect(doc["x-skillship-codegen"].pagination.style).toBe("cursor");
   expect(doc["x-skillship-codegen"].streaming).toEqual(["op_b"]);
+});
+
+describe("Auth schema — tokenUrl", () => {
+  test("parses and round-trips tokenUrl for oauth2-client-credentials", () => {
+    const result = CodegenOverlaySchema.parse({
+      auth: {
+        mode: "oauth2-client-credentials",
+        tokenUrl: "https://x/oauth/token",
+      },
+    });
+    expect(result.auth?.tokenUrl).toBe("https://x/oauth/token");
+  });
+
+  test("bearer auth without tokenUrl still parses", () => {
+    const result = CodegenOverlaySchema.parse({
+      auth: { mode: "bearer" },
+    });
+    expect(result.auth?.mode).toBe("bearer");
+    expect(result.auth?.tokenUrl).toBeUndefined();
+  });
+
+  test("rejects an invalid (non-URL) tokenUrl", () => {
+    expect(() =>
+      CodegenOverlaySchema.parse({
+        auth: { mode: "oauth2-client-credentials", tokenUrl: "not-a-url" },
+      }),
+    ).toThrow();
+  });
+});
+
+describe("Pagination.fields — fixed keys", () => {
+  test("parses valid fixed field keys", () => {
+    const result = CodegenOverlaySchema.parse({
+      pagination: {
+        style: "cursor",
+        fields: { requestParam: "cursor", itemsField: "data", nextField: "next_cursor" },
+      },
+    });
+    expect(result.pagination?.fields.requestParam).toBe("cursor");
+    expect(result.pagination?.fields.itemsField).toBe("data");
+    expect(result.pagination?.fields.nextField).toBe("next_cursor");
+  });
+
+  test("parses all four fixed field keys", () => {
+    const result = CodegenOverlaySchema.parse({
+      pagination: {
+        style: "offset",
+        fields: {
+          requestParam: "page",
+          pageSizeParam: "per_page",
+          itemsField: "items",
+          nextField: "next",
+        },
+      },
+    });
+    expect(result.pagination?.fields.pageSizeParam).toBe("per_page");
+  });
+
+  test("rejects unknown field keys (strict)", () => {
+    expect(() =>
+      CodegenOverlaySchema.parse({
+        pagination: {
+          style: "cursor",
+          fields: { bogus: "x" },
+        },
+      }),
+    ).toThrow();
+  });
+
+  test("pagination.fields defaults to empty object when omitted", () => {
+    const result = CodegenOverlaySchema.parse({
+      pagination: { style: "page" },
+    });
+    expect(result.pagination?.fields).toEqual({});
+  });
 });

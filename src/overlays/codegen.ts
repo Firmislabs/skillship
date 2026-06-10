@@ -9,9 +9,19 @@ const ResourceRule = z.object({
   rename: z.string().min(1).optional(),
 });
 
+const PaginationFields = z
+  .object({
+    requestParam: z.string().optional(),
+    pageSizeParam: z.string().optional(),
+    itemsField: z.string().optional(),
+    nextField: z.string().optional(),
+  })
+  .strict()
+  .default({});
+
 const Pagination = z.object({
   style: z.enum(["cursor", "offset", "page"]),
-  fields: z.record(z.string()).default({}),
+  fields: PaginationFields,
   perOperation: z.record(z.enum(["cursor", "offset", "page"])).default({}),
 });
 
@@ -27,6 +37,7 @@ const Auth = z.object({
   mode: z.enum(["bearer", "apiKey", "oauth2-client-credentials"]),
   in: z.enum(["header", "query"]).default("header"),
   name: z.string().optional(),
+  tokenUrl: z.string().url().optional(),
 });
 
 const Webhooks = z.object({
