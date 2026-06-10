@@ -3,11 +3,14 @@
 // snake(namespace)_snake(methodName) and tags becomes [namespace], derived from
 // the SAME resolveAssignments pass that drives the TS SDK (single source of
 // truth). The input OAS string is never mutated; a new JSON string is returned.
+// Additionally stamps x-fern-pagination on operations with a known plan
+// (passed in from the shared detectPagination output — NOT re-detected here).
 import type { CodegenOverlay } from "../overlays/codegen.js";
 import {
   resolveAssignments,
   type OperationInfo,
 } from "../sdk-plugins/resource-tree.js";
+import type { PaginationPlan } from "./pagination-detect.js";
 
 const HTTP_METHODS = new Set([
   "get", "post", "put", "patch", "delete", "head", "options", "trace",
@@ -33,14 +36,47 @@ export function camelToSnake(name: string): string {
 }
 
 /**
- * Returns a new OAS JSON string with operationId + tags rewritten for Fern.
+ * Builds the x-fern-pagination stamp for an operation.
+ * cursor → { cursor, next_cursor, results } with $request./$response. prefixes.
+ * offset → { offset, results } with $request./$response. prefixes.
+ * page → offset form using the page requestParam (Fern has no distinct page type
+ *        at this syntax level — recorded in KNOWN_GAPS by Task 12).
+ */
+function buildPaginationStamp(plan: PaginationPlan): Record<string, string> {
+  if (plan.style === "cursor" && plan.nextField !== null) {
+    return {
+      cursor: `$request.${plan.requestParam}`,
+      next_cursor: `$response.${plan.nextField}`,
+      results: `$response.${plan.itemsField}`,
+    };
+  }
+  // offset and page both emit the offset form
+  return {
+    offset: `$request.${plan.requestParam}`,
+    results: `$response.${plan.itemsField}`,
+  };
+}
+
+/**
+ * Returns a new OAS JSON string with:
+ * 1. operationId + tags rewritten for Fern (snake(ns)_snake(method) / [ns]).
+ * 2. x-fern-pagination stamped per operation WHERE a plan exists in the map.
+ *
  * Operations are matched back to the doc by their ORIGINAL operationId (unique),
  * so this is robust to whatever path shape the synthetic OAS uses (incl. GraphQL).
+ * The pagination plans map uses ORIGINAL operationIds (before the rewrite) since
+ * those are the keys detectPagination produces. The stamp is applied AFTER the
+ * operationId rewrite so the op object already has the new id, but the lookup
+ * key is saved before rewriting.
+ *
+ * The $request./<requestParam> refs reference ORIGINAL OAS parameter names —
+ * Fern reads the spec's parameter names, unaffected by operationId rewrite.
  */
 export function buildFernOas(
   oasJson: string,
   ops: readonly OperationInfo[],
   overlay: CodegenOverlay,
+  plans: ReadonlyMap<string, PaginationPlan>,
 ): string {
   const doc = JSON.parse(oasJson) as MutDoc;
   const byOpId = new Map<string, { operationId: string; namespace: string }>();
@@ -57,10 +93,16 @@ export function buildFernOas(
       if (!HTTP_METHODS.has(method.toLowerCase())) continue;
       const op = item[method];
       if (!op || typeof op !== "object" || typeof op.operationId !== "string") continue;
-      const hit = byOpId.get(op.operationId);
-      if (!hit) continue;
-      op.operationId = hit.operationId;
-      op.tags = [hit.namespace];
+      const originalOpId = op.operationId;
+      const hit = byOpId.get(originalOpId);
+      if (hit) {
+        op.operationId = hit.operationId;
+        op.tags = [hit.namespace];
+      }
+      const plan = plans.get(originalOpId);
+      if (plan !== undefined) {
+        op["x-fern-pagination"] = buildPaginationStamp(plan);
+      }
     }
   }
   return JSON.stringify(doc, null, 2);

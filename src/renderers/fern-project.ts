@@ -11,6 +11,25 @@ export interface FernProjectFiles {
   readonly files: Readonly<Record<string, string>>;
 }
 
+/**
+ * Computed OAuth plan for Fern generators.yml auth-schemes block.
+ * Produced ONLY when an oauth2ClientCredentials descriptor exists with a
+ * non-null tokenUrl AND the tokenUrl's path matches an OAS path with a POST op
+ * AND the token op's requestBody schema has named properties.
+ * All property refs carry the $request./$response. prefix required by Fern.
+ */
+export interface FernOAuthPlan {
+  readonly tokenEndpoint: string;
+  /** Fern request-properties map: kebab key → "$request.<field>" */
+  readonly requestProps: Readonly<Record<string, string>>;
+  /** Fern response-properties map: kebab key → "$response.<field>" */
+  readonly responseProps: Readonly<Record<string, string>>;
+}
+
+export interface BuildFernProjectOpts {
+  readonly oauth: FernOAuthPlan | null;
+}
+
 interface GeneratorEntry {
   name: string;
   version: string;
@@ -18,7 +37,10 @@ interface GeneratorEntry {
   config?: Record<string, unknown>;
 }
 
-export function buildFernProject(langs: readonly FernLang[]): FernProjectFiles {
+export function buildFernProject(
+  langs: readonly FernLang[],
+  opts: BuildFernProjectOpts,
+): FernProjectFiles {
   if (langs.length === 0) {
     throw new Error("buildFernProject: langs must be non-empty");
   }
@@ -34,16 +56,47 @@ export function buildFernProject(langs: readonly FernLang[]): FernProjectFiles {
     return entry;
   });
   const fernConfig = { organization: "skillship", version: FERN_PINS.cliVersion };
-  // `api.specs` is REQUIRED — Fern aborts with "Detected empty API definition"
-  // otherwise. Path is relative to fern/ (caller writes fern/openapi/openapi.json).
-  const generatorsDoc = {
-    api: { specs: [{ openapi: "openapi/openapi.json" }] },
-    groups: { sdks: { generators } },
-  };
+  const generatorsDoc = buildGeneratorsDoc(generators, opts.oauth);
   return {
     files: {
       "fern/fern.config.json": JSON.stringify(fernConfig, null, 2) + "\n",
       "fern/generators.yml": stringifyYaml(generatorsDoc),
+    },
+  };
+}
+
+/**
+ * Builds the generators.yml document object. When an OAuth plan is provided,
+ * emits the S1 auth-schemes block (spike-verified recipe) and sets api.auth.
+ * When null, omits both — Fern falls back to its default bearer mapping.
+ */
+function buildGeneratorsDoc(
+  generators: GeneratorEntry[],
+  oauth: FernOAuthPlan | null,
+): Record<string, unknown> {
+  // `api.specs` is REQUIRED — Fern aborts with "Detected empty API definition"
+  // otherwise. Path is relative to fern/ (caller writes fern/openapi/openapi.json).
+  const api: Record<string, unknown> = {
+    specs: [{ openapi: "openapi/openapi.json" }],
+  };
+  const doc: Record<string, unknown> = { api, groups: { sdks: { generators } } };
+  if (oauth === null) return doc;
+
+  doc["auth-schemes"] = buildAuthSchemesBlock(oauth);
+  api["auth"] = "OAuth";
+  return doc;
+}
+
+function buildAuthSchemesBlock(plan: FernOAuthPlan): Record<string, unknown> {
+  return {
+    OAuth: {
+      scheme: "oauth",
+      type: "client-credentials",
+      "get-token": {
+        endpoint: plan.tokenEndpoint,
+        "request-properties": { ...plan.requestProps },
+        "response-properties": { ...plan.responseProps },
+      },
     },
   };
 }
