@@ -38,6 +38,7 @@ const Auth = z.object({
   in: z.enum(["header", "query"]).default("header"),
   name: z.string().optional(),
   tokenUrl: z.string().url().optional(),
+  valuePrefix: z.string().optional(),
 });
 
 const Webhooks = z.object({

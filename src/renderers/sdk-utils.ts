@@ -3,6 +3,7 @@
 // Kept separate to stay under the 300-line file cap while sdk.ts accumulates
 // correctness fixes (EXDEV fallback, collision guards, slug validation, etc.).
 // Also owns computePagesExample / computeFirstRequestExample (moved from sdk.ts).
+// Auth-scheme helpers are in ./sdk-utils-auth.ts (C3 split).
 
 import type {
   AuthSchemeDescriptor,
@@ -18,26 +19,17 @@ import {
   type PaginationPlan,
 } from "./pagination-detect.js";
 import type { PagesExample, FirstRequestExample } from "./sdk-templates/render.js";
+import {
+  mapSecurityScheme,
+  applyOverlayToDescriptor,
+  synthesizeDescriptor,
+  overlayTargetKind,
+  type OasSecurityScheme,
+  type OasComponents,
+} from "./sdk-utils-auth.js";
 
 // ---- Minimal OAS doc shape (read-only, subset used by extractors) ----
 
-interface OasClientCredentialsFlow {
-  readonly tokenUrl?: string;
-  readonly scopes?: Record<string, string>;
-}
-interface OasOauth2Flows {
-  readonly clientCredentials?: OasClientCredentialsFlow;
-}
-interface OasSecurityScheme {
-  readonly type?: string;
-  readonly scheme?: string;
-  readonly in?: string;
-  readonly name?: string;
-  readonly flows?: OasOauth2Flows;
-}
-interface OasComponents {
-  readonly securitySchemes?: Record<string, OasSecurityScheme>;
-}
 interface OasOperation {
   readonly operationId?: string;
   readonly tags?: readonly string[];
@@ -48,60 +40,18 @@ interface OasDoc {
   readonly paths?: Record<string, OasPathItem>;
 }
 
+// Re-export so callers that import OasSecurityScheme from sdk-utils still work.
+export type { OasSecurityScheme };
+
 // ---- Auth scheme extraction ----
-
-/**
- * Maps a single OAS security scheme to an AuthSchemeDescriptor.
- * Never throws — unknown/unsupported types map to { kind: "external" }.
- */
-function mapSecurityScheme(id: string, s: OasSecurityScheme): AuthSchemeDescriptor {
-  const type = s.type ?? "";
-  const scheme = s.scheme ?? "";
-  if (type === "http" && scheme === "bearer") return { kind: "bearer", id };
-  if (type === "http" && scheme === "basic") return { kind: "basic", id };
-  if (type === "apiKey") {
-    const loc: "header" | "query" = s.in === "query" ? "query" : "header";
-    const name = typeof s.name === "string" ? s.name : "Authorization";
-    return { kind: "apiKey", id, in: loc, name };
-  }
-  if (type === "oauth2") {
-    const cc = s.flows?.clientCredentials;
-    const tokenUrl = typeof cc?.tokenUrl === "string" ? cc.tokenUrl : null;
-    const scopes = cc?.scopes != null ? Object.keys(cc.scopes) : [];
-    return { kind: "oauth2ClientCredentials", id, tokenUrl, scopes };
-  }
-  // openIdConnect, mutualTLS, unknown — mapped to external (no auto-inject)
-  return { kind: "external", id, schemeType: type };
-}
-
-/**
- * Applies overlay overrides to a descriptor.
- * If overlay.auth.mode is "oauth2-client-credentials", force the descriptor to
- * oauth2ClientCredentials (regardless of what the OAS scheme was).
- * overlay.auth.tokenUrl fills a null tokenUrl.
- */
-function applyOverlayToDescriptor(
-  desc: AuthSchemeDescriptor,
-  overlay: CodegenOverlay | undefined,
-): AuthSchemeDescriptor {
-  const overlayAuth = overlay?.auth;
-  if (overlayAuth?.mode !== "oauth2-client-credentials") return desc;
-  const existingTokenUrl =
-    desc.kind === "oauth2ClientCredentials" ? desc.tokenUrl : null;
-  const tokenUrl =
-    typeof overlayAuth.tokenUrl === "string"
-      ? overlayAuth.tokenUrl
-      : existingTokenUrl;
-  const scopes =
-    desc.kind === "oauth2ClientCredentials" ? desc.scopes : [];
-  return { kind: "oauth2ClientCredentials", id: desc.id, tokenUrl, scopes };
-}
 
 /**
  * Parses the OAS doc and returns a descriptor per security scheme.
  * All scheme types are handled — oauth2/openIdConnect/mutualTLS/unknown map
  * to new descriptor kinds instead of throwing.
  * An optional overlay may force or augment the descriptor (e.g. tokenUrl).
+ * When overlay.auth.mode names a kind with no matching declared scheme,
+ * a synthetic descriptor is appended (zero-scheme synthesis).
  */
 export function extractAuthSchemes(
   oasJson: string,
@@ -114,6 +64,14 @@ export function extractAuthSchemes(
     const raw = schemes[id]!;
     const base = mapSecurityScheme(id, raw);
     out.push(applyOverlayToDescriptor(base, overlay));
+  }
+  if (overlay?.auth !== undefined) {
+    const targetKind = overlayTargetKind(overlay.auth.mode);
+    const hasTargetKind = out.some((d) => d.kind === targetKind);
+    if (!hasTargetKind) {
+      const synthesized = synthesizeDescriptor(overlay);
+      if (synthesized !== null) out.push(synthesized);
+    }
   }
   return out;
 }

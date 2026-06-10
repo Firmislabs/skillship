@@ -98,6 +98,62 @@ describe("Auth schema — tokenUrl", () => {
   });
 });
 
+// ─── C3: Auth.valuePrefix ────────────────────────────────────────────────────
+
+describe("Auth schema — valuePrefix (C3)", () => {
+  test("parses valuePrefix for apiKey mode", () => {
+    const result = CodegenOverlaySchema.parse({
+      auth: { mode: "apiKey", in: "header", name: "Authorization", valuePrefix: "token " },
+    });
+    expect(result.auth?.valuePrefix).toBe("token ");
+  });
+
+  test("valuePrefix is optional — absent means undefined", () => {
+    const result = CodegenOverlaySchema.parse({
+      auth: { mode: "apiKey", in: "header", name: "X-API-Key" },
+    });
+    expect(result.auth?.valuePrefix).toBeUndefined();
+  });
+
+  test("valuePrefix round-trips through loadCodegenOverlay", () => {
+    const dir2 = mkdtempSync(join(tmpdir(), "sk-ovl-pfx-"));
+    mkdirSync(join(dir2, ".skillship", "overlays"), { recursive: true });
+    writeFileSync(
+      join(dir2, ".skillship", "overlays", "codegen.yaml"),
+      [
+        "auth:",
+        "  mode: apiKey",
+        "  in: header",
+        "  name: Authorization",
+        "  valuePrefix: 'token '",
+      ].join("\n"),
+      "utf8",
+    );
+    const ovl = loadCodegenOverlay(dir2);
+    rmSync(dir2, { recursive: true, force: true });
+    expect(ovl.auth?.valuePrefix).toBe("token ");
+  });
+
+  test("valuePrefix works on bearer mode (stored but unused by bearer path)", () => {
+    const result = CodegenOverlaySchema.parse({
+      auth: { mode: "bearer", valuePrefix: "CustomBearer " },
+    });
+    expect(result.auth?.valuePrefix).toBe("CustomBearer ");
+  });
+
+  test("applyOverlayToDoc stamps valuePrefix into x-skillship-codegen.auth", () => {
+    const doc: Record<string, unknown> = { paths: {} };
+    applyOverlayToDoc(
+      doc,
+      CodegenOverlaySchema.parse({
+        auth: { mode: "apiKey", in: "header", name: "Authorization", valuePrefix: "token " },
+      }),
+    );
+    const stamped = (doc["x-skillship-codegen"] as Record<string, unknown>)["auth"] as Record<string, unknown>;
+    expect(stamped["valuePrefix"]).toBe("token ");
+  });
+});
+
 describe("Pagination.fields — fixed keys", () => {
   test("parses valid fixed field keys", () => {
     const result = CodegenOverlaySchema.parse({

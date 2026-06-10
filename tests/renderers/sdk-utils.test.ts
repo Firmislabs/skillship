@@ -251,6 +251,194 @@ describe("extractAuthSchemes — external kinds", () => {
   });
 });
 
+// ---- C3: overlay synthesis from zero schemes ----
+
+const EMPTY_OAS = makeOas({});
+
+describe("extractAuthSchemes — C3 synthesis from zero schemes", () => {
+  test("apiKey mode synthesizes overlay_apikey descriptor with overlay name/in/valuePrefix", () => {
+    const overlay = {
+      resources: {},
+      streaming: [],
+      auth: {
+        mode: "apiKey" as const,
+        in: "header" as const,
+        name: "Authorization",
+        valuePrefix: "token ",
+      },
+    };
+    const result = extractAuthSchemes(EMPTY_OAS, overlay);
+    expect(result).toHaveLength(1);
+    expect(result[0]).toEqual({
+      kind: "apiKey",
+      id: "overlay_apikey",
+      in: "header",
+      name: "Authorization",
+      valuePrefix: "token ",
+    });
+  });
+
+  test("apiKey synthesis uses X-API-Key default name when overlay.auth.name absent", () => {
+    const overlay = {
+      resources: {},
+      streaming: [],
+      auth: { mode: "apiKey" as const },
+    };
+    const result = extractAuthSchemes(EMPTY_OAS, overlay);
+    expect(result).toHaveLength(1);
+    expect(result[0]).toMatchObject({
+      kind: "apiKey",
+      id: "overlay_apikey",
+      name: "X-API-Key",
+    });
+  });
+
+  test("apiKey synthesis uses empty string valuePrefix when absent", () => {
+    const overlay = {
+      resources: {},
+      streaming: [],
+      auth: { mode: "apiKey" as const, in: "header" as const, name: "Authorization" },
+    };
+    const result = extractAuthSchemes(EMPTY_OAS, overlay);
+    expect(result).toHaveLength(1);
+    const desc = result[0] as { kind: "apiKey"; valuePrefix: string };
+    expect(desc.valuePrefix).toBe("");
+  });
+
+  test("bearer mode synthesizes overlay_bearer descriptor", () => {
+    const overlay = {
+      resources: {},
+      streaming: [],
+      auth: { mode: "bearer" as const },
+    };
+    const result = extractAuthSchemes(EMPTY_OAS, overlay);
+    expect(result).toHaveLength(1);
+    expect(result[0]).toEqual({ kind: "bearer", id: "overlay_bearer" });
+  });
+
+  test("oauth2-client-credentials mode synthesizes oauth2ClientCredentials with tokenUrl from overlay", () => {
+    const overlay = {
+      resources: {},
+      streaming: [],
+      auth: {
+        mode: "oauth2-client-credentials" as const,
+        tokenUrl: "https://auth.example.com/token",
+      },
+    };
+    const result = extractAuthSchemes(EMPTY_OAS, overlay);
+    expect(result).toHaveLength(1);
+    expect(result[0]).toEqual({
+      kind: "oauth2ClientCredentials",
+      id: "overlay_oauth2",
+      tokenUrl: "https://auth.example.com/token",
+      scopes: [],
+    });
+  });
+
+  test("oauth2-client-credentials synthesis uses null tokenUrl when absent in overlay", () => {
+    const overlay = {
+      resources: {},
+      streaming: [],
+      auth: { mode: "oauth2-client-credentials" as const },
+    };
+    const result = extractAuthSchemes(EMPTY_OAS, overlay);
+    expect(result).toHaveLength(1);
+    expect(result[0]).toMatchObject({
+      kind: "oauth2ClientCredentials",
+      id: "overlay_oauth2",
+      tokenUrl: null,
+      scopes: [],
+    });
+  });
+
+  test("no overlay → zero schemes remains empty (synthesis only fires when overlay.auth is set)", () => {
+    const result = extractAuthSchemes(EMPTY_OAS, undefined);
+    expect(result).toHaveLength(0);
+  });
+
+  test("overlay without auth → zero schemes remains empty", () => {
+    const overlay = { resources: {}, streaming: [] };
+    const result = extractAuthSchemes(EMPTY_OAS, overlay);
+    expect(result).toHaveLength(0);
+  });
+});
+
+// ---- C3: overlay apiKey override of declared apiKey descriptor ----
+
+describe("extractAuthSchemes — C3 apiKey overlay override of declared descriptor", () => {
+  test("overlay apiKey mode overrides declared apiKey descriptor name and in", () => {
+    const overlay = {
+      resources: {},
+      streaming: [],
+      auth: {
+        mode: "apiKey" as const,
+        in: "header" as const,
+        name: "Authorization",
+        valuePrefix: "token ",
+      },
+    };
+    const result = extractAuthSchemes(
+      makeOas({ myKey: { type: "apiKey", in: "query", name: "api_key" } }),
+      overlay,
+    );
+    expect(result).toHaveLength(1);
+    expect(result[0]).toEqual({
+      kind: "apiKey",
+      id: "myKey",
+      in: "header",
+      name: "Authorization",
+      valuePrefix: "token ",
+    });
+  });
+
+  test("overlay apiKey override preserves original id", () => {
+    const overlay = {
+      resources: {},
+      streaming: [],
+      auth: { mode: "apiKey" as const, in: "header" as const, name: "X-Token" },
+    };
+    const result = extractAuthSchemes(
+      makeOas({ secretKey: { type: "apiKey", in: "header", name: "old-name" } }),
+      overlay,
+    );
+    expect(result[0]).toMatchObject({ id: "secretKey", name: "X-Token" });
+  });
+
+  test("non-matching declared kinds left untouched when overlay mode is apiKey but scheme is bearer", () => {
+    // Declared bearer + overlay apiKey mode → no apiKey declared → synthesize
+    // (The declared bearer is NOT touched — synthesis is an ADD, not a replace)
+    const overlay = {
+      resources: {},
+      streaming: [],
+      auth: { mode: "apiKey" as const, in: "header" as const, name: "Authorization" },
+    };
+    const result = extractAuthSchemes(
+      makeOas({ tok: { type: "http", scheme: "bearer" } }),
+      overlay,
+    );
+    // bearer is declared — but overlay is apiKey mode, no apiKey declared → synthesize apiKey
+    // The declared bearer is still there; synthesized apiKey is also present
+    const kinds = result.map((d) => d.kind);
+    expect(kinds).toContain("apiKey");
+    expect(kinds).toContain("bearer");
+  });
+
+  test("declared bearer with overlay bearer mode: bearer not duplicated", () => {
+    const overlay = {
+      resources: {},
+      streaming: [],
+      auth: { mode: "bearer" as const },
+    };
+    const result = extractAuthSchemes(
+      makeOas({ tok: { type: "http", scheme: "bearer" } }),
+      overlay,
+    );
+    // bearer is already declared — no synthesis needed
+    expect(result).toHaveLength(1);
+    expect(result[0]).toMatchObject({ kind: "bearer", id: "tok" });
+  });
+});
+
 // ---- overlay interaction ----
 
 describe("extractAuthSchemes — overlay parameter", () => {

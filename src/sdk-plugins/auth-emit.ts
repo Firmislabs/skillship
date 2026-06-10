@@ -6,8 +6,11 @@
 // All exports return strings/string[] of EMITTED TypeScript; none run at SDK
 // runtime. resolveAuthFromEnv ownership of env-var naming lives here too, so the
 // runtime emitter can compose its ConfigError message from REQUIRED_ENV_VARS.
+//
+// C3: applyAuth branch emission moved to ./auth-emit-apply.ts (file-cap split).
 
 import type { AuthSchemeDescriptor } from "./runtime.js";
+import { buildApplyAuth } from "./auth-emit-apply.js";
 
 // ─── resolveAuthFromEnv + required-env-var surface ───────────────────────────
 
@@ -152,57 +155,6 @@ function buildManagerFields(hasOauth2: boolean): string[] {
     "  private cachedToken: { token: string; expiresAt: number } | null = null;",
     "  private inflight: Promise<string> | null = null;",
   ];
-}
-
-function buildApplyAuth(schemes: readonly AuthSchemeDescriptor[]): string {
-  const branches = buildApplyBranches(schemes);
-  return [
-    "  async applyAuth(headers: Record<string, string>, searchParams: URLSearchParams): Promise<void> {",
-    "    const auth = this.auth;",
-    ...branches,
-    "  }",
-  ].join("\n");
-}
-
-function buildApplyBranches(schemes: readonly AuthSchemeDescriptor[]): string[] {
-  const lines: string[] = [];
-  const seen = new Set<string>();
-  for (const s of schemes) {
-    if (s.kind === "bearer" && !seen.has("bearer")) {
-      seen.add("bearer");
-      lines.push('    if (auth.kind === "bearer") {');
-      lines.push('      headers["Authorization"] = `Bearer ${auth.token}`;');
-      lines.push("      return;");
-      lines.push("    }");
-    } else if (s.kind === "apiKey" && !seen.has("apiKey")) {
-      seen.add("apiKey");
-      lines.push('    if (auth.kind === "apiKey") {');
-      lines.push('      if (auth.in === "header") headers[auth.name] = auth.value;');
-      lines.push('      else searchParams.append(auth.name, auth.value);');
-      lines.push("      return;");
-      lines.push("    }");
-    } else if (s.kind === "basic" && !seen.has("basic")) {
-      seen.add("basic");
-      lines.push('    if (auth.kind === "basic") {');
-      lines.push("      const encoded = btoa(`${auth.username}:${auth.password}`);");
-      lines.push('      headers["Authorization"] = `Basic ${encoded}`;');
-      lines.push("      return;");
-      lines.push("    }");
-    } else if (s.kind === "oauth2ClientCredentials" && !seen.has("oauth2")) {
-      seen.add("oauth2");
-      lines.push('    if (auth.kind === "oauth2") {');
-      lines.push("      const token = await this.getOauth2Token();");
-      lines.push('      headers["Authorization"] = `Bearer ${token}`;');
-      lines.push("      return;");
-      lines.push("    }");
-    }
-  }
-  // tokenProvider — always
-  lines.push('    if (auth.kind === "tokenProvider") {');
-  lines.push("      const token = await auth.getToken();");
-  lines.push('      headers["Authorization"] = `Bearer ${token}`;');
-  lines.push("    }");
-  return lines;
 }
 
 function buildOnUnauthorized(hasOauth2: boolean): string {

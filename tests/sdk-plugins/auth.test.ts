@@ -385,3 +385,122 @@ describe("generateAuthModule — emitter cleanup (M2/M5)", () => {
     expect(code).toContain('auth.kind === "oauth2"');
   });
 });
+
+// ─── C3: valuePrefix in apiKey descriptor ────────────────────────────────────
+
+import ts from "typescript";
+
+/** Transpile emitted auth module TS → CJS and execute it; return exports. */
+function loadAuthModule(
+  schemes: readonly AuthSchemeDescriptor[],
+  prefix: string,
+): Record<string, unknown> {
+  const code = generateAuthModule(schemes, prefix);
+  const result = ts.transpileModule(code, {
+    compilerOptions: {
+      target: ts.ScriptTarget.ES2022,
+      module: ts.ModuleKind.CommonJS,
+    },
+  });
+  const exports: Record<string, unknown> = {};
+  // require is not used in emitted auth module (self-contained except AuthError/ConfigError)
+  const require2 = (mod: string): Record<string, unknown> => {
+    if (mod === "./errors.js") {
+      return {
+        AuthError: class AuthError extends Error { constructor(msg: string) { super(msg); } },
+        ConfigError: class ConfigError extends Error { constructor(msg: string) { super(msg); } },
+      };
+    }
+    throw new Error(`Unexpected require: ${mod}`);
+  };
+  new Function("exports", "require", result.outputText)(exports, require2);
+  return exports;
+}
+
+/** Call applyAuth on the loaded module and return the headers record. */
+async function runApplyAuth(
+  exports: Record<string, unknown>,
+  auth: Record<string, unknown>,
+): Promise<{ headers: Record<string, string>; searchParams: URLSearchParams }> {
+  const AuthManager = exports["AuthManager"] as new (
+    auth: Record<string, unknown>,
+    fetch: typeof fetch,
+  ) => { applyAuth: (h: Record<string, string>, sp: URLSearchParams) => Promise<void> };
+  const manager = new AuthManager(auth, fetch);
+  const headers: Record<string, string> = {};
+  const searchParams = new URLSearchParams();
+  await manager.applyAuth(headers, searchParams);
+  return { headers, searchParams };
+}
+
+describe("generateAuthModule — C3 valuePrefix runtime (auth.test.ts)", () => {
+  const apiKeyWithPrefix: readonly AuthSchemeDescriptor[] = [
+    { kind: "apiKey", id: "overlay_apikey", in: "header", name: "Authorization", valuePrefix: "token " },
+  ];
+  const apiKeyNoPrefix: readonly AuthSchemeDescriptor[] = [
+    { kind: "apiKey", id: "k1", in: "header", name: "Authorization" },
+  ];
+  const apiKeyEmptyPrefix: readonly AuthSchemeDescriptor[] = [
+    { kind: "apiKey", id: "k1", in: "header", name: "Authorization", valuePrefix: "" },
+  ];
+  const apiKeyQueryPrefix: readonly AuthSchemeDescriptor[] = [
+    { kind: "apiKey", id: "k1", in: "query", name: "api_key", valuePrefix: "v1-" },
+  ];
+
+  test("header apiKey with valuePrefix emits Authorization: 'token abc' (prefix + value)", async () => {
+    const exports = loadAuthModule(apiKeyWithPrefix, "TEST");
+    const { headers } = await runApplyAuth(exports, {
+      kind: "apiKey", value: "abc", in: "header", name: "Authorization",
+    });
+    expect(headers["Authorization"]).toBe("token abc");
+  });
+
+  test("query apiKey with valuePrefix: searchParams carries prefixed value", async () => {
+    const exports = loadAuthModule(apiKeyQueryPrefix, "TEST");
+    const { searchParams } = await runApplyAuth(exports, {
+      kind: "apiKey", value: "mykey", in: "query", name: "api_key",
+    });
+    expect(searchParams.get("api_key")).toBe("v1-mykey");
+  });
+
+  test("apiKey without valuePrefix — byte-identical output to no-prefix apiKey module", () => {
+    const withoutPrefix = generateAuthModule(apiKeyNoPrefix, ENV_PREFIX);
+    // Descriptor with no valuePrefix field must generate identical code to one
+    // with valuePrefix: "" (both have no/empty prefix → same emission path)
+    const withEmptyPrefix = generateAuthModule(apiKeyEmptyPrefix, ENV_PREFIX);
+    expect(withoutPrefix).toBe(withEmptyPrefix);
+  });
+
+  test("apiKey without valuePrefix runtime: header gets raw value (no prefix injected)", async () => {
+    const exports = loadAuthModule(apiKeyNoPrefix, "TEST");
+    const { headers } = await runApplyAuth(exports, {
+      kind: "apiKey", value: "rawkey", in: "header", name: "Authorization",
+    });
+    expect(headers["Authorization"]).toBe("rawkey");
+  });
+
+  test("REQUIRED_ENV_VARS contains PREFIX_API_KEY for synthesized apiKey", () => {
+    const exports = loadAuthModule(apiKeyWithPrefix, "LISTMONK");
+    const vars = exports["REQUIRED_ENV_VARS"] as readonly string[];
+    expect(vars).toContain("LISTMONK_API_KEY");
+  });
+
+  test("resolveAuthFromEnv picks up PREFIX_API_KEY env var and returns correct auth config", () => {
+    const exports = loadAuthModule(apiKeyWithPrefix, "LISTMONK");
+    const resolveAuthFromEnv = exports["resolveAuthFromEnv"] as (
+      env?: Record<string, string>,
+    ) => Record<string, unknown> | null;
+    // Simulate env injection by patching process.env temporarily
+    const origEnv = process.env["LISTMONK_API_KEY"];
+    process.env["LISTMONK_API_KEY"] = "mytoken123";
+    try {
+      const auth = resolveAuthFromEnv();
+      expect(auth).not.toBeNull();
+      expect(auth?.["kind"]).toBe("apiKey");
+      expect(auth?.["value"]).toBe("mytoken123");
+    } finally {
+      if (origEnv === undefined) delete process.env["LISTMONK_API_KEY"];
+      else process.env["LISTMONK_API_KEY"] = origEnv;
+    }
+  });
+});

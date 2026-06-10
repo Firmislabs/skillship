@@ -30,7 +30,7 @@ import {
 
 export type AuthSchemeDescriptor =
   | { readonly kind: "bearer"; readonly id: string }
-  | { readonly kind: "apiKey"; readonly id: string; readonly in: "header" | "query"; readonly name: string }
+  | { readonly kind: "apiKey"; readonly id: string; readonly in: "header" | "query"; readonly name: string; readonly valuePrefix?: string }
   | { readonly kind: "basic"; readonly id: string }
   | { readonly kind: "oauth2ClientCredentials"; readonly id: string; readonly tokenUrl: string | null; readonly scopes: readonly string[] }
   | { readonly kind: "external"; readonly id: string; readonly schemeType: string };
