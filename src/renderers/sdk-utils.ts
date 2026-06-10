@@ -165,6 +165,12 @@ export interface WedgeInputs {
   readonly overlay: CodegenOverlay;
   readonly envPrefix: string;
   readonly retries: RetriesConfig;
+  /**
+   * Base URL from the REST surface's servers[0].url claim.
+   * Stored here for later-wave consumers; intentionally unused by all emitters
+   * in Wave 1 — rendered output is byte-identical to the pre-plumbing baseline.
+   */
+  readonly baseUrl: string | null;
 }
 
 export const DEFAULT_RETRIES: RetriesConfig = {
@@ -203,13 +209,15 @@ function resolveRetries(overlay: CodegenOverlay): RetriesConfig {
 /**
  * Derives every input the wedge emitters need from the render request:
  * overlay-aware auth schemes, operations, pagination plans, the env-var prefix,
- * and the resolved retries config (overlay values fall back to contract
- * defaults). Pure — keeps renderSdkPackage small and side-effect-free here.
+ * the resolved retries config (overlay values fall back to contract defaults),
+ * and the base URL threaded from the REST surface claim.
+ * Pure — keeps renderSdkPackage small and side-effect-free here.
  */
 export function computeWedgeInputs(args: {
   readonly oasJson: string;
   readonly productName: string;
   readonly overlay: CodegenOverlay;
+  readonly baseUrl: string | null;
 }): WedgeInputs {
   const schemes = extractAuthSchemes(args.oasJson, args.overlay);
   const ops = extractOperations(args.oasJson);
@@ -221,6 +229,7 @@ export function computeWedgeInputs(args: {
     overlay: args.overlay,
     envPrefix: deriveEnvPrefix(args.productName),
     retries: resolveRetries(args.overlay),
+    baseUrl: args.baseUrl,
   };
 }
 

@@ -68,6 +68,13 @@ export interface RenderSdkInput {
   readonly outDir: string;
   readonly overlay: CodegenOverlay;
   readonly license?: string;
+  /**
+   * Base URL from the REST surface's servers[0].url claim.
+   * Stored on the wedge inputs but intentionally unused by any emitter in
+   * this wave — a later task will consume it. Accepted-but-unused means the
+   * rendered output is byte-identical to the pre-plumbing baseline.
+   */
+  readonly baseUrl: string | null;
 }
 
 export interface SdkRenderResult {
@@ -86,6 +93,7 @@ export async function renderSdkPackage(
       oasJson: input.oasJson,
       productName: input.productName,
       overlay: input.overlay,
+      baseUrl: input.baseUrl,
     });
     await runHeyApiCodegen(oasPath, tempDir);
     // Remove openapi.json immediately after codegen — Hey API has finished

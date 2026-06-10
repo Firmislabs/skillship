@@ -27,6 +27,7 @@ import { GITHUB_REPO_PLACEHOLDER } from "../resolvers/githubSpecs.js";
 import { renderSyntheticOpenApi } from "../renderers/oas.js";
 import { loadCodegenOverlay, type CodegenOverlay } from "../overlays/codegen.js";
 import { renderSdkPackage } from "../renderers/sdk.js";
+import { readRestBaseUrl } from "../renderers/claims.js";
 import { renderFernSdks } from "../renderers/sdk-fern.js";
 import { listEmittedFiles } from "../renderers/sdk-fs.js";
 import type { FernLang } from "../renderers/fern-images.js";
@@ -90,6 +91,7 @@ export async function runBuild(opts: RunBuildOptions): Promise<BuildResult> {
       sources: config.sources,
       codegenOverlay,
     });
+    const baseUrl = readRestBaseUrl(handle.db, productId);
     // Whole-build atomicity is NOT guaranteed: the top-level artifacts above
     // are already on disk. If SDK rendering throws, those persist by design
     // (the SDK subtree itself is atomic — see renderSdkPackage).
@@ -99,6 +101,7 @@ export async function runBuild(opts: RunBuildOptions): Promise<BuildResult> {
       productName,
       skillDir,
       overlay: codegenOverlay,
+      baseUrl,
     });
     return { productId, artifacts: allArtifacts, ingest };
   } finally {
@@ -112,6 +115,7 @@ interface SdkArtifactContext {
   readonly productName: string;
   readonly skillDir: string;
   readonly overlay: CodegenOverlay;
+  readonly baseUrl: string | null;
 }
 
 /**
@@ -130,6 +134,7 @@ async function assembleSdkArtifacts(
       productName: ctx.productName,
       outDir: join(ctx.skillDir, "sdk"),
       overlay: ctx.overlay,
+      baseUrl: ctx.baseUrl,
     });
     for (const relPath of sdkResult.files) {
       const filePath = join(sdkResult.outDir, relPath);
