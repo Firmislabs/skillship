@@ -302,3 +302,76 @@ describe("generateAuthModule — self-review", () => {
     }
   });
 });
+
+// ─── Fix C1/I1: single-flight finally identity guard ─────────────────────────
+describe("generateAuthModule — single-flight finally pattern (C1/I1)", () => {
+  test("finally is chained on the fetch call (not orphaned on this.inflight)", () => {
+    const code = generateAuthModule(oauth2Baked, ENV_PREFIX);
+    // The correct form: const inflight = this.fetchOauth2Token(now).finally(...)
+    expect(code).toMatch(/=\s*this\.fetchOauth2Token\([^)]*\)\.finally\s*\(/);
+  });
+
+  test("finally handler uses identity guard before nulling inflight", () => {
+    const code = generateAuthModule(oauth2Baked, ENV_PREFIX);
+    expect(code).toContain("if (this.inflight === inflight)");
+  });
+
+  test("orphaned pattern this.inflight.finally is NOT emitted", () => {
+    const code = generateAuthModule(oauth2Baked, ENV_PREFIX);
+    expect(code).not.toContain("this.inflight.finally");
+  });
+
+  test("same guards apply in mixed (bearer + oauth2) descriptor", () => {
+    const code = generateAuthModule(mixed, ENV_PREFIX);
+    expect(code).toMatch(/=\s*this\.fetchOauth2Token\([^)]*\)\.finally\s*\(/);
+    expect(code).toContain("if (this.inflight === inflight)");
+    expect(code).not.toContain("this.inflight.finally");
+  });
+});
+
+// ─── Fix I2: oauth2 scopes sent in token request ──────────────────────────────
+describe("generateAuthModule — oauth2 scopes in token request (I2)", () => {
+  test("with non-empty descriptor scopes: emits body.set(\"scope\" ...)", () => {
+    const code = generateAuthModule(oauth2Baked, ENV_PREFIX);
+    expect(code).toContain('body.set("scope"');
+  });
+
+  test("with non-empty scopes: emits a baked default scope join in resolveAuthFromEnv", () => {
+    const code = generateAuthModule(oauth2Baked, ENV_PREFIX);
+    // baked scopes should appear joined in the env branch
+    expect(code).toContain("read write");
+  });
+
+  test("with empty descriptor scopes: does NOT emit unconditional body.set(\"scope\" ...)", () => {
+    const code = generateAuthModule(oauth2NullUrl, ENV_PREFIX);
+    // no scope set when scopes array is empty
+    expect(code).not.toContain('body.set("scope"');
+  });
+
+  test("with non-empty scopes: scope set is guarded (conditional, not unconditional)", () => {
+    const code = generateAuthModule(oauth2Baked, ENV_PREFIX);
+    // Must have an if-guard before body.set("scope" — not a bare statement
+    expect(code).toMatch(/if\s*\([^)]*scope[^)]*\)[^{]*\{[^}]*body\.set\("scope"/s);
+  });
+
+  test("mixed descriptor with empty scopes: no body.set(\"scope\") emitted", () => {
+    // mixed has oauth2 with scopes: []
+    const code = generateAuthModule(mixed, ENV_PREFIX);
+    expect(code).not.toContain('body.set("scope"');
+  });
+});
+
+// ─── Fix M2/M5: dead _hasOauth2 param + redundant as number cast ──────────────
+describe("generateAuthModule — emitter cleanup (M2/M5)", () => {
+  test("no redundant 'as number' cast on expires_in in emitted code", () => {
+    const code = generateAuthModule(oauth2Baked, ENV_PREFIX);
+    expect(code).not.toContain("as number");
+  });
+
+  test("buildApplyAuth dead param: emitter still produces correct applyAuth", () => {
+    // functional regression — applyAuth must still handle all branches
+    const code = generateAuthModule(oauth2Baked, ENV_PREFIX);
+    expect(code).toContain("async applyAuth(");
+    expect(code).toContain('auth.kind === "oauth2"');
+  });
+});
