@@ -18,19 +18,23 @@ export interface FernToolchainPins {
 }
 
 export const FERN_PINS = {
-  cliVersion: "5.40.0",
+  cliVersion: "5.45.3",
   generators: {
     python: {
       name: "fernapi/fern-python-sdk",
-      tag: "5.14.4",
-      digest: "sha256:0daab174eeca54710a75cc35775922d0a51015224159e35cb8d3c69611433084",
-      image: "fernapi/fern-python-sdk:5.14.4",
+      tag: "5.14.12",
+      // NEVER use this in generators.yml `version:` — Fern rejects digests there
+      // ("Failed to parse version"). Recorded for docker-pull + golden verification (Spike 0.1).
+      digest: "sha256:2a2eb231fcb8726abc42f9a6244b65beb9376a59ad98cc87b5853ec85b5f8a1b",
+      image: "fernapi/fern-python-sdk:5.14.12",
     },
     rust: {
       name: "fernapi/fern-rust-sdk",
-      tag: "0.36.8",
-      digest: "sha256:04f5adc1cd0faafaa2583cfaaa5af1055f17454907ac387cee6d705659f0c1d6",
-      image: "fernapi/fern-rust-sdk:0.36.8",
+      tag: "0.40.4",
+      // NEVER use this in generators.yml `version:` — Fern rejects digests there
+      // ("Failed to parse version"). Recorded for docker-pull + golden verification (Spike 0.1).
+      digest: "sha256:62f87e526256e9378cc844ef9084392235968239d2c6cf5bd6fee59698f3d1bb",
+      image: "fernapi/fern-rust-sdk:0.40.4",
     },
   },
 } satisfies FernToolchainPins;

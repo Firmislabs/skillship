@@ -1,5 +1,5 @@
 {
-  ".fern/metadata.json": "3c3af3872e617e9ec6183f26dd135e27e24ecb3058c2df185daf303d1707778d",
+  ".fern/metadata.json": "7ad023afab612bd7862062769ebe66578c9a9cec3351e1d671cd9cb196295e21",
   ".github/workflows/ci.yml": "a15c2f341ed19b9afad2039aca810a2b3256d468afb36ac138b27bebedfa93dc",
   ".gitignore": "74fa3c3acb06b2cbc61d1f2dc6d7b250c9b843b80c26e2ad1cf27f3ec4410bc5",
   "CONTRIBUTING.md": "618c47e7db5fb98ed83d67c08b561595602013724919f56d6f0728f1c163b545",
@@ -18,14 +18,14 @@
   "src/api/types/projects_query_request.rs": "d75fdcf4a7cb11d374c211e34d4d1f4b8f3fbdaf6740395c4c1e3d938f64042c",
   "src/client.rs": "c288ac24d3c9003576f1aa2b919dbe05a740600a11032ff8c74b5dee9471d4f0",
   "src/config.rs": "bf5e5d555f834c65badf14f6cc080aca3a9efb35c6c9ab57b082e4921e96e6a7",
-  "src/core/http_client.rs": "7e53fbff1471b8a8b709a56734dfafcd999f906506dda1eaf753809be50e6fc9",
-  "src/core/mod.rs": "ce9ff43fe71b64052a7155f1cb7816f1c32837704a55843b244e9914eb524794",
+  "src/core/http_client.rs": "6d321b038d2e65edb60b1b8444a3d21a27edd47d0778b22e10bbf1e388866c64",
+  "src/core/mod.rs": "d39f5a13322a77415889a41db71813d0002c7455ee1da2e85f7d9a9848a078b7",
   "src/core/oauth_token_provider.rs": "6a895b8bb451cf80a3a40c0869847562765c5b36d1c93af7d8648278fb33fd76",
   "src/core/pagination.rs": "b4a6b22aaa78f8bd243a0cb4bb3697ca78aefdb83526aefde0e4e599c1b3615a",
   "src/core/query_parameter_builder.rs": "35491742aabe85477cf93206ef4084312dbb21997d68647ae009ddf38d8d22d0",
   "src/core/request_options.rs": "47c5212e9ce66a2c3088a437b85c76e31abb86007a324948da6c305316303934",
   "src/core/utils.rs": "4aeec196112b6f2addf24dfedac8d4d4ad2d680940fd1cd6ea0d59ad76bda9b8",
-  "src/error.rs": "7461d0799ca012cac3939b1399f10f8190883544b215bf0331975323c873f680",
+  "src/error.rs": "4ad72efe55c32212b25bea422eb22abda7b7feadef5d5fad7da08279544426c0",
   "src/lib.rs": "efcf102679776a81bd6b62095c271459095cb6e3111e254decf866f9e12577bf",
   "src/prelude.rs": "32d2a5029261d5f53098050c18d7dea8f5fac3f903b8b83a78451a776bbb0b01"
 }

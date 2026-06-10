@@ -21,4 +21,19 @@ describe("FERN_PINS", () => {
       expect(pin.image, `image desync for ${lang}`).toBe(`${pin.name}:${pin.tag}`);
     }
   });
+  test("exact CLI version pin (5.45.3)", () => {
+    expect(FERN_PINS.cliVersion).toBe("5.45.3");
+  });
+  test("exact python tag + digest pin", () => {
+    expect(FERN_PINS.generators.python.tag).toBe("5.14.12");
+    expect(FERN_PINS.generators.python.digest).toBe(
+      "sha256:2a2eb231fcb8726abc42f9a6244b65beb9376a59ad98cc87b5853ec85b5f8a1b",
+    );
+  });
+  test("exact rust tag + digest pin", () => {
+    expect(FERN_PINS.generators.rust.tag).toBe("0.40.4");
+    expect(FERN_PINS.generators.rust.digest).toBe(
+      "sha256:62f87e526256e9378cc844ef9084392235968239d2c6cf5bd6fee59698f3d1bb",
+    );
+  });
 });

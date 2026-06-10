@@ -1,5 +1,5 @@
 {
-  ".fern/metadata.json": "aed13f02a4866bc326af98f4b188db8e92d1546b83c25a4afeff6c67af260919",
+  ".fern/metadata.json": "203c5a278b20af944c14d62e36332b6b09c3b260504989fea1c2423e068ab238",
   "CONTRIBUTING.md": "b233e01899b2937860c93a67b02d8501e65704197d11fa8fc7e967362876dba8",
   "README.md": "b46ecce286ec19bd684758119980c01168a8fb98a0a93299e6807bbe59d45d14",
   "__init__.py": "1ae2d30ba8f4635d0f6d6d23a74ad42356cd66082be8e17b918b395477dc7754",
@@ -25,7 +25,7 @@
   "core/query_encoder.py": "7a4ba5a8d7748fc4e00fba31f906f3ee58aa5fcf8a3fd6e5bd3f43b1109e9d83",
   "core/remove_none_from_dict.py": "114f521a0622756abb49ec6e25b36ce3e3d9fb9065dd5a6977ceb8992eaf419c",
   "core/request_options.py": "8744143421557425bfec6725572482018db0e0d86d5d50540a61e09b36b1a5c8",
-  "core/serialization.py": "1022f76efbffd22ed4e2ebcf89d64235e97ef8c51b0348aad1a19c34a8b7930b",
+  "core/serialization.py": "29b37a717ea37744651e018e81c9a9574e169d4a9c57227bc198a87589089131",
   "mutation/__init__.py": "fd5853a00c88b7fe5ac4de822c9c2dc60dfe08eed31daff6de96d4cea85725ae",
   "mutation/client.py": "413fc9c489c89d7f989cd533d8bc3754d3b4afa19d83a85bc5f06c8fe9527011",
   "mutation/raw_client.py": "ffca58e296fa92f8084f7b3c8a6e93dd3ea34e4cdb0a54988dcbf279dd493521",
