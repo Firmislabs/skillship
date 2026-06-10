@@ -173,8 +173,9 @@ describe("renderSdkPackage — integration", () => {
   );
 
   test(
-    "throws with a clear error on unsupported security scheme (oauth2)",
+    "oauth2-only spec renders successfully (falls back to none sentinel, no throw)",
     async () => {
+      const tmpOauth = mkdtempSync(join(tmpdir(), "sk-sdk-oauth2-"));
       const oasWithOauth2 = JSON.stringify({
         openapi: "3.1.0",
         info: { title: "oauth-test", version: "1.0.0" },
@@ -189,16 +190,25 @@ describe("renderSdkPackage — integration", () => {
           },
         },
       });
-      await expect(
-        renderSdkPackage({
+      try {
+        const result = await renderSdkPackage({
           oasJson: oasWithOauth2,
           productName: "oauth-test",
-          outDir: join(tmpdir(), "sk-sdk-oauth2-test"),
+          outDir: tmpOauth,
           overlay: CodegenOverlaySchema.parse({}),
-        }),
-      ).rejects.toThrow(/unsupported security scheme/);
+        });
+        expect(result.typecheckExitCode).toBe(0);
+        // oauth2ClientCredentials is inert until Task 8; runtime falls back to { kind: "none" } sentinel
+        const runtimeSrc = readFileSync(
+          join(tmpOauth, "src", "runtime.ts"),
+          "utf8",
+        );
+        expect(runtimeSrc).toContain('kind: "none"');
+      } finally {
+        rmSync(tmpOauth, { recursive: true, force: true });
+      }
     },
-    30000,
+    60000,
   );
 
   test(

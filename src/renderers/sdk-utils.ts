@@ -4,15 +4,24 @@
 // correctness fixes (EXDEV fallback, collision guards, slug validation, etc.).
 
 import type { AuthSchemeDescriptor } from "../sdk-plugins/runtime.js";
+import type { CodegenOverlay } from "../overlays/codegen.js";
 import type { OperationInfo } from "../sdk-plugins/resource-tree.js";
 
 // ---- Minimal OAS doc shape (read-only, subset used by extractors) ----
 
+interface OasClientCredentialsFlow {
+  readonly tokenUrl?: string;
+  readonly scopes?: Record<string, string>;
+}
+interface OasOauth2Flows {
+  readonly clientCredentials?: OasClientCredentialsFlow;
+}
 interface OasSecurityScheme {
   readonly type?: string;
   readonly scheme?: string;
   readonly in?: string;
   readonly name?: string;
+  readonly flows?: OasOauth2Flows;
 }
 interface OasComponents {
   readonly securitySchemes?: Record<string, OasSecurityScheme>;
@@ -30,33 +39,69 @@ interface OasDoc {
 // ---- Auth scheme extraction ----
 
 /**
- * Parses the OAS doc and returns a descriptor per security scheme.
- * Throws for unsupported scheme types (oauth2, openIdConnect, mutualTLS).
- * Supported: http+bearer, http+basic, apiKey.
+ * Maps a single OAS security scheme to an AuthSchemeDescriptor.
+ * Never throws — unknown/unsupported types map to { kind: "external" }.
  */
-export function extractAuthSchemes(oasJson: string): readonly AuthSchemeDescriptor[] {
+function mapSecurityScheme(id: string, s: OasSecurityScheme): AuthSchemeDescriptor {
+  const type = s.type ?? "";
+  const scheme = s.scheme ?? "";
+  if (type === "http" && scheme === "bearer") return { kind: "bearer", id };
+  if (type === "http" && scheme === "basic") return { kind: "basic", id };
+  if (type === "apiKey") {
+    const loc: "header" | "query" = s.in === "query" ? "query" : "header";
+    const name = typeof s.name === "string" ? s.name : "Authorization";
+    return { kind: "apiKey", id, in: loc, name };
+  }
+  if (type === "oauth2") {
+    const cc = s.flows?.clientCredentials;
+    const tokenUrl = typeof cc?.tokenUrl === "string" ? cc.tokenUrl : null;
+    const scopes = cc?.scopes != null ? Object.keys(cc.scopes) : [];
+    return { kind: "oauth2ClientCredentials", id, tokenUrl, scopes };
+  }
+  // openIdConnect, mutualTLS, unknown — external/inert until Task 8
+  return { kind: "external", id, schemeType: type };
+}
+
+/**
+ * Applies overlay overrides to a descriptor.
+ * If overlay.auth.mode is "oauth2-client-credentials", force the descriptor to
+ * oauth2ClientCredentials (regardless of what the OAS scheme was).
+ * overlay.auth.tokenUrl fills a null tokenUrl.
+ */
+function applyOverlayToDescriptor(
+  desc: AuthSchemeDescriptor,
+  overlay: CodegenOverlay | undefined,
+): AuthSchemeDescriptor {
+  const overlayAuth = overlay?.auth;
+  if (overlayAuth?.mode !== "oauth2-client-credentials") return desc;
+  const existingTokenUrl =
+    desc.kind === "oauth2ClientCredentials" ? desc.tokenUrl : null;
+  const tokenUrl =
+    typeof overlayAuth.tokenUrl === "string"
+      ? overlayAuth.tokenUrl
+      : existingTokenUrl;
+  const scopes =
+    desc.kind === "oauth2ClientCredentials" ? desc.scopes : [];
+  return { kind: "oauth2ClientCredentials", id: desc.id, tokenUrl, scopes };
+}
+
+/**
+ * Parses the OAS doc and returns a descriptor per security scheme.
+ * All scheme types are handled — oauth2/openIdConnect/mutualTLS/unknown map
+ * to new descriptor kinds instead of throwing.
+ * An optional overlay may force or augment the descriptor (e.g. tokenUrl).
+ */
+export function extractAuthSchemes(
+  oasJson: string,
+  overlay?: CodegenOverlay,
+): readonly AuthSchemeDescriptor[] {
   const doc = JSON.parse(oasJson) as OasDoc;
   const schemes = doc.components?.securitySchemes ?? {};
   const out: AuthSchemeDescriptor[] = [];
   for (const id of Object.keys(schemes).sort()) {
-    const s = schemes[id]!;
-    const type = s.type ?? "";
-    const scheme = s.scheme ?? "";
-    if (type === "http" && scheme === "bearer") {
-      out.push({ kind: "bearer", id });
-    } else if (type === "http" && scheme === "basic") {
-      out.push({ kind: "basic", id });
-    } else if (type === "apiKey") {
-      const loc: "header" | "query" = s.in === "query" ? "query" : "header";
-      const name = typeof s.name === "string" ? s.name : "Authorization";
-      out.push({ kind: "apiKey", id, in: loc, name });
-    } else {
-      throw new Error(
-        `renderSdkPackage: unsupported security scheme '${id}' (type=${type}, scheme=${scheme}). ` +
-          `Supported: http+bearer, http+basic, apiKey. ` +
-          `See KNOWN_GAPS.md for the wedge scope.`,
-      );
-    }
+    const raw = schemes[id]!;
+    const base = mapSecurityScheme(id, raw);
+    out.push(applyOverlayToDescriptor(base, overlay));
   }
   return out;
 }

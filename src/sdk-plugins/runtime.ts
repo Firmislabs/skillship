@@ -9,7 +9,9 @@
 export type AuthSchemeDescriptor =
   | { readonly kind: "bearer"; readonly id: string }
   | { readonly kind: "apiKey"; readonly id: string; readonly in: "header" | "query"; readonly name: string }
-  | { readonly kind: "basic"; readonly id: string };
+  | { readonly kind: "basic"; readonly id: string }
+  | { readonly kind: "oauth2ClientCredentials"; readonly id: string; readonly tokenUrl: string | null; readonly scopes: readonly string[] }
+  | { readonly kind: "external"; readonly id: string; readonly schemeType: string };
 
 export function generateRuntimeModule(schemes: readonly AuthSchemeDescriptor[]): string {
   const authUnion = buildAuthUnion(schemes);
@@ -109,7 +111,11 @@ function buildAuthUnion(schemes: readonly AuthSchemeDescriptor[]): string {
     if (s.kind === "bearer") parts.add('{ kind: "bearer"; token: string }');
     if (s.kind === "apiKey") parts.add('{ kind: "apiKey"; value: string; in: "header" | "query"; name: string }');
     if (s.kind === "basic") parts.add('{ kind: "basic"; username: string; password: string }');
+    // oauth2ClientCredentials and external are inert until Task 8 — no union member emitted yet
   }
+  // If all descriptors are new/inert kinds, fall back to the none sentinel to
+  // prevent emitting `export type AuthConfig = ;` (a tsc-gate failure).
+  if (parts.size === 0) return '{ readonly kind: "none" }';
   return [...parts].sort().join(" | ");
 }
 
@@ -136,5 +142,7 @@ function buildInjectBody(schemes: readonly AuthSchemeDescriptor[]): string {
     lines.push('      headers["Authorization"] = `Basic ${encoded}`;');
     lines.push('    }');
   }
+  // oauth2ClientCredentials and external: inert in this task — no injection emitted until Task 8
+  if (lines.length === 0) return "    // no active auth schemes projected";
   return lines.join("\n");
 }
