@@ -1,6 +1,6 @@
 // tests/sdk-plugins/mcp-launcher.test.ts
 // Unit-locks the two launcher emitters:
-//   generateMcpLoaderModule  — byte-verbatim 22-line resolve hook (.js→.ts).
+//   generateMcpLoaderModule  — byte-verbatim 17-line resolve hook (.js→.ts).
 //   generateMcpLauncherModule — bin/mcp.js: shebang, Node>=23.6 gate, register,
 //                               dynamic import of ../src/mcp-server.ts, main().
 import { describe, expect, test } from "vitest";

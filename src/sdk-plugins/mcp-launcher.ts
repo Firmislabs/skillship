@@ -1,6 +1,6 @@
 // src/sdk-plugins/mcp-launcher.ts
 // Emits the two launcher files that ship in the SDK package's bin/ directory:
-//   bin/loader.mjs — the verified 22-line zero-dep ESM resolve hook that maps a
+//   bin/loader.mjs — the verified 17-line zero-dep ESM resolve hook that maps a
 //                    relative `.js` specifier to its `.ts` sibling ONLY when the
 //                    `.js` file is absent (S1b spike, byte-verbatim).
 //   bin/mcp.js     — the stdio entry point: shebang, a Node ≥23.6 type-stripping

@@ -105,6 +105,16 @@ export function renderTemplates(
       // Collapse runs of 3+ newlines (from empty optional sections) to 2.
       rendered = rendered.replace(/\n{3,}/g, "\n\n");
     }
+    if (spec.outName === "package.json") {
+      try {
+        JSON.parse(rendered);
+      } catch (cause) {
+        throw new Error(
+          `renderTemplates: rendered package.json is not valid JSON — check PACKAGE_BIN composition.\n${rendered}`,
+          { cause },
+        );
+      }
+    }
     out[spec.outName] = rendered;
   }
   return out;
@@ -139,8 +149,10 @@ function buildMcpReadmeSection(mcp: boolean, slug: string): string {
   return [
     "## Use with Claude Code",
     "",
-    "This package ships an MCP server exposing every operation as a tool. Add it",
-    "to a `.mcp.json` next to your `sdk/` directory:",
+    "This package ships an MCP server that exposes this API through three tools:",
+    "search_operations, describe_operation, invoke_operation.",
+    "",
+    "A pre-wired `.mcp.json` ships at the skill root. If you copy `sdk/` elsewhere, add:",
     "",
     "```json",
     "{",

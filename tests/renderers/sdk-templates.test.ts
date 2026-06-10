@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import { renderTemplates, type TemplateContext } from "../../src/renderers/sdk-templates/render.js";
+import { renderTemplates, applySubs, type TemplateContext } from "../../src/renderers/sdk-templates/render.js";
 
 const BEARER_CTX: TemplateContext = {
   productName: "min.example",
@@ -12,6 +12,7 @@ const BEARER_CTX: TemplateContext = {
   retries: { maxRetries: 2, retryableStatus: [408, 409, 429, 500, 502, 503, 504], honorRetryAfter: true },
   pagesExample: null,
   firstRequestExample: { accessor: "projects.list" },
+  mcp: false,
 };
 
 const GQL_CTX: TemplateContext = {
@@ -25,6 +26,7 @@ const GQL_CTX: TemplateContext = {
   retries: { maxRetries: 2, retryableStatus: [408, 409, 429, 500, 502, 503, 504], honorRetryAfter: true },
   pagesExample: null,
   firstRequestExample: { accessor: "mutation.createProject" },
+  mcp: false,
 };
 
 const OAUTH2_CTX: TemplateContext = {
@@ -48,6 +50,7 @@ const OAUTH2_CTX: TemplateContext = {
   retries: { maxRetries: 2, retryableStatus: [408, 409, 429, 500, 502, 503, 504], honorRetryAfter: true },
   pagesExample: { accessor: "items.list", pageSizeParam: "limit" },
   firstRequestExample: { accessor: "items.create" },
+  mcp: false,
 };
 
 /** Context with custom retries — exercises Fix A per-product threading. */
@@ -62,6 +65,7 @@ const CUSTOM_RETRIES_CTX: TemplateContext = {
   retries: { maxRetries: 5, retryableStatus: [429, 503], honorRetryAfter: true },
   pagesExample: null,
   firstRequestExample: null,
+  mcp: false,
 };
 
 /** Context with a differently-named pages accessor — exercises Fix B derivation. */
@@ -79,6 +83,7 @@ const FETCH_ALL_PAGES_CTX: TemplateContext = {
   // fetchAllItems → accessor "reports.fetchAll" — tests non-default accessor name
   pagesExample: { accessor: "reports.fetchAll", pageSizeParam: null },
   firstRequestExample: null,
+  mcp: false,
 };
 
 /** Context with apiKey scheme — exercises Fix C apiKey quickstart branch. */
@@ -93,6 +98,7 @@ const APIKEY_CTX: TemplateContext = {
   retries: { maxRetries: 2, retryableStatus: [408, 409, 429, 500, 502, 503, 504], honorRetryAfter: true },
   pagesExample: null,
   firstRequestExample: null,
+  mcp: false,
 };
 
 /** Context with basic scheme — exercises Fix C basic quickstart branch. */
@@ -107,6 +113,7 @@ const BASIC_CTX: TemplateContext = {
   retries: { maxRetries: 2, retryableStatus: [408, 409, 429, 500, 502, 503, 504], honorRetryAfter: true },
   pagesExample: null,
   firstRequestExample: null,
+  mcp: false,
 };
 
 describe("renderTemplates", () => {
@@ -444,9 +451,43 @@ describe("renderTemplates", () => {
     expect(readme).toContain("23.6");
   });
 
+  test("mcp:true README says three gateway tools (not tool-per-operation)", () => {
+    const readme = renderTemplates({ ...BEARER_CTX, mcp: true })["README.md"]!;
+    expect(readme).toContain("three tools");
+    expect(readme).toContain("search_operations");
+    expect(readme).toContain("describe_operation");
+    expect(readme).toContain("invoke_operation");
+    expect(readme).not.toContain("exposing every operation as a tool");
+  });
+
+  test("mcp:true README references the shipped .mcp.json at skill root (not sdk/ copy advice)", () => {
+    const readme = renderTemplates({ ...BEARER_CTX, mcp: true })["README.md"]!;
+    expect(readme).toContain("ships at the skill root");
+    expect(readme).not.toContain(".mcp.json` next to your `sdk/` directory");
+  });
+
   test("mcp:false README omits the Use with Claude Code section", () => {
     const readme = renderTemplates({ ...BEARER_CTX, mcp: false })["README.md"]!;
     expect(readme).not.toContain("## Use with Claude Code");
     expect(readme).not.toContain("sdk/bin/mcp.js");
+  });
+
+  // ── Fix 3: structural JSON.parse guard on rendered package.json ───────────
+
+  test("structural guard: mcp:false package.json is valid JSON (guard passes)", () => {
+    const out = renderTemplates({ ...BEARER_CTX, mcp: false });
+    expect(() => JSON.parse(out["package.json"]!)).not.toThrow();
+  });
+
+  test("structural guard: mcp:true package.json is valid JSON (guard passes)", () => {
+    const out = renderTemplates({ ...BEARER_CTX, mcp: true });
+    expect(() => JSON.parse(out["package.json"]!)).not.toThrow();
+  });
+
+  test("structural guard: applySubs with a broken bin fragment produces invalid JSON", () => {
+    // Demonstrates what the guard catches: a malformed PACKAGE_BIN that breaks JSON syntax.
+    const brokenTemplate = `{\n  "name": "test"{{PACKAGE_BIN}}\n}`;
+    const rendered = applySubs(brokenTemplate, { PACKAGE_BIN: ',\n  "bin": {MISSING_QUOTE: "bin/mcp.js"}' });
+    expect(() => JSON.parse(rendered)).toThrow();
   });
 });

@@ -70,8 +70,10 @@ The `Retry-After` response header is honored when present.
 
 ## Use with Claude Code
 
-This package ships an MCP server exposing every operation as a tool. Add it
-to a `.mcp.json` next to your `sdk/` directory:
+This package ships an MCP server that exposes this API through three tools:
+search_operations, describe_operation, invoke_operation.
+
+A pre-wired `.mcp.json` ships at the skill root. If you copy `sdk/` elsewhere, add:
 
 ```json
 {
