@@ -47,7 +47,7 @@ async function main(): Promise<void> {
       ?? (process.argv.includes("--langs") ? process.argv[process.argv.indexOf("--langs") + 1] : undefined),
   );
   const parent = join(repoRoot, "tests/fixtures/golden");
-  for (const fixture of ["rest", "graphql"] as const satisfies readonly GoldenFixture[]) {
+  for (const fixture of ["rest", "graphql", "agent"] as const satisfies readonly GoldenFixture[]) {
     if (langs.length === 0) break;
     await renderFernGolden(fixture, parent, langs);
     for (const lang of langs) {

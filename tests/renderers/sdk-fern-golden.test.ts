@@ -3,6 +3,8 @@
 //      the committed <tree>.manifest.json (catches hand-edits / partial drift).
 //  (2) structural + no-leakage: required marker file present; no op_<hex>
 //      leakage anywhere in the tree.
+//  (3) agent-specific structural pins: dormant-OAuth reality — oauth_token_provider.rs
+//      MUST be absent from rust agent tree (auth-schemes path not yet active).
 import { createHash } from "node:crypto";
 import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
@@ -20,7 +22,7 @@ const LANG_MARKERS: Record<FernLang, string> = {
   python: "__init__.py",
   rust: "Cargo.toml",
 };
-const FIXTURES: readonly GoldenFixture[] = ["rest", "graphql"];
+const FIXTURES: readonly GoldenFixture[] = ["rest", "graphql", "agent"];
 const TREES: { dir: string; marker: string }[] = (
   Object.keys(LANG_MARKERS) as FernLang[]
 ).flatMap((lang) =>
@@ -61,4 +63,35 @@ describe("Fern SDK golden lock (pure Node)", () => {
       }
     });
   }
+});
+
+// Agent-fixture-specific structural pins (dormant-OAuth reality lock).
+// These run after the main loop so they are clearly labelled.
+describe("Fern SDK agent golden — structural pins", () => {
+  test("sdk-python-agent-minimal: __init__.py present (python root marker)", () => {
+    const treeDir = join(ROOT, "sdk-python-agent-minimal");
+    expect(existsSync(join(treeDir, "__init__.py")), "__init__.py missing").toBe(true);
+  });
+
+  test("sdk-rust-agent-minimal: Cargo.toml present (rust root marker)", () => {
+    const treeDir = join(ROOT, "sdk-rust-agent-minimal");
+    expect(existsSync(join(treeDir, "Cargo.toml")), "Cargo.toml missing").toBe(true);
+  });
+
+  // Truthfulness pin: oauth_token_provider.rs IS present because Fern's Rust
+  // generator emits it from the OAS securityScheme (agentOauth bearer flow),
+  // NOT from our auth-schemes overlay in generators.yml. The overlay path is
+  // dormant until request-body projection lands (spec §4.1 fallback), so
+  // generators.yml carries NO auth-schemes block — yet the file appears because
+  // the upstream generator handles bearer auth natively. This pin records the
+  // actual generated reality so future changes can't silently regress it.
+  test("sdk-rust-agent-minimal: oauth_token_provider.rs present (Fern-native bearer — not overlay-driven)", () => {
+    const treeDir = join(ROOT, "sdk-rust-agent-minimal");
+    const files = listRel(treeDir);
+    const hasProvider = files.some((f) => f.includes("oauth_token_provider"));
+    expect(
+      hasProvider,
+      "oauth_token_provider.rs must be present (generated from securityScheme, not auth-schemes overlay)",
+    ).toBe(true);
+  });
 });
