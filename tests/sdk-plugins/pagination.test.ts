@@ -1,9 +1,56 @@
 // tests/sdk-plugins/pagination.test.ts
-// TDD RED phase: assertions for the pagination engine emitter.
-// Step 1: failing tests (module does not exist yet).
+// TDD phase: source-pattern assertions + runtime-behavior tests.
+// Runtime tests transpile the emitted module string with typescript's
+// transpileModule() and evaluate it via a Function wrapper so the actual
+// paginate() implementation is exercised — not just source patterns.
 
 import { describe, expect, test } from "vitest";
+import ts from "typescript";
 import { generatePaginationModule } from "../../src/sdk-plugins/pagination.js";
+
+// ─── Runtime evaluation harness (≤50 lines) ──────────────────────────────────
+
+interface PaginatePlan {
+  style: "cursor" | "offset" | "page";
+  requestParam: string;
+  pageSizeParam: string | null;
+  itemsField: string;
+  nextField: string | null;
+  opId: string;
+}
+
+/** Transpile the emitted TS source to CJS and evaluate it to extract `paginate`. */
+function loadEmittedPaginate(): (
+  fetchPage: (pageArgs: Record<string, unknown>) => Promise<unknown>,
+  plan: PaginatePlan,
+  requestedPageSize?: number,
+) => AsyncGenerator<unknown> {
+  const src = generatePaginationModule();
+  const result = ts.transpileModule(src, {
+    compilerOptions: {
+      target: ts.ScriptTarget.ES2022,
+      module: ts.ModuleKind.CommonJS,
+    },
+  });
+  // Wrap in a CommonJS-style executor that captures `exports`
+  const cjsWrapper = new Function("exports", "require", result.outputText);
+  const exports: Record<string, unknown> = {};
+  cjsWrapper(exports, () => {
+    throw new Error("No imports expected in emitted pagination module");
+  });
+  const paginate = exports["paginate"];
+  if (typeof paginate !== "function") throw new Error("paginate not found in emitted module");
+  return paginate as ReturnType<typeof loadEmittedPaginate>;
+}
+
+/** Drain an AsyncGenerator into an array. */
+async function drain<T>(gen: AsyncGenerator<T>): Promise<T[]> {
+  const out: T[] = [];
+  for await (const item of gen) out.push(item);
+  return out;
+}
+
+// ─── Source-pattern tests ─────────────────────────────────────────────────────
 
 describe("generatePaginationModule — emitted engine contract", () => {
   test("emits a header comment and no-edit guard", () => {
@@ -50,10 +97,15 @@ describe("generatePaginationModule — emitted engine contract", () => {
     expect(src).toContain("AsyncGenerator<Item>");
   });
 
-  test("emits the repeated-cursor guard (stop when next === prev)", () => {
+  test("emits the repeated-cursor guard (stop when next === cursor, not next === prev)", () => {
     const src = generatePaginationModule();
-    // The guard must catch repeated cursors to prevent infinite loops
-    expect(src).toMatch(/next\s*===\s*prev/);
+    // The guard compares against the cursor that PRODUCED this response,
+    // not the cursor from two pages ago (prev is dead).
+    expect(src).toMatch(/next\s*===\s*cursor/);
+    // The old off-by-one guard must NOT appear
+    expect(src).not.toMatch(/next\s*===\s*prev/);
+    // The dead `prev` variable must be gone
+    expect(src).not.toMatch(/\bprev\b/);
   });
 
   test("emits cursor stop condition: null/missing/empty next value", () => {
@@ -64,10 +116,15 @@ describe("generatePaginationModule — emitted engine contract", () => {
     expect(src).toMatch(/next\s*==\s*null|next\s*===\s*null|!next|next\s*===\s*undefined/);
   });
 
-  test("emits offset/page stop condition: page yields fewer items than requested or zero", () => {
+  test("emits offset/page stop condition: requestedPageSize explicit third parameter", () => {
     const src = generatePaginationModule();
-    // Must have logic comparing items.length to page size, or stopping on empty
-    expect(src).toMatch(/items\.length\s*[<=>]|items\.length\s*===\s*0|items\.length\s*<\s*|length\s*===\s*0/);
+    // paginate gains a third parameter for the caller-supplied page size
+    expect(src).toContain("requestedPageSize");
+    // Must compare items.length to requestedPageSize (not pageArgs lookup which is dead)
+    expect(src).toMatch(/requestedPageSize\s*!==\s*undefined/);
+    expect(src).toMatch(/items\.length\s*<\s*requestedPageSize/);
+    // The old dead-code pattern must be gone
+    expect(src).not.toMatch(/pageArgs\[plan\.pageSizeParam\]/);
   });
 
   test("emits typed error naming both opId and field when itemsField is missing", () => {
@@ -100,5 +157,113 @@ describe("generatePaginationModule — emitted engine contract", () => {
     const a = generatePaginationModule();
     const b = generatePaginationModule();
     expect(a).toBe(b);
+  });
+});
+
+// ─── Runtime-behavior tests (execute the transpiled emitted code) ─────────────
+
+describe("paginate() runtime — cursor style", () => {
+  const CURSOR_PLAN: PaginatePlan = {
+    style: "cursor",
+    requestParam: "cursor",
+    pageSizeParam: "limit",
+    itemsField: "data",
+    nextField: "next_cursor",
+    opId: "op_test",
+  };
+
+  test("happy path: 3 pages ending next:null yields all items, exactly 3 fetch calls", async () => {
+    const paginate = loadEmittedPaginate();
+    const calls: Array<Record<string, unknown>> = [];
+    const pages = [
+      { data: [1, 2], next_cursor: "page2" },
+      { data: [3, 4], next_cursor: "page3" },
+      { data: [5], next_cursor: null },
+    ];
+    let idx = 0;
+    const fetchPage = (pageArgs: Record<string, unknown>): Promise<unknown> => {
+      calls.push({ ...pageArgs });
+      return Promise.resolve(pages[idx++]);
+    };
+    const items = await drain(paginate(fetchPage, CURSOR_PLAN));
+    expect(items).toEqual([1, 2, 3, 4, 5]);
+    expect(calls).toHaveLength(3);
+  });
+
+  test("Bug 1 — repeated-cursor guard fires after exactly 2 fetches (not 3)", async () => {
+    // Server repeats cursor "A" on the second page: a naive off-by-one guard
+    // compares next against `prev` (two pages ago) instead of `cursor`
+    // (the cursor that produced this response), so it fires one iteration late.
+    // Correct guard: fetchPage is called EXACTLY 2 times.
+    const paginate = loadEmittedPaginate();
+    const calls: Array<Record<string, unknown>> = [];
+    const pages = [
+      { data: [1], next_cursor: "A" },
+      { data: [2], next_cursor: "A" }, // server repeats cursor "A" → must stop here
+    ];
+    let idx = 0;
+    const fetchPage = (pageArgs: Record<string, unknown>): Promise<unknown> => {
+      calls.push({ ...pageArgs });
+      if (idx >= pages.length) throw new Error("fetchPage called too many times");
+      return Promise.resolve(pages[idx++]);
+    };
+    const items = await drain(paginate(fetchPage, CURSOR_PLAN));
+    expect(items).toEqual([1, 2]);
+    // MUST be exactly 2, not 3 (the off-by-one bug would cause 3)
+    expect(calls).toHaveLength(2);
+  });
+});
+
+describe("paginate() runtime — offset/page style", () => {
+  const OFFSET_PLAN: PaginatePlan = {
+    style: "offset",
+    requestParam: "offset",
+    pageSizeParam: "limit",
+    itemsField: "items",
+    nextField: null,
+    opId: "op_offset",
+  };
+
+  test("Bug 2a — offset style, requestedPageSize=2: stops after partial page (2 fetch calls, no third)", async () => {
+    // pageArgs only carries the offset counter, never the page size,
+    // so the old `pageArgs[plan.pageSizeParam]` lookup is always undefined.
+    // The fix passes requestedPageSize as an explicit third argument.
+    const paginate = loadEmittedPaginate();
+    const calls: Array<Record<string, unknown>> = [];
+    const pages = [
+      { items: ["a", "b"] }, // full page (2 items) → continue
+      { items: ["c"] },      // partial page (1 < 2) → stop
+    ];
+    let idx = 0;
+    const fetchPage = (pageArgs: Record<string, unknown>): Promise<unknown> => {
+      calls.push({ ...pageArgs });
+      if (idx >= pages.length) throw new Error("fetchPage called too many times");
+      return Promise.resolve(pages[idx++]);
+    };
+    const requestedPageSize = 2;
+    const items = await drain(paginate(fetchPage, OFFSET_PLAN, requestedPageSize));
+    expect(items).toEqual(["a", "b", "c"]);
+    // MUST be exactly 2 calls; without the fix it would never stop on partial page
+    expect(calls).toHaveLength(2);
+  });
+
+  test("Bug 2b — requestedPageSize undefined: stops only when page is empty (2 calls)", async () => {
+    // When no requestedPageSize is supplied the engine must fall back to
+    // stopping on an empty page only.
+    const paginate = loadEmittedPaginate();
+    const calls: Array<Record<string, unknown>> = [];
+    const pages = [
+      { items: ["a"] }, // non-empty → continue
+      { items: [] },    // empty → stop
+    ];
+    let idx = 0;
+    const fetchPage = (pageArgs: Record<string, unknown>): Promise<unknown> => {
+      calls.push({ ...pageArgs });
+      if (idx >= pages.length) throw new Error("fetchPage called too many times");
+      return Promise.resolve(pages[idx++]);
+    };
+    const items = await drain(paginate(fetchPage, OFFSET_PLAN, undefined));
+    expect(items).toEqual(["a"]);
+    expect(calls).toHaveLength(2);
   });
 });

@@ -289,12 +289,9 @@ export function generateResourceTreeModule(
 ): string {
   // Re-run the same deterministic assignment to map each (namespace, method)
   // leaf back to its OperationInfo, so we wire the correct HTTP method + path.
-  // Also build a reverse map: operationId → methodName for Pages emission.
   const opByLeaf: Record<string, OperationInfo> = {};
-  const methodByOpId: Record<string, string> = {};
   for (const a of resolveAssignments(ops, overlay)) {
     opByLeaf[`${a.namespace}.${a.methodName}`] = a.op;
-    methodByOpId[a.op.operationId] = a.methodName;
   }
 
   const hasPlan = plans.size > 0;
@@ -362,6 +359,9 @@ export function generateResourceTreeModule(
  * The fetch closure reuses the plain method's request construction (same method
  * + path) with per-page param overrides merged into the query. The plan is baked
  * as a literal so the emitted code has no runtime dependency on the emitter.
+ * When the plan has a pageSizeParam, the caller-supplied page size is extracted
+ * from opts.query and passed as the explicit third argument to paginate() so the
+ * fewer-than-requested stop can fire; otherwise undefined is passed.
  */
 function emitPagesMethod(
   methodName: string,
@@ -371,10 +371,15 @@ function emitPagesMethod(
   opId: string,
 ): string[] {
   const planLiteral = buildPlanLiteral(plan, opId);
+  const requestedPageSizeExpr =
+    plan.pageSizeParam !== null
+      ? `typeof opts?.query?.["${plan.pageSizeParam}"] === "number" ? opts.query["${plan.pageSizeParam}"] as number : undefined`
+      : `undefined`;
   return [
     `      ${methodName}Pages: (opts?: RequestOpts): AsyncGenerator<unknown> => paginate<unknown>(`,
     `        (pageArgs) => client.request({ method: "${httpMethod}", path: "${httpPath}", pathParams: opts?.pathParams, query: { ...opts?.query, ...pageArgs as Record<string, string | number | boolean | undefined> }, headers: opts?.headers, body: opts?.body }).then((r) => r.json() as Promise<unknown>),`,
     `        ${planLiteral},`,
+    `        ${requestedPageSizeExpr},`,
     `      ),`,
   ];
 }

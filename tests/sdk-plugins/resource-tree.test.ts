@@ -480,4 +480,46 @@ describe("generateResourceTreeModule — *Pages glue (T7)", () => {
     // Must not throw when called without plans argument
     expect(() => generateResourceTreeModule(tree, ops, EMPTY_OVERLAY)).not.toThrow();
   });
+
+  test("cursor plan with pageSizeParam: emits requestedPageSize extraction from opts.query", () => {
+    // The *Pages method must extract the caller-supplied page size from opts.query
+    // and pass it as the third argument to paginate() so the fewer-than-requested
+    // stop guard can fire. pageSizeParam is "limit" in CURSOR_PLAN.
+    const ops: OperationInfo[] = [op("op_list", ["emails"], "GET", "/emails")];
+    const tree = buildNamespaceTree(ops, EMPTY_OVERLAY);
+    const plans: ReadonlyMap<string, PaginationPlan> = new Map([["op_list", CURSOR_PLAN]]);
+    const source = generateResourceTreeModule(tree, ops, EMPTY_OVERLAY, plans);
+    // Must extract the pageSizeParam value from opts.query by name
+    expect(source).toContain('"limit"');
+    // Must guard the extraction with a typeof number check
+    expect(source).toMatch(/typeof\s+opts\?\.query\?\.(?:\["limit"\]|\["limit"\])\s*===\s*"number"/);
+  });
+
+  test("offset plan with pageSizeParam: emits requestedPageSize extraction from opts.query", () => {
+    // pageSizeParam is "limit" in OFFSET_PLAN.
+    const ops: OperationInfo[] = [op("op_list", ["orders"], "GET", "/orders")];
+    const tree = buildNamespaceTree(ops, EMPTY_OVERLAY);
+    const plans: ReadonlyMap<string, PaginationPlan> = new Map([["op_list", OFFSET_PLAN]]);
+    const source = generateResourceTreeModule(tree, ops, EMPTY_OVERLAY, plans);
+    expect(source).toMatch(/typeof\s+opts\?\.query\?\.(?:\["limit"\])\s*===\s*"number"/);
+  });
+
+  test("plan with null pageSizeParam: emits undefined (no extraction)", () => {
+    // When pageSizeParam is null there is no page size to extract; the emitted
+    // code should pass a literal `undefined` as the third paginate() argument.
+    const NULL_SIZE_PLAN: PaginationPlan = {
+      style: "cursor",
+      requestParam: "cursor",
+      pageSizeParam: null,
+      itemsField: "data",
+      nextField: "next_cursor",
+    };
+    const ops: OperationInfo[] = [op("op_list", ["emails"], "GET", "/emails")];
+    const tree = buildNamespaceTree(ops, EMPTY_OVERLAY);
+    const plans: ReadonlyMap<string, PaginationPlan> = new Map([["op_list", NULL_SIZE_PLAN]]);
+    const source = generateResourceTreeModule(tree, ops, EMPTY_OVERLAY, plans);
+    // Must pass undefined, NOT attempt to read a pageSizeParam key
+    expect(source).toContain("undefined");
+    expect(source).not.toMatch(/opts\?\.query\?\.null/);
+  });
 });
