@@ -3,8 +3,11 @@
 //      the committed <tree>.manifest.json (catches hand-edits / partial drift).
 //  (2) structural + no-leakage: required marker file present; no op_<hex>
 //      leakage anywhere in the tree.
-//  (3) agent-specific structural pins: dormant-OAuth reality — oauth_token_provider.rs
-//      MUST be absent from rust agent tree (auth-schemes path not yet active).
+//  (3) agent-specific structural pins: oauth_token_provider.rs IS present in the
+//      rust agent tree — Fern's rust generator emits its native OAuth machinery from
+//      the OAS oauth2 securityScheme + flows alone (independent of our dormant
+//      auth-schemes block). The machinery is not auto-wired into ApiClient; see
+//      KNOWN_GAPS.md.
 import { createHash } from "node:crypto";
 import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
