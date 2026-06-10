@@ -266,10 +266,11 @@ export function emitRetryability(): string {
     "",
     "  private exhausted(error: unknown, attempts: number): unknown {",
     "    if (error instanceof Error) {",
-    "      error.message = `${error.message} (after ${attempts} attempts)`;",
+    "      if (attempts > 1) error.message = `${error.message} (after ${attempts} attempts)`;",
     "      return error;",
     "    }",
-    '    return new TimeoutError({ status: 0, requestId: null, body: null, code: "exhausted", message: `request failed (after ${attempts} attempts)` });',
+    '    const suffix = attempts > 1 ? ` (after ${attempts} attempts)` : "";',
+    '    return new TimeoutError({ status: 0, requestId: null, body: null, code: "exhausted", message: `request failed${suffix}` });',
     "  }",
   ].join("\n");
 }

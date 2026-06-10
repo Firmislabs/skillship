@@ -304,30 +304,159 @@ describe("backoff and method-class retryability", () => {
     expect(delays).toEqual([]);
   });
 
-  test("GET per-attempt timeout is retried (idempotent-timeout rule)", async () => {
+  // NOTE: This test was replaced by I3 tests below. The original version mutated
+  // req.signal.aborted but the runtime checks controller.signal.aborted (a
+  // different object), so the test exercised the network path, not the timeout
+  // path. The I3 suite below uses timeout:0 + a real signal listener for genuine
+  // per-attempt abort coverage.
+});
+
+// ─── I1. scopes forwarded on no-descriptor-scope products ────────────────────
+
+describe("I1: oauth2 scopes forwarded even when descriptor has none", () => {
+  test("user-supplied scopes appear in token POST body as scope= param", async () => {
+    const { sleep } = makeRecordedSleep();
+    const { fetchImpl, calls } = makeFetch({
+      token: () => tokenResponse("tok-scoped"),
+      api: () => jsonResponse({ ok: true }),
+    });
+    // The agent-minimal fixture OAS declares `scopes: {}` — no descriptor scopes.
+    // Passing scopes here should still result in scope= in the token POST body.
+    const client = new Client({
+      baseUrl: BASE_URL,
+      auth: {
+        kind: "oauth2",
+        clientId: "cid",
+        clientSecret: "csecret",
+        tokenUrl: TOKEN_URL,
+        scopes: ["read:items"],
+      },
+      fetch: fetchImpl,
+      sleep,
+    });
+
+    await client.request({ path: "/items", method: "GET" });
+
+    const tokenCall = calls.find((c) => c.url === TOKEN_URL)!;
+    expect(tokenCall, "token call must exist").toBeDefined();
+    // scope=read%3Aitems (URL-encoded colon) must appear in the form body.
+    expect(tokenCall.body).toContain("scope=");
+    expect(decodeURIComponent(tokenCall.body)).toContain("scope=read:items");
+  });
+});
+
+// ─── I2. "(after 1 attempts)" suffix grammar fix ─────────────────────────────
+
+describe("I2: first-attempt failure produces no attempt-count suffix", () => {
+  test("POST network rejection on attempt 1 throws without '(after 1 attempts)' and records zero sleeps", async () => {
     const { sleep, delays } = makeRecordedSleep();
+    const { fetchImpl } = makeFetch({
+      token: () => tokenResponse("t"),
+      api: () => {
+        throw new TypeError("fetch failed");
+      },
+    });
+    const client = makeClient({ fetch: fetchImpl, sleep });
+
+    let thrown: unknown = null;
+    try {
+      await client.request({ path: "/items", method: "POST", body: { x: 1 } });
+    } catch (err) {
+      thrown = err;
+    }
+
+    expect(thrown).not.toBeNull();
+    expect(thrown).toBeInstanceOf(Error);
+    // The contract: single-attempt failure must NOT append "(after 1 attempts)".
+    expect((thrown as Error).message).not.toMatch(/after 1 attempts/);
+    // POST is non-idempotent — network errors must NOT be retried.
+    expect(delays).toEqual([]);
+  });
+});
+
+// ─── I3. real per-attempt timeout via AbortController ────────────────────────
+
+describe("I3: real per-attempt timeout triggers TimeoutError and idempotent retry", () => {
+  test("GET with timeout:0 aborts on first attempt, retries, succeeds on second", async () => {
+    const { sleep, delays } = makeRecordedSleep();
+    const { TimeoutError: TE } = await import(
+      "../fixtures/golden/sdk-agent-minimal/src/errors.js"
+    );
     let apiCall = 0;
-    // First attempt: simulate a per-attempt timeout by aborting via the signal.
-    const fetchImpl = (async (input: Request | string | URL): Promise<Response> => {
-      const req = input instanceof Request ? input : new Request(String(input));
+    // A fetch that on the first API call waits for the abort signal then rejects
+    // with an AbortError — exactly what the browser/Node does on signal abort.
+    const fetchImpl = (async (
+      input: Request | string | URL,
+      init?: RequestInit,
+    ): Promise<Response> => {
+      const req = input instanceof Request ? input : new Request(String(input), init);
       if (req.url === TOKEN_URL) return tokenResponse("t");
       apiCall++;
       if (apiCall === 1) {
-        // Emulate fetch rejecting because the abort signal fired (timeout).
-        const signal = req.signal;
-        const err = new DOMException("The operation was aborted.", "AbortError");
-        // Mark the controller as aborted so runtime classifies it as a timeout.
-        Object.defineProperty(signal, "aborted", { value: true, configurable: true });
-        throw err;
+        // Return a promise that resolves only when the signal aborts.
+        return new Promise<Response>((_resolve, reject) => {
+          const signal = req.signal;
+          if (signal.aborted) {
+            reject(new DOMException("The operation was aborted.", "AbortError"));
+            return;
+          }
+          signal.addEventListener("abort", () => {
+            reject(new DOMException("The operation was aborted.", "AbortError"));
+          }, { once: true });
+        });
       }
       return jsonResponse({ ok: true });
     }) as typeof fetch;
-    const client = makeClient({ fetch: fetchImpl, sleep, timeout: 50 });
+
+    // timeout:0 fires on the very next macrotask — the AbortController aborts,
+    // the signal fires, the fake fetch rejects with AbortError.
+    const client = makeClient({ fetch: fetchImpl, sleep, timeout: 0 });
 
     const res = await client.request({ path: "/items", method: "GET" });
     expect(res.status).toBe(200);
     expect(apiCall).toBe(2);
+    // idempotent-timeout rule: one backoff sleep between the two attempts.
     expect(delays).toHaveLength(1);
+    void TE; // imported for future assertion; TimeoutError is classified correctly by the runtime
+  });
+
+  test("GET with timeout:0, all attempts time out → throws TimeoutError (not a plain Error)", async () => {
+    const { sleep } = makeRecordedSleep();
+    const { TimeoutError: TE } = await import(
+      "../fixtures/golden/sdk-agent-minimal/src/errors.js"
+    );
+    let apiCall = 0;
+    const fetchImpl = (async (
+      input: Request | string | URL,
+      init?: RequestInit,
+    ): Promise<Response> => {
+      const req = input instanceof Request ? input : new Request(String(input), init);
+      if (req.url === TOKEN_URL) return tokenResponse("t");
+      apiCall++;
+      return new Promise<Response>((_resolve, reject) => {
+        const signal = req.signal;
+        if (signal.aborted) {
+          reject(new DOMException("The operation was aborted.", "AbortError"));
+          return;
+        }
+        signal.addEventListener("abort", () => {
+          reject(new DOMException("The operation was aborted.", "AbortError"));
+        }, { once: true });
+      });
+    }) as typeof fetch;
+
+    const client = makeClient({ fetch: fetchImpl, sleep, timeout: 0 });
+
+    let thrown: unknown = null;
+    try {
+      await client.request({ path: "/items", method: "GET" });
+    } catch (err) {
+      thrown = err;
+    }
+
+    expect(thrown).toBeInstanceOf(TE);
+    // exhausted after MAX_RETRIES+1 = 3 attempts
+    expect(apiCall).toBe(3);
   });
 });
 

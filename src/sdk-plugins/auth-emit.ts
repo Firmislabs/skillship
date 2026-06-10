@@ -240,13 +240,15 @@ function buildFetchToken(schemes: readonly AuthSchemeDescriptor[]): string {
 }
 
 function buildGetOauth2Token(defaultUrl: string, scopes: readonly string[]): string {
-  const scopeLines =
-    scopes.length > 0
-      ? [
-          `    const scopeStr = this.auth.scopes?.join(" ") ?? "${scopes.join(" ")}";`,
-          '    if (scopeStr) { body.set("scope", scopeStr); }',
-        ]
-      : [];
+  // Always emit scope lines: the AuthConfig union advertises `scopes?: string[]`
+  // unconditionally, so user-supplied scopes must always be forwarded. When the
+  // OAS descriptor has no scopes, the baked default is "" and the `if (scopeStr)`
+  // guard ensures no `scope=` param is sent unless the user provides scopes.
+  const bakedDefault = scopes.length > 0 ? scopes.join(" ") : "";
+  const scopeLines = [
+    `    const scopeStr = this.auth.scopes?.join(" ") ?? "${bakedDefault}";`,
+    '    if (scopeStr) { body.set("scope", scopeStr); }',
+  ];
   return [
     "  private getOauth2Token(): Promise<string> {",
     "    const now = Date.now();",

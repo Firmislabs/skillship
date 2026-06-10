@@ -100,6 +100,10 @@ export class AuthManager {
     const credentials = btoa(`${clientId}:${clientSecret}`);
     const body = new URLSearchParams();
     body.set("grant_type", "client_credentials");
+    const scopeStr = this.auth.scopes?.join(" ") ?? "";
+    if (scopeStr) {
+      body.set("scope", scopeStr);
+    }
     const res = await this.fetchImpl(url, {
       method: "POST",
       headers: {

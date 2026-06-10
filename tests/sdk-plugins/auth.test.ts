@@ -342,10 +342,16 @@ describe("generateAuthModule — oauth2 scopes in token request (I2)", () => {
     expect(code).toContain("read write");
   });
 
-  test("with empty descriptor scopes: does NOT emit unconditional body.set(\"scope\" ...)", () => {
+  test("with empty descriptor scopes: emits guarded scope lines (baked default is empty string)", () => {
+    // I1 fix: scope lines are always emitted so user-supplied scopes are forwarded.
+    // The baked default is "" — the if(scopeStr) guard prevents scope= being sent
+    // at runtime unless the caller explicitly passes scopes: [...].
     const code = generateAuthModule(oauth2NullUrl, ENV_PREFIX);
-    // no scope set when scopes array is empty
-    expect(code).not.toContain('body.set("scope"');
+    // Scope lines present (guarded), baked default is empty string literal.
+    expect(code).toContain('body.set("scope"');
+    expect(code).toContain('?? ""');
+    // Guard must be present — never unconditional.
+    expect(code).toMatch(/if\s*\([^)]*scope[^)]*\)[^{]*\{[^}]*body\.set\("scope"/s);
   });
 
   test("with non-empty scopes: scope set is guarded (conditional, not unconditional)", () => {
@@ -354,10 +360,14 @@ describe("generateAuthModule — oauth2 scopes in token request (I2)", () => {
     expect(code).toMatch(/if\s*\([^)]*scope[^)]*\)[^{]*\{[^}]*body\.set\("scope"/s);
   });
 
-  test("mixed descriptor with empty scopes: no body.set(\"scope\") emitted", () => {
-    // mixed has oauth2 with scopes: []
+  test("mixed descriptor with empty scopes: emits guarded scope lines (baked default empty, guard present)", () => {
+    // I1 fix: mixed has oauth2 with scopes: [] — scope lines always emitted but guarded.
     const code = generateAuthModule(mixed, ENV_PREFIX);
-    expect(code).not.toContain('body.set("scope"');
+    expect(code).toContain('body.set("scope"');
+    // Baked default is "" (empty descriptor scopes).
+    expect(code).toContain('?? ""');
+    // Guard must be present.
+    expect(code).toMatch(/if\s*\([^)]*scope[^)]*\)[^{]*\{[^}]*body\.set\("scope"/s);
   });
 });
 
