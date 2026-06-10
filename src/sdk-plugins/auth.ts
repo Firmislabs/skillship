@@ -88,7 +88,7 @@ function buildEnvBranches(
     } else if (s.kind === "apiKey" && !seen.has("apiKey")) {
       seen.add("apiKey");
       lines.push(`  if (env.${prefix}_API_KEY) {`);
-      lines.push(`    return { kind: "apiKey", value: env.${prefix}_API_KEY, in: "header", name: "Authorization" };`);
+      lines.push(`    return { kind: "apiKey", value: env.${prefix}_API_KEY, in: "${s.in}", name: "${s.name}" };`);
       lines.push("  }");
     } else if (s.kind === "basic" && !seen.has("basic")) {
       seen.add("basic");
@@ -271,7 +271,7 @@ function buildGetOauth2Token(defaultUrl: string): string {
     "    const { clientId, clientSecret } = this.auth;",
     "    const credentials = btoa(`${clientId}:${clientSecret}`);",
     "    const body = new URLSearchParams();",
-    '    body.set("grant_type", "grant_type=client_credentials");',
+    '    body.set("grant_type", "client_credentials");',
     "    const res = await this.fetchImpl(url, {",
     '      method: "POST",',
     '      headers: { "Authorization": `Basic ${credentials}`, "Content-Type": "application/x-www-form-urlencoded" },',

@@ -129,6 +129,15 @@ describe("generateAuthModule — resolveAuthFromEnv", () => {
     expect(code).toContain("ACME_API_KEY");
   });
 
+  test("apiKey env resolution bakes descriptor in/name — not hardcoded header/Authorization", () => {
+    const queryKeyScheme: readonly AuthSchemeDescriptor[] = [
+      { kind: "apiKey", id: "k", in: "query", name: "api_key" },
+    ];
+    const code = generateAuthModule(queryKeyScheme, ENV_PREFIX);
+    expect(code).toContain('in: "query"');
+    expect(code).toContain('name: "api_key"');
+  });
+
   test("basic scheme uses ACME_USERNAME and ACME_PASSWORD env vars", () => {
     const code = generateAuthModule(basicOnly, ENV_PREFIX);
     expect(code).toContain("ACME_USERNAME");
@@ -191,7 +200,7 @@ describe("generateAuthModule — AuthManager class", () => {
 describe("generateAuthModule — oauth2 token fetch", () => {
   test("uses grant_type=client_credentials", () => {
     const code = generateAuthModule(oauth2Baked, ENV_PREFIX);
-    expect(code).toContain("grant_type=client_credentials");
+    expect(code).toContain('body.set("grant_type", "client_credentials")');
   });
 
   test("uses HTTP Basic auth for client credentials (btoa)", () => {
