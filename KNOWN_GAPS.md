@@ -227,9 +227,9 @@ Node 23.6 is the floor because that is when `--experimental-strip-types` became 
 
 `runInvoke` in the emitted `src/mcp-server.ts` truncates JSON response text at 50,000 characters (`MAX_RESULT_CHARS = 50000`, defined in `buildHeader` in `src/sdk-plugins/mcp-server-emit.ts`). When truncated, the response appends the literal suffix `\n…[truncated — response exceeded 50,000 characters]` before returning. This is a generation-time constant; changing the budget requires re-emitting the golden trees.
 
-### npm-publish posture — src/ NOT excluded; publishing out of scope
+### npm-publish posture — bin/ not excluded; publishing out of scope
 
-The generated `.npmignore` (emitted by `src/renderers/sdk-templates/render.ts`) currently does **not** exclude `src/`. If a generated SDK package were published to npm as-is, `bin/mcp.js` CAN re-exec the TypeScript source because `src/mcp-server.ts` is present in the tarball. Publishing generated SDK packages remains out of scope and untested; the posture recorded in the design spec ("`.npmignore` excludes `src/`") was NOT implemented — the generated `.npmignore` excludes `node_modules/`, `dist/`, `*.tgz`, and `*.log` only.
+The generated `.npmignore` (emitted by `src/renderers/sdk-templates/render.ts`) excludes `src/` but does **not** exclude `bin/`. If a generated SDK package were published to npm as-is, the tarball would ship `bin/mcp.js` (the launcher) but NOT `src/mcp-server.ts` (the TypeScript source the launcher re-execs via `--experimental-strip-types`). The launcher would fail at startup because its target `../src/mcp-server.ts` is absent from the installed package. Publishing generated SDK packages remains out of scope and untested.
 
 ### Emitted gateway module — 366-368 lines (adjudicated deviation from 300-line budget)
 

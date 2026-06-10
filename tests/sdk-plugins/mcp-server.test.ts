@@ -131,7 +131,9 @@ interface FakeKnobs {
   // If set, the named accessor method throws this error instead of returning data.
   throwOn: { namespace: string; method: string; error: Error } | null;
   // Scripted return value for any successful accessor call.
-  returnValue: unknown;
+  // Must be a real Response object matching the genuine SDK contract
+  // (resource methods return Promise<Response>, not Promise<plain-object>).
+  returnValue: Response;
   // If true, the Client constructor throws a ConfigError (simulating env-less auth).
   clientThrows: Error | null;
 }
@@ -182,7 +184,10 @@ function makeFakeRuntimeAndResources(knobs: FakeKnobs): {
     for (const ns of NAMESPACES) {
       const nsObj: Record<string, unknown> = {};
       for (const method of METHODS) {
-        nsObj[method] = (opts?: Record<string, unknown>): Promise<unknown> => {
+        // Genuine SDK contract: resource methods return Promise<Response>.
+        // Using real Response objects (not plain data) to match the real
+        // resources.ts interface and expose the fake-fidelity gap.
+        nsObj[method] = (opts?: Record<string, unknown>): Promise<Response> => {
           knobs.calls.push({ namespace: ns, method, opts });
           if (
             knobs.throwOn &&
@@ -191,7 +196,8 @@ function makeFakeRuntimeAndResources(knobs: FakeKnobs): {
           ) {
             return Promise.reject(knobs.throwOn.error);
           }
-          return Promise.resolve(knobs.returnValue);
+          // Return a clone so each call gets a fresh unread Response body.
+          return Promise.resolve(knobs.returnValue.clone());
         };
       }
       client[ns] = nsObj;
@@ -228,12 +234,16 @@ function loadGateway(
   return evalModule(serverCjs, requireShim) as unknown as EmittedServer;
 }
 
-function freshKnobs(): FakeKnobs {
+function freshKnobs(data: unknown = { ok: true }): FakeKnobs {
   return {
     clientOpts: [],
     calls: [],
     throwOn: null,
-    returnValue: { ok: true },
+    // Real Response objects match the genuine SDK contract (Promise<Response>).
+    returnValue: new Response(JSON.stringify(data), {
+      status: 200,
+      headers: { "Content-Type": "application/json" },
+    }),
     clientThrows: null,
   };
 }
@@ -622,8 +632,7 @@ describe("createGateway — invoke_operation", () => {
   });
 
   test("destructive op WITH confirm:true executes", async () => {
-    const knobs = freshKnobs();
-    knobs.returnValue = { deleted: true };
+    const knobs = freshKnobs({ deleted: true });
     const mod = loadGateway(OPTS, knobs);
     const result = await callTool(mod.createGateway({ env: {} }), "invoke_operation", {
       id: "items_delete",
@@ -634,6 +643,30 @@ describe("createGateway — invoke_operation", () => {
     expect(knobs.calls).toHaveLength(1);
     expect(knobs.calls[0].namespace).toBe("items");
     expect(knobs.calls[0].method).toBe("remove");
+    // Body must be the JSON-pretty-printed response body, not "{}".
+    expect(result.content[0].text).toContain('"deleted"');
+    expect(result.content[0].text).toContain("true");
+  });
+
+  test("Response body round-trips: scripted body JSON appears in invoke output", async () => {
+    // This test exists to catch the fake-fidelity gap: fakes must return real
+    // Response objects (not plain data) so JSON.stringify(response) → "{}" is caught RED.
+    const knobs = freshKnobs({ id: "item-42", name: "widget" });
+    const mod = loadGateway(OPTS, knobs);
+    const result = await callTool(mod.createGateway({ env: {} }), "invoke_operation", {
+      id: "items_get",
+      args: { id: "item-42" },
+    });
+    expect(result.isError).toBeFalsy();
+    // The body fields must appear in the pretty-printed output.
+    expect(result.content[0].text).toContain('"id"');
+    expect(result.content[0].text).toContain('"item-42"');
+    expect(result.content[0].text).toContain('"name"');
+    expect(result.content[0].text).toContain('"widget"');
+    // Sanity: must be valid JSON
+    const parsed = JSON.parse(result.content[0].text) as Record<string, unknown>;
+    expect(parsed["id"]).toBe("item-42");
+    expect(parsed["name"]).toBe("widget");
   });
 
   test("ALLOW_DESTRUCTIVE=1 env override executes without confirm", async () => {
@@ -724,8 +757,7 @@ describe("createGateway — invoke_operation", () => {
   });
 
   test("large response is truncated with the marker", async () => {
-    const knobs = freshKnobs();
-    knobs.returnValue = { blob: "x".repeat(60000) };
+    const knobs = freshKnobs({ blob: "x".repeat(60000) });
     const mod = loadGateway(OPTS, knobs);
     const result = await callTool(mod.createGateway({ env: {} }), "invoke_operation", {
       id: "items_get",
@@ -961,12 +993,11 @@ describe("createGateway — closestIds case-insensitive tokenize (M3)", () => {
 
 describe("createGateway — MAX_RESULT_CHARS exact boundary (M4)", () => {
   test("response at exactly 50000 chars is not truncated", async () => {
-    const knobs = freshKnobs();
-    // JSON.stringify({blob:"x".repeat(N)}, null, 2) length = 15 + N
-    // (1 for {, 1 for \n, 10 for '  "blob": "', N, 1 for ", 1 for \n, 1 for })
-    // For exactly 50000: N = 49985 → length = 50000. Verified empirically.
+    // JSON.stringify({blob:"x".repeat(N)}, null, 2) length = 16 + N
+    // ({=1, \n=1, 2-space=2, "blob": "=9, N, "=1, \n=1, }=1 → 16+N).
+    // For exactly 50000: N = 49984 → length = 50000. Verified empirically.
     const n = 49984;
-    knobs.returnValue = { blob: "x".repeat(n) };
+    const knobs = freshKnobs({ blob: "x".repeat(n) });
     const mod = loadGateway(OPTS, knobs);
     const result = await callTool(mod.createGateway({ env: {} }), "invoke_operation", {
       id: "items_get",
@@ -978,10 +1009,9 @@ describe("createGateway — MAX_RESULT_CHARS exact boundary (M4)", () => {
   });
 
   test("response at exactly 50001 chars is truncated with the 50000-char boundary", async () => {
-    const knobs = freshKnobs();
     // N = 49985 → JSON length = 50001, which is > 50000, so truncated.
     const n = 49985;
-    knobs.returnValue = { blob: "x".repeat(n) };
+    const knobs = freshKnobs({ blob: "x".repeat(n) });
     const mod = loadGateway(OPTS, knobs);
     const result = await callTool(mod.createGateway({ env: {} }), "invoke_operation", {
       id: "items_get",

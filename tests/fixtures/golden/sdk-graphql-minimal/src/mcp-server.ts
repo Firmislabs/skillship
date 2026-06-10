@@ -312,7 +312,17 @@ async function runInvoke(
       (opts?: Record<string, unknown>) => Promise<unknown>
     >;
     const result = await ns[entry.accessor[1]](routed.opts);
-    let out = JSON.stringify(result, null, 2);
+    let out: string;
+    if (result instanceof Response) {
+      const raw = await result.text();
+      try {
+        out = JSON.stringify(JSON.parse(raw) as unknown, null, 2);
+      } catch {
+        out = raw;
+      }
+    } else {
+      out = JSON.stringify(result, null, 2);
+    }
     if (out.length > MAX_RESULT_CHARS) {
       out =
         out.slice(0, MAX_RESULT_CHARS) +

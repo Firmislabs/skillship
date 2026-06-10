@@ -328,6 +328,13 @@ describe("5. invoke happy path — real SDK auth chain", () => {
     const apiCalls = calls.filter((c) => c.url !== TOKEN_URL);
     expect(apiCalls).toHaveLength(1);
     expect(apiCalls[0]!.authorization).toBe("Bearer auth-tok");
+
+    // Body round-trip: scripted response body must appear in invoke output (not "{}").
+    const text = result.content[0]!.text;
+    expect(text).toContain('"id"');
+    expect(text).toContain('"new-item"');
+    expect(text).toContain('"status"');
+    expect(text).toContain('"created"');
   });
 });
 
@@ -363,6 +370,10 @@ describe("6. destructive confirmation gate", () => {
     });
     const result = res.result as { isError?: boolean; content: Array<{ text: string }> };
     expect(result.isError).toBeFalsy();
+    // Body round-trip: scripted response body must appear in invoke output (not "{}").
+    const bodyText = result.content[0]!.text;
+    expect(bodyText).toContain('"id"');
+    expect(bodyText).toContain('"created"');
   });
 
   test("AGENTMIN_MCP_ALLOW_DESTRUCTIVE=1 in deps.env bypasses confirm requirement", async () => {
