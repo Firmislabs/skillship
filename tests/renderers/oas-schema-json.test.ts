@@ -177,6 +177,90 @@ describe("buildResponses — schema_json claim projection", () => {
     expect(schema).toEqual({ type: "object" });
   });
 
+  test("nested $ref inside schema_json payload registers stubs in components.schemas (no dangling refs)", () => {
+    // Fix 1: An inline schema_json with nested component refs like
+    // { type:"object", properties:{ data:{ type:"array", items:{ $ref:"#/components/schemas/Item" } }, next_cursor:{type:"string"} } }
+    // must cause "Item" to be stubbed in components.schemas — otherwise the OAS doc is invalid
+    // (Fern and validators hard-fail on dangling $refs).
+    const inlineSchema = {
+      type: "object",
+      properties: {
+        data: { type: "array", items: { $ref: "#/components/schemas/Item" } },
+        next_cursor: { type: "string" },
+      },
+    };
+    seedOp(graph.db, {
+      productId: "p-sj-nested",
+      surfaceId: "sfc_sj_nested",
+      opId: "op_sj_nested",
+      respId: "rsp_sj_nested",
+      sourceId: "src_sj_nested",
+      schemaJson: inlineSchema,
+    });
+
+    const doc = JSON.parse(
+      renderSyntheticOpenApi({
+        db: graph.db,
+        productId: "p-sj-nested",
+        productName: "schemajson.example",
+        overlay: OVERLAY,
+      }),
+    ) as {
+      paths: Record<
+        string,
+        { get: { responses: Record<string, { content: Record<string, { schema: unknown }> }> } }
+      >;
+      components: { schemas: Record<string, unknown> };
+    };
+
+    // The inline schema must appear verbatim in the response
+    const schema =
+      doc.paths["/items"]?.get?.responses?.["200"]?.content?.["application/json"]
+        ?.schema;
+    expect(schema).toEqual(inlineSchema);
+
+    // "Item" must be stubbed in components.schemas to avoid a dangling $ref
+    expect(doc.components.schemas).toHaveProperty("Item");
+    expect((doc.components.schemas as Record<string, unknown>)["Item"]).toEqual({ type: "object" });
+  });
+
+  test("multiple distinct nested $refs in schema_json each get a stub (dedup, alphabetical order)", () => {
+    // Fix 1 dedup: two different nested refs must both appear as stubs, each once.
+    const inlineSchema = {
+      type: "object",
+      properties: {
+        items: { type: "array", items: { $ref: "#/components/schemas/Widget" } },
+        meta: { $ref: "#/components/schemas/Meta" },
+        next_cursor: { type: "string" },
+      },
+    };
+    seedOp(graph.db, {
+      productId: "p-sj-multi",
+      surfaceId: "sfc_sj_multi",
+      opId: "op_sj_multi",
+      respId: "rsp_sj_multi",
+      sourceId: "src_sj_multi",
+      schemaJson: inlineSchema,
+    });
+
+    const doc = JSON.parse(
+      renderSyntheticOpenApi({
+        db: graph.db,
+        productId: "p-sj-multi",
+        productName: "schemajson.example",
+        overlay: OVERLAY,
+      }),
+    ) as {
+      components: { schemas: Record<string, unknown> };
+    };
+
+    // Both nested refs must be stubbed
+    expect(doc.components.schemas).toHaveProperty("Meta");
+    expect(doc.components.schemas).toHaveProperty("Widget");
+    expect((doc.components.schemas as Record<string, unknown>)["Meta"]).toEqual({ type: "object" });
+    expect((doc.components.schemas as Record<string, unknown>)["Widget"]).toEqual({ type: "object" });
+  });
+
   test("schema_ref wins over schema_json when both are present ($ref takes precedence)", () => {
     const inlineSchema = {
       type: "object",

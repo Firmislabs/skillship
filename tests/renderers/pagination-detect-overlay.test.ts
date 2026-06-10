@@ -179,6 +179,42 @@ describe("overlay product-wide style + fields", () => {
 });
 
 // ============================
+// OVERLAY: product-wide style + object-like schema (no type keyword) — Fix 2 RED
+// ============================
+
+describe("overlay product-wide style — object-like schema without type keyword (OAS 3.1)", () => {
+  test("product-wide cursor applied to qualifying GET whose 200 schema has properties but NO type keyword", () => {
+    // Fix 2: qualifiesForProductWide (tier-2 gate) currently checks schema.type === "object" literally.
+    // OAS 3.1 makes type:object optional when properties is present. This test MUST FAIL before the fix
+    // and PASS after isObjectLikeSchema covers the tier-2 gate.
+    const overlay = CodegenOverlaySchema.parse({
+      pagination: {
+        style: "cursor",
+        fields: { requestParam: "cursor", nextField: "next_cursor", itemsField: "data" },
+        perOperation: {},
+      },
+    });
+    // Schema has properties and array child but NO type keyword
+    const noTypeSchema = {
+      properties: {
+        data: { type: "array", items: {} },
+        next_cursor: { type: "string" },
+      },
+    };
+    const oasJson = makeGetOas("listItems", CURSOR_PARAMS, noTypeSchema);
+    const ops: readonly OperationInfo[] = [makeOp("listItems")];
+    const result = detectPagination(ops, oasJson, overlay);
+    // product-wide overlay must apply (currently fails at tier-2 gate due to literal type check)
+    expect(result.has("listItems")).toBe(true);
+    const plan = result.get("listItems")!;
+    expect(plan.style).toBe("cursor");
+    expect(plan.requestParam).toBe("cursor");
+    expect(plan.nextField).toBe("next_cursor");
+    expect(plan.itemsField).toBe("data");
+  });
+});
+
+// ============================
 // OVERLAY: product-wide itemsField default
 // ============================
 

@@ -4,6 +4,7 @@ import type {
   ExtractedNode,
 } from "./types.js";
 import { isObject, stableId } from "./openapi3-util.js";
+import { isObjectLikeSchema } from "../shared/oas-schema.js";
 
 export interface EmitOperationArgs {
   readonly surfaceId: string;
@@ -325,14 +326,7 @@ function pushResponseClaims(
       span_path: `${respBase}.content["${ct}"].schema.$ref`,
       confidence: "attested",
     });
-  } else if (
-    schema !== undefined &&
-    // OAS 3.1 makes `type: object` optional when `properties` is present.
-    // Accept object-like schemas: explicit type:"object" OR propertied schema without type.
-    // Still exclude $ref (handled above), arrays, and primitives.
-    (schema.type === "object" ||
-      (schema.properties !== undefined && schema.type === undefined))
-  ) {
+  } else if (schema !== undefined && isObjectLikeSchema(schema)) {
     // Inline object schema (no $ref): persist verbatim so pagination-detect
     // tier 2–3 can read response properties from the synthetic OAS.
     claims.push({

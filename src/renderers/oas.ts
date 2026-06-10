@@ -3,6 +3,7 @@ import type { Database as Sqlite3Database } from "better-sqlite3";
 import { readBestClaim } from "./claims.js";
 import { applyOverlayToDoc } from "../overlays/codegen.js";
 import type { CodegenOverlay } from "../overlays/codegen.js";
+import { collectNestedSchemaRefs } from "../shared/oas-schema.js";
 
 export interface RenderOasInput {
   readonly db: Sqlite3Database;
@@ -47,6 +48,8 @@ export function renderSyntheticOpenApi(input: RenderOasInput): string {
   // paths, components) by deliberate product decision, not alphabetical sort.
   // Determinism (spec §2.5) is satisfied because this order is fixed across
   // runs; nested data-derived objects ARE alphabetically sorted via sortKeys.
+  // Exception: inline schema_json payloads are emitted verbatim (key order
+  // reflects the original OAS source) rather than re-sorted.
   const doc: Record<string, unknown> = {
     openapi: "3.1.0",
     info: { title: input.productName, version: surfaceVersion(input.db, input.productId) },
@@ -141,29 +144,44 @@ function buildParams(db: Sqlite3Database, opId: string, isGraphql: boolean, sche
   return { parameters, requestBody };
 }
 
+function pushResponseSchemaClaim(
+  db: Sqlite3Database,
+  respId: string,
+  schemas: Record<string, unknown>,
+): Record<string, unknown> {
+  const REF_PREFIX = "#/components/schemas/";
+  const rawRef = readBestClaim(db, respId, "schema_ref");
+  const refName = rawRef === undefined
+    ? undefined
+    : (rawRef.startsWith(REF_PREFIX) ? rawRef.slice(REF_PREFIX.length) : rawRef);
+  if (refName !== undefined) {
+    schemas[refName] = { type: "object" };
+    return { $ref: `${REF_PREFIX}${refName}` };
+  }
+  const rawSchemaJson = readJson(db, respId, "schema_json");
+  const inlineSchema = (rawSchemaJson !== null && typeof rawSchemaJson === "object" && !Array.isArray(rawSchemaJson))
+    ? rawSchemaJson as Record<string, unknown>
+    : undefined;
+  if (inlineSchema !== undefined) {
+    // Walk the inline schema for nested component refs and register stubs so the
+    // synthetic OAS document has no dangling $refs (Fern and validators hard-fail).
+    for (const nestedName of collectNestedSchemaRefs(inlineSchema)) {
+      if (schemas[nestedName] === undefined) schemas[nestedName] = { type: "object" };
+    }
+    return inlineSchema;
+  }
+  return { type: "object" };
+}
+
 function buildResponses(db: Sqlite3Database, opId: string, schemas: Record<string, unknown>): Record<string, unknown> {
   const rows = db.prepare(
     `SELECT id FROM nodes WHERE kind = 'response_shape' AND parent_id = ? ORDER BY id`,
   ).all(opId) as { id: string }[];
   const responses: Record<string, unknown> = {};
-  const REF_PREFIX = "#/components/schemas/";
   for (const r of rows) {
     const status = String(readJson(db, r.id, "status_code") ?? "default");
     const ct = readBestClaim(db, r.id, "content_type") ?? "application/json";
-    const rawRef = readBestClaim(db, r.id, "schema_ref");
-    const refName = rawRef === undefined
-      ? undefined
-      : (rawRef.startsWith(REF_PREFIX) ? rawRef.slice(REF_PREFIX.length) : rawRef);
-    if (refName !== undefined) schemas[refName] = { type: "object" };
-    const rawSchemaJson = refName === undefined ? readJson(db, r.id, "schema_json") : undefined;
-    const inlineSchema = (rawSchemaJson !== null && typeof rawSchemaJson === "object" && !Array.isArray(rawSchemaJson))
-      ? rawSchemaJson as Record<string, unknown>
-      : undefined;
-    const responseSchema: Record<string, unknown> = refName !== undefined
-      ? { $ref: `${REF_PREFIX}${refName}` }
-      : inlineSchema !== undefined
-        ? inlineSchema
-        : { type: "object" };
+    const responseSchema = pushResponseSchemaClaim(db, r.id, schemas);
     responses[status] = {
       description: status,
       content: { [ct]: { schema: responseSchema } },

@@ -161,8 +161,7 @@ describe("pagination-detect end-to-end: inline schema passthrough activates auto
 
     // The single-item GET should NOT be detected as paginated
     const getOp = ops.find((o) => o.path.includes("{id}") && o.method === "GET");
-    if (getOp !== undefined) {
-      expect(planMap.has(getOp.operationId)).toBe(false);
-    }
+    expect(getOp).toBeDefined();
+    expect(planMap.has(getOp!.operationId)).toBe(false);
   });
 });

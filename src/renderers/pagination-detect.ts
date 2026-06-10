@@ -8,6 +8,7 @@
 
 import type { OperationInfo } from "../sdk-plugins/resource-tree.js";
 import type { CodegenOverlay } from "../overlays/codegen.js";
+import { isObjectLikeSchema } from "../shared/oas-schema.js";
 
 export interface PaginationPlan {
   readonly style: "cursor" | "offset" | "page";
@@ -132,7 +133,7 @@ function getQueryParams(oasOp: OasOperation): readonly OasParam[] {
 function qualifiesForProductWide(oasOp: OasOperation, op: OperationInfo): boolean {
   if (op.method !== "GET") return false;
   const schema = get200Schema(oasOp);
-  if (!schema || schema.type !== "object") return false;
+  if (!schema || !isObjectLikeSchema(schema)) return false;
   const props = schema.properties ?? {};
   return Object.values(props).some((p) => p.type === "array");
 }
@@ -247,14 +248,7 @@ function resolveOperationPlan(
   // OAS 3.1 makes `type: object` optional when `properties` is present.
   // Accept object-like schemas: explicit type:"object" OR propertied schema without type.
   // Still exclude arrays and primitives (they lack a meaningful `properties` map).
-  if (
-    !schema ||
-    !(
-      schema.type === "object" ||
-      (schema.properties !== undefined && schema.type === undefined)
-    )
-  )
-    return null;
+  if (!schema || !isObjectLikeSchema(schema)) return null;
 
   // Hoist the exactly-one-array-prop check — both auto-detect branches need it.
   const props = schema.properties ?? {};
