@@ -19,59 +19,33 @@ export interface PaginationPlan {
 
 // ---- Style-specific conventional defaults ----
 
-const CURSOR_DEFAULTS = {
-  requestParam: "cursor",
-  pageSizeParam: null as string | null,
-  itemsField: "data",
-  nextField: "next_cursor",
-} as const;
-
-const OFFSET_DEFAULTS = {
-  requestParam: "offset",
-  pageSizeParam: null as string | null,
-  itemsField: "data",
-  nextField: null as string | null,
-} as const;
-
-const PAGE_DEFAULTS = {
-  requestParam: "page",
-  pageSizeParam: null as string | null,
-  itemsField: "data",
-  nextField: null as string | null,
-} as const;
-
 type PaginationStyle = "cursor" | "offset" | "page";
 type OverlayFields = NonNullable<NonNullable<CodegenOverlay["pagination"]>["fields"]>;
+
+interface StyleDefaults {
+  readonly requestParam: string;
+  readonly pageSizeParam: string | null;
+  readonly itemsField: string;
+  readonly nextField: string | null;
+}
+
+const STYLE_DEFAULTS: Record<PaginationStyle, StyleDefaults> = {
+  cursor: { requestParam: "cursor", pageSizeParam: null, itemsField: "data", nextField: "next_cursor" },
+  offset: { requestParam: "offset", pageSizeParam: null, itemsField: "data", nextField: null },
+  page:   { requestParam: "page",   pageSizeParam: null, itemsField: "data", nextField: null },
+};
 
 function planFromOverlayStyle(
   style: PaginationStyle,
   fields: OverlayFields,
 ): PaginationPlan {
-  if (style === "cursor") {
-    return {
-      style,
-      requestParam: fields.requestParam ?? CURSOR_DEFAULTS.requestParam,
-      pageSizeParam: fields.pageSizeParam ?? CURSOR_DEFAULTS.pageSizeParam,
-      itemsField: fields.itemsField ?? CURSOR_DEFAULTS.itemsField,
-      nextField: fields.nextField ?? CURSOR_DEFAULTS.nextField,
-    };
-  }
-  if (style === "offset") {
-    return {
-      style,
-      requestParam: fields.requestParam ?? OFFSET_DEFAULTS.requestParam,
-      pageSizeParam: fields.pageSizeParam ?? OFFSET_DEFAULTS.pageSizeParam,
-      itemsField: fields.itemsField ?? OFFSET_DEFAULTS.itemsField,
-      nextField: fields.nextField ?? OFFSET_DEFAULTS.nextField,
-    };
-  }
-  // page
+  const d = STYLE_DEFAULTS[style];
   return {
     style,
-    requestParam: fields.requestParam ?? PAGE_DEFAULTS.requestParam,
-    pageSizeParam: fields.pageSizeParam ?? PAGE_DEFAULTS.pageSizeParam,
-    itemsField: fields.itemsField ?? PAGE_DEFAULTS.itemsField,
-    nextField: fields.nextField ?? PAGE_DEFAULTS.nextField,
+    requestParam: fields.requestParam ?? d.requestParam,
+    pageSizeParam: fields.pageSizeParam ?? d.pageSizeParam,
+    itemsField: fields.itemsField ?? d.itemsField,
+    nextField: fields.nextField ?? d.nextField,
   };
 }
 
@@ -167,13 +141,9 @@ function qualifiesForProductWide(oasOp: OasOperation, op: OperationInfo): boolea
 
 function autoDetectCursor(
   oasOp: OasOperation,
-  schema: OasSchema,
+  props: Record<string, OasSchema>,
+  itemsField: string,
 ): PaginationPlan | null {
-  const props = schema.properties ?? {};
-  const arrayProps = Object.keys(props).filter((k) => props[k]?.type === "array");
-  if (arrayProps.length !== 1) return null;
-  const itemsField = arrayProps[0]!;
-
   // Find a cursor-like response field
   const nextField = Object.keys(props).find((k) => CURSOR_RESPONSE_FIELDS.has(k)) ?? null;
   if (!nextField) return null;
@@ -196,13 +166,8 @@ function autoDetectCursor(
 
 function autoDetectOffsetOrPage(
   oasOp: OasOperation,
-  schema: OasSchema,
+  itemsField: string,
 ): PaginationPlan | null {
-  const props = schema.properties ?? {};
-  const arrayProps = Object.keys(props).filter((k) => props[k]?.type === "array");
-  if (arrayProps.length !== 1) return null;
-  const itemsField = arrayProps[0]!;
-
   const queryParams = getQueryParams(oasOp);
   const intParams = new Set(
     queryParams
@@ -237,7 +202,7 @@ export function detectPagination(
   oasJson: string,
   overlay: CodegenOverlay,
 ): ReadonlyMap<string, PaginationPlan> {
-  const doc = (oasJson.trim() === "{}" ? {} : JSON.parse(oasJson)) as OasDoc;
+  const doc = JSON.parse(oasJson) as OasDoc;
   const result = new Map<string, PaginationPlan>();
   const paginationOverlay = overlay.pagination;
 
@@ -281,9 +246,15 @@ function resolveOperationPlan(
   const schema = get200Schema(oasOp);
   if (!schema || schema.type !== "object") return null;
 
+  // Hoist the exactly-one-array-prop check — both auto-detect branches need it.
+  const props = schema.properties ?? {};
+  const arrayProps = Object.keys(props).filter((k) => props[k]?.type === "array");
+  if (arrayProps.length !== 1) return null;
+  const itemsField = arrayProps[0]!;
+
   // Cursor checked first (takes precedence over offset/page)
-  const cursorPlan = autoDetectCursor(oasOp, schema);
+  const cursorPlan = autoDetectCursor(oasOp, props, itemsField);
   if (cursorPlan !== null) return cursorPlan;
 
-  return autoDetectOffsetOrPage(oasOp, schema);
+  return autoDetectOffsetOrPage(oasOp, itemsField);
 }

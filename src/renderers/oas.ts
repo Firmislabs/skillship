@@ -155,9 +155,18 @@ function buildResponses(db: Sqlite3Database, opId: string, schemas: Record<strin
       ? undefined
       : (rawRef.startsWith(REF_PREFIX) ? rawRef.slice(REF_PREFIX.length) : rawRef);
     if (refName !== undefined) schemas[refName] = { type: "object" };
+    const rawSchemaJson = refName === undefined ? readJson(db, r.id, "schema_json") : undefined;
+    const inlineSchema = (rawSchemaJson !== null && typeof rawSchemaJson === "object" && !Array.isArray(rawSchemaJson))
+      ? rawSchemaJson as Record<string, unknown>
+      : undefined;
+    const responseSchema: Record<string, unknown> = refName !== undefined
+      ? { $ref: `${REF_PREFIX}${refName}` }
+      : inlineSchema !== undefined
+        ? inlineSchema
+        : { type: "object" };
     responses[status] = {
       description: status,
-      content: { [ct]: { schema: refName !== undefined ? { $ref: `${REF_PREFIX}${refName}` } : { type: "object" } } },
+      content: { [ct]: { schema: responseSchema } },
     };
   }
   if (Object.keys(responses).length === 0) responses["200"] = { description: "OK" };

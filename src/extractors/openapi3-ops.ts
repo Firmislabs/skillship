@@ -325,6 +325,16 @@ function pushResponseClaims(
       span_path: `${respBase}.content["${ct}"].schema.$ref`,
       confidence: "attested",
     });
+  } else if (schema !== undefined && schema.type === "object") {
+    // Inline object schema (no $ref): persist verbatim so pagination-detect
+    // tier 2–3 can read response properties from the synthetic OAS.
+    claims.push({
+      node_id: respId,
+      field: "schema_json",
+      value: schema,
+      span_path: `${respBase}.content["${ct}"].schema`,
+      confidence: "attested",
+    });
   }
   const example = ctBody !== undefined ? pickExampleFromBody(ctBody) : undefined;
   if (example !== undefined) {
