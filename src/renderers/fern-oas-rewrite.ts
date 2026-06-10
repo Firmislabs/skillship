@@ -37,20 +37,29 @@ export function camelToSnake(name: string): string {
 
 /**
  * Builds the x-fern-pagination stamp for an operation.
- * cursor → { cursor, next_cursor, results } with $request./$response. prefixes.
+ * cursor (nextField non-null) → { cursor, next_cursor, results } with $request./$response. prefixes.
+ * cursor (nextField null) → null; no stamp emitted (Fern requires next_cursor for cursor pagination).
  * offset → { offset, results } with $request./$response. prefixes.
  * page → offset form using the page requestParam (Fern has no distinct page type
  *        at this syntax level — recorded in KNOWN_GAPS by Task 12).
  */
-function buildPaginationStamp(plan: PaginationPlan): Record<string, string> {
-  if (plan.style === "cursor" && plan.nextField !== null) {
+function buildPaginationStamp(plan: PaginationPlan): Record<string, string> | null {
+  if (plan.style === "cursor") {
+    // cursor with no nextField cannot be expressed in Fern's pagination config — skip.
+    if (plan.nextField === null) return null;
     return {
       cursor: `$request.${plan.requestParam}`,
       next_cursor: `$response.${plan.nextField}`,
       results: `$response.${plan.itemsField}`,
     };
   }
-  // offset and page both emit the offset form
+  if (plan.style === "offset") {
+    return {
+      offset: `$request.${plan.requestParam}`,
+      results: `$response.${plan.itemsField}`,
+    };
+  }
+  // page: emit the offset form using the page param (Fern has no distinct page type).
   return {
     offset: `$request.${plan.requestParam}`,
     results: `$response.${plan.itemsField}`,
@@ -101,7 +110,10 @@ export function buildFernOas(
       }
       const plan = plans.get(originalOpId);
       if (plan !== undefined) {
-        op["x-fern-pagination"] = buildPaginationStamp(plan);
+        const stamp = buildPaginationStamp(plan);
+        if (stamp !== null) {
+          op["x-fern-pagination"] = stamp;
+        }
       }
     }
   }

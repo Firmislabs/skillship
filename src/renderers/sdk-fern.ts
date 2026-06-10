@@ -71,14 +71,21 @@ export async function renderFernSdks(
 
 /**
  * Computes a FernOAuthPlan from the OAS security schemes and the synthetic OAS.
- * Returns null unless ALL of the following hold:
+ * Returns null unless ALL of the following hold (in execution order):
  *  1. An oauth2ClientCredentials descriptor exists with non-null tokenUrl.
  *  2. The tokenUrl's path matches an OAS path that has a POST operation
  *     (path-presence gate ONLY — no host comparison since synthetic OAS has no
  *     servers block).
- *  3. The token op's 200 response schema has at least an access_token property.
- *  4. The token op's requestBody schema has at least one named property.
- *     (If absent, the plan is null — Fern's request-properties cannot be empty.)
+ *  3. The token op's requestBody schema has BOTH client_id AND client_secret
+ *     properties. (Token bodies using Basic-only client auth lack them — fall
+ *     back to null/bearer. Fern's request-properties must not be empty.)
+ *  4. The token op's 200 response schema has at least an access_token property.
+ *
+ * NOTE: Gate 3 is currently always false in production — the synthetic OAS
+ * carries no token-op requestBody. Request-body property projection is the
+ * reactivation trigger; see KNOWN_GAPS (Task 12). The whitelist projection in
+ * extractRequestBodyProps / extractResponseProps pins correct behavior for when
+ * that body lands.
  */
 export function computeFernOAuthPlan(
   schemes: readonly AuthSchemeDescriptor[],
@@ -87,9 +94,10 @@ export function computeFernOAuthPlan(
   const descriptor = findOAuth2Descriptor(schemes);
   if (descriptor === null) return null;
 
-  // descriptor.tokenUrl is non-null (findOAuth2Descriptor gate), but TypeScript
-  // cannot narrow through the function boundary — assert the type here.
-  const tokenUrl = descriptor.tokenUrl as string;
+  // descriptor.tokenUrl is non-null (findOAuth2Descriptor gate). Narrow via
+  // type guard rather than casting to avoid the `as string` smell.
+  const { tokenUrl } = descriptor;
+  if (tokenUrl === null) return null;
   const tokenPath = extractPath(tokenUrl);
   if (tokenPath === null) return null;
 
@@ -168,9 +176,11 @@ function findPostOperation(doc: OasDoc, path: string): OasOperation | null {
 }
 
 /**
- * Extracts request body properties from the token op and maps them to
- * Fern request-properties format: { "kebab-key": "$request.field_name" }.
- * Returns null if no requestBody or no named properties exist.
+ * Extracts the whitelisted request-body properties for Fern's get-token config.
+ * Projects ONLY client_id → "client-id" and client_secret → "client-secret".
+ * Returns null when either property is absent (token bodies using Basic-only
+ * client auth lack both — emitting an empty or partial map is not valid for
+ * Fern's request-properties block).
  */
 function extractRequestBodyProps(
   op: OasOperation,
@@ -180,21 +190,22 @@ function extractRequestBodyProps(
     const schema = mediaType?.schema;
     if (!schema?.properties) continue;
     const props = schema.properties;
-    const keys = Object.keys(props);
-    if (keys.length === 0) continue;
-    const result: Record<string, string> = {};
-    for (const key of keys) {
-      result[toKebab(key)] = `$request.${key}`;
-    }
-    return result;
+    // Gate: BOTH client_id AND client_secret must be present.
+    if (!("client_id" in props) || !("client_secret" in props)) continue;
+    return {
+      "client-id": "$request.client_id",
+      "client-secret": "$request.client_secret",
+    };
   }
   return null;
 }
 
 /**
- * Extracts 200 response properties from the token op and maps them to
- * Fern response-properties format: { "kebab-key": "$response.field_name" }.
- * Returns null if no 200 response or no access_token property exists.
+ * Extracts the whitelisted response properties for Fern's get-token config.
+ * Projects ONLY access_token, expires_in, refresh_token — each only when
+ * present in the schema. Extra fields (token_type, scope, etc.) are ignored;
+ * Fern's get-token response-properties must contain only the token fields it
+ * recognises. Returns null if access_token is absent (required sentinel).
  */
 function extractResponseProps(
   op: OasOperation,
@@ -206,18 +217,14 @@ function extractResponseProps(
     if (!schema?.properties) continue;
     const props = schema.properties;
     if (!("access_token" in props)) continue;
-    const result: Record<string, string> = {};
-    for (const key of Object.keys(props)) {
-      result[toKebab(key)] = `$response.${key}`;
-    }
+    const result: Record<string, string> = {
+      "access-token": "$response.access_token",
+    };
+    if ("expires_in" in props) result["expires-in"] = "$response.expires_in";
+    if ("refresh_token" in props) result["refresh-token"] = "$response.refresh_token";
     return result;
   }
   return null;
-}
-
-/** Converts underscore_names to kebab-names for Fern property keys. */
-function toKebab(name: string): string {
-  return name.replace(/_/g, "-");
 }
 
 async function renderOneLang(

@@ -2,6 +2,9 @@
 // Direct unit tests for computeFernOAuthPlan (exported from sdk-fern.ts).
 // No Docker, no file I/O — purely functional.
 //
+// NOTE: The positive path is dormant in production; pins behavior for when
+// request-body projection lands (the synthetic OAS carries no token-op requestBody).
+//
 // Coverage:
 //  1. Full positive path: descriptor + OAS → non-null plan with exact shape.
 //  2. Plan fed into buildFernProject(["rust"]) → generators.yml parses to
@@ -9,6 +12,8 @@
 //  3. Gate failures: one test per null-return condition.
 //  4. expires_in absent from 200 response: implementation includes ONLY
 //     properties present in the schema — no dangling ref.
+//  5. Whitelist projection: extra props (grant_type/scope/etc.) are excluded.
+//  6. Gate tightening: requestBody without BOTH client_id+client_secret → null.
 
 import { describe, expect, test } from "vitest";
 import { parse as parseYaml } from "yaml";
@@ -28,7 +33,34 @@ function makeOAuthDescriptor(tokenUrl: string | null = "https://x.test/oauth/tok
   };
 }
 
-/** Returns an OAS JSON string with a POST /oauth/token carrying client_id/client_secret + access_token/expires_in. */
+/** Builds the requestBody block for makeOasJson. */
+function makeRequestBody(props: Record<string, unknown>): object {
+  return {
+    content: {
+      "application/x-www-form-urlencoded": {
+        schema: { type: "object", properties: props },
+      },
+    },
+  };
+}
+
+/** Builds the 200 response block for makeOasJson. */
+function makeResponse200(includeAccessToken: boolean, includeExpiresIn: boolean): object {
+  const responseProperties: Record<string, unknown> = {};
+  if (includeAccessToken) responseProperties["access_token"] = { type: "string" };
+  if (includeExpiresIn) responseProperties["expires_in"] = { type: "integer" };
+  return {
+    "200": {
+      content: {
+        "application/json": {
+          schema: { type: "object", properties: responseProperties },
+        },
+      },
+    },
+  };
+}
+
+/** Returns an OAS JSON string with a POST /oauth/token token operation. */
 function makeOasJson(opts: {
   includePath?: boolean;
   includePost?: boolean;
@@ -46,37 +78,9 @@ function makeOasJson(opts: {
     includeExpiresIn = true,
   } = opts;
 
-  const responseProperties: Record<string, unknown> = {};
-  if (includeAccessToken) responseProperties["access_token"] = { type: "string" };
-  if (includeExpiresIn) responseProperties["expires_in"] = { type: "integer" };
-
   const postOp = {
-    ...(includeRequestBody
-      ? {
-          requestBody: {
-            content: {
-              "application/x-www-form-urlencoded": {
-                schema: {
-                  type: "object",
-                  properties: requestBodyProps,
-                },
-              },
-            },
-          },
-        }
-      : {}),
-    responses: {
-      "200": {
-        content: {
-          "application/json": {
-            schema: {
-              type: "object",
-              properties: responseProperties,
-            },
-          },
-        },
-      },
-    },
+    ...(includeRequestBody ? { requestBody: makeRequestBody(requestBodyProps) } : {}),
+    responses: makeResponse200(includeAccessToken, includeExpiresIn),
   };
 
   const paths: Record<string, unknown> = {};
@@ -208,5 +212,116 @@ describe("computeFernOAuthPlan — gate failures → null", () => {
     const schemes: readonly AuthSchemeDescriptor[] = [makeOAuthDescriptor()];
     const oasJson = makeOasJson({ includeAccessToken: false, includeExpiresIn: true });
     expect(computeFernOAuthPlan(schemes, oasJson)).toBeNull();
+  });
+
+  // Gate-tightening: BOTH client_id AND client_secret required.
+  test("requestBody has only grant_type+scope (no client creds) → null", () => {
+    const schemes: readonly AuthSchemeDescriptor[] = [makeOAuthDescriptor()];
+    const oasJson = makeOasJson({
+      requestBodyProps: {
+        grant_type: { type: "string" },
+        scope: { type: "string" },
+      },
+    });
+    expect(computeFernOAuthPlan(schemes, oasJson)).toBeNull();
+  });
+
+  test("requestBody has client_id but no client_secret → null", () => {
+    const schemes: readonly AuthSchemeDescriptor[] = [makeOAuthDescriptor()];
+    const oasJson = makeOasJson({
+      requestBodyProps: {
+        client_id: { type: "string" },
+        grant_type: { type: "string" },
+      },
+    });
+    expect(computeFernOAuthPlan(schemes, oasJson)).toBeNull();
+  });
+});
+
+// ---- 4. Whitelist projection — extra props excluded ----
+
+describe("computeFernOAuthPlan — whitelist projection", () => {
+  test("token op with grant_type/token_type/scope/audience — requestProps contains ONLY client-id and client-secret", () => {
+    const schemes: readonly AuthSchemeDescriptor[] = [makeOAuthDescriptor()];
+    const oasJson = makeOasJson({
+      requestBodyProps: {
+        client_id: { type: "string" },
+        client_secret: { type: "string" },
+        grant_type: { type: "string" },
+        token_type: { type: "string" },
+        scope: { type: "string" },
+        audience: { type: "string" },
+      },
+    });
+
+    const plan = computeFernOAuthPlan(schemes, oasJson);
+
+    expect(plan).not.toBeNull();
+    // Whitelisted only — no grant-type, token-type, scope, audience
+    expect(plan!.requestProps).toEqual({
+      "client-id": "$request.client_id",
+      "client-secret": "$request.client_secret",
+    });
+    expect("grant-type" in plan!.requestProps).toBe(false);
+    expect("token-type" in plan!.requestProps).toBe(false);
+    expect("scope" in plan!.requestProps).toBe(false);
+    expect("audience" in plan!.requestProps).toBe(false);
+  });
+
+  test("response with extra fields (token_type/scope) — responseProps contains ONLY whitelisted keys present in schema", () => {
+    const schemes: readonly AuthSchemeDescriptor[] = [makeOAuthDescriptor()];
+    // Build OAS manually to include extra response fields
+    const oasDoc = {
+      openapi: "3.1.0",
+      paths: {
+        "/oauth/token": {
+          post: {
+            requestBody: {
+              content: {
+                "application/x-www-form-urlencoded": {
+                  schema: {
+                    type: "object",
+                    properties: {
+                      client_id: { type: "string" },
+                      client_secret: { type: "string" },
+                    },
+                  },
+                },
+              },
+            },
+            responses: {
+              "200": {
+                content: {
+                  "application/json": {
+                    schema: {
+                      type: "object",
+                      properties: {
+                        access_token: { type: "string" },
+                        expires_in: { type: "integer" },
+                        refresh_token: { type: "string" },
+                        token_type: { type: "string" },
+                        scope: { type: "string" },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+    };
+
+    const plan = computeFernOAuthPlan(schemes, JSON.stringify(oasDoc));
+
+    expect(plan).not.toBeNull();
+    // Whitelisted response keys: access_token, expires_in, refresh_token
+    expect(plan!.responseProps).toEqual({
+      "access-token": "$response.access_token",
+      "expires-in": "$response.expires_in",
+      "refresh-token": "$response.refresh_token",
+    });
+    expect("token-type" in plan!.responseProps).toBe(false);
+    expect("scope" in plan!.responseProps).toBe(false);
   });
 });

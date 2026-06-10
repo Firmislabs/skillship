@@ -196,12 +196,35 @@ describe("buildFernOas — x-fern-pagination stamping", () => {
     expect(doc.paths["/logs"].get["x-fern-pagination"]).toBeUndefined();
   });
 
-  test("input OAS is never mutated (pagination stamp isolation)", () => {
+  // Fix 3(b): cursor plan with null nextField must NOT emit any stamp (not silently
+  // fall through to the offset form).
+  test("cursor plan with null nextField emits no x-fern-pagination stamp", () => {
+    const cursorNullNext: PaginationPlan = {
+      style: "cursor",
+      requestParam: "cursor",
+      pageSizeParam: null,
+      itemsField: "data",
+      nextField: null,
+    };
+    const plans = new Map<string, PaginationPlan>([["op_cursor", cursorNullNext]]);
+    const ops = extractOperations(oasPagination);
+    const out = buildFernOas(oasPagination, ops, CodegenOverlaySchema.parse({}), plans);
+    const doc = JSON.parse(out);
+
+    // Must be absent — emitting the offset form for a cursor plan without nextField
+    // would silently produce an incorrect Fern config.
+    expect(doc.paths["/items"].get["x-fern-pagination"]).toBeUndefined();
+  });
+
+  // Fix 3(d): two calls with identical inputs must produce byte-identical output
+  // (determinism test — replaces vacuous string-equality check).
+  test("two calls with the same inputs produce byte-identical output (determinism)", () => {
     const plans = new Map<string, PaginationPlan>([["op_cursor", cursorPlan]]);
     const ops = extractOperations(oasPagination);
-    buildFernOas(oasPagination, ops, CodegenOverlaySchema.parse({}), plans);
-    // Original string must be byte-identical
-    const original = JSON.parse(oasPagination);
-    expect(original.paths["/items"].get["x-fern-pagination"]).toBeUndefined();
+    const out1 = buildFernOas(oasPagination, ops, CodegenOverlaySchema.parse({}), plans);
+    const out2 = buildFernOas(oasPagination, ops, CodegenOverlaySchema.parse({}), plans);
+    expect(out1).toBe(out2);
+    // Input is not mutated: the original string still parses without x-fern-pagination.
+    expect(JSON.parse(oasPagination).paths["/items"].get["x-fern-pagination"]).toBeUndefined();
   });
 });
