@@ -90,7 +90,13 @@ export function applyOverlayToDescriptor(
       typeof overlayAuth.valuePrefix === "string"
         ? overlayAuth.valuePrefix
         : desc.valuePrefix;
-    return { kind: "apiKey", id: desc.id, in: loc, name, valuePrefix };
+    return {
+      kind: "apiKey",
+      id: desc.id,
+      in: loc,
+      name,
+      ...(valuePrefix !== undefined ? { valuePrefix } : {}),
+    };
   }
 
   return desc;
