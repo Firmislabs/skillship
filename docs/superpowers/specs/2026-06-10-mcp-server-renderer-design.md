@@ -138,9 +138,11 @@ method names. Params derive from the synthetic OAS operation (path/query
 params; the synthetic OAS emits only stub body schemas, so every op with a
 requestBody gets a single opaque `body` object param — describe documents it
 as such; named body fields are future work tied to request-body projection).
-The interface gains a `searchText: string` field — the pre-lowercased
-concatenation used by the scorer — while `id`/`summary`/`description` keep
-original casing for describe output.
+**Executed deviation (Wave-3 review):** the planned `searchText` field was
+DROPPED — the shipped scorer tokenizes the original fields per-field at runtime
+(required for true field weighting; a flat concat cannot distinguish a summary
+hit from a description hit), leaving `searchText` as dead per-entry ballast
+scaling with op count. `id`/`summary`/`description` keep original casing.
 
 ### 4.4 The protocol module (`mcp-protocol.ts`, generated, static)
 
