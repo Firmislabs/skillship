@@ -274,6 +274,7 @@ src/sdk-plugins/auth.ts          # NEW: emits generated auth.ts
 src/sdk-plugins/pagination.ts    # NEW: emits generated pagination.ts + resources glue
 src/renderers/pagination-detect.ts  # NEW: shared detection (TS plugin + Fern rewrite)
 src/renderers/sdk-utils.ts       # extractAuthSchemes: extended mapping, no throws
+src/extractors/openapi3.ts       # pushAuthClaims: ingest oauth2 flows claim
 src/renderers/oas.ts             # securitySchemeFor: project real oauth2 flows
 src/renderers/fern-oas-rewrite.ts   # + x-fern-pagination stamping
 src/renderers/fern-project.ts    # + auth-schemes / retry config (spike-gated)
