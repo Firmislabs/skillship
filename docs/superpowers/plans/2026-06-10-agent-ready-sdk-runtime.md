@@ -86,7 +86,9 @@ Python: `max_retries` constructor param (default 2 — matches overlay default) 
 | `tests/sdk-plugins/runtime.test.ts` (M) | Retry-loop + sleep-injection assertions |
 | `tests/renderers/pagination-detect.test.ts` (C) | Unit tests for shared detection |
 | `tests/renderers/sdk-runtime-behavior.test.ts` (C) | Behavioral suite importing the committed golden's TS sources (fake fetch + recorded sleep) |
-| `tests/renderers/sdk-utils.test.ts` (M) | Throw tests flip to mapping tests |
+| `tests/renderers/sdk-utils.test.ts` (C) | New file: descriptor mapping table tests |
+| `tests/renderers/sdk.test.ts` (M) | Render-level oauth2 throw test → renders-successfully test |
+| `src/extractors/openapi3.ts` (M) | `pushAuthClaims` emits oauth2 `flows` claim |
 | `tests/renderers/sdk-golden-helpers.ts` (M) | + `AGENT_FIXTURE_ARGS`, `renderSdkGoldenAgent` |
 | `tests/renderers/sdk-fern-golden-helpers.ts` (M) | + agent fixture tree names |
 | `scripts/gen-sdk-goldens.mts` (M) | + agent fixture in TS and `--langs` regen |
@@ -129,25 +131,31 @@ Run all commands from the worktree root. After each task: commit (exact messages
 
 **Files:**
 - Modify: `src/renderers/sdk-utils.ts:37-62`, `src/sdk-plugins/runtime.ts:9-12` (descriptor type)
-- Test: `tests/renderers/sdk-utils.test.ts`
+- Modify: `tests/renderers/sdk.test.ts:176-201` — the existing "throws on oauth2" coverage lives HERE (render-level), not in a sdk-utils test file
+- Test: Create `tests/renderers/sdk-utils.test.ts` (new file) for the mapping table
 
-- [ ] **Step 1: Failing tests** for the full mapping table (spec §4.1): oauth2+clientCredentials flow → `{ kind: "oauth2ClientCredentials", id, tokenUrl: "<from flow>", scopes: [...] }`; oauth2 with empty/other flows → same kind with `tokenUrl: null, scopes: []`; openIdConnect → `{ kind: "external", id, schemeType: "openIdConnect" }`; mutualTLS → external; unknown http scheme → external; existing bearer/basic/apiKey unchanged. Plus: the old "throws on oauth2" test is REMOVED (replaced by mapping assertions — never `.skip`).
+- [ ] **Step 1: Failing tests** for the full mapping table (spec §4.1): oauth2+clientCredentials flow → `{ kind: "oauth2ClientCredentials", id, tokenUrl: "<from flow>", scopes: [...] }`; oauth2 with empty/other flows → same kind with `tokenUrl: null, scopes: []`; openIdConnect → `{ kind: "external", id, schemeType: "openIdConnect" }`; mutualTLS → external; unknown http scheme → external; existing bearer/basic/apiKey unchanged. In the SAME commit, REPLACE the render-level throw test in `tests/renderers/sdk.test.ts:176-201`: an oauth2-only spec now renders SUCCESSFULLY, and its interim `AuthConfig` falls back to the existing `{ readonly kind: "none" }` sentinel (oauth2/external kinds are no-op until Task 8) — never `.skip`, never leave it red.
 - [ ] **Step 2: Run → FAIL** (current code throws).
-- [ ] **Step 3: Implement.** Extend `AuthSchemeDescriptor` union in `src/sdk-plugins/runtime.ts` exactly as spec §4.1. Rewrite the throw branch in `extractAuthSchemes` into the mapping (read `flows.clientCredentials.tokenUrl` + `Object.keys(flows.clientCredentials.scopes ?? {})`). Overlay `auth.mode === "oauth2-client-credentials"` forces the oauth2 descriptor; overlay `auth.tokenUrl` fills a null tokenUrl. Explicit return type; ≤50-line functions (extract `mapSecurityScheme(id, raw): AuthSchemeDescriptor`). **Golden-lock safety:** where the runtime emitter switches over descriptor kinds (`buildAuthUnion`/`buildInjectBody`), the NEW kinds get no-op branches in this task — they contribute NOTHING to emitted output until Task 8 (existing fixtures are bearer/apiKey/basic-only, so rendered output is unchanged and the golden lock stays green; verify with `npx vitest run tests/renderers/sdk-golden.test.ts`).
+- [ ] **Step 3: Implement.** Extend `AuthSchemeDescriptor` union in `src/sdk-plugins/runtime.ts` exactly as spec §4.1. Rewrite the throw branch in `extractAuthSchemes` into the mapping (read `flows.clientCredentials.tokenUrl` + `Object.keys(flows.clientCredentials.scopes ?? {})`). Overlay `auth.mode === "oauth2-client-credentials"` forces the oauth2 descriptor; overlay `auth.tokenUrl` fills a null tokenUrl. Explicit return type; ≤50-line functions (extract `mapSecurityScheme(id, raw): AuthSchemeDescriptor`). **Golden-lock safety:** where the runtime emitter switches over descriptor kinds (`buildAuthUnion`/`buildInjectBody` at `src/sdk-plugins/runtime.ts:105-140` — kind-equality ifs, not exhaustive switches), the NEW kinds get no-op branches in this task — they contribute NOTHING to emitted output until Task 8. **Interim invariant:** when descriptors contain ONLY new kinds, `buildAuthUnion` must fall back to the existing `{ readonly kind: "none" }` sentinel (an empty join would emit `export type AuthConfig = ;` — a tsc-gate failure). Existing fixtures are bearer-only, so rendered output is unchanged and the golden lock stays green; verify with `npx vitest run tests/renderers/sdk-golden.test.ts`, and `npm test` must be exit 0 at this commit.
 - [ ] **Step 4: Run → PASS** + `npm run typecheck` → exit 0.
 - [ ] **Step 5: Commit.** `feat(sdk): map oauth2/external auth schemes instead of throwing`
 
-### Task 4: OAS renderer projects real oauth2 flows
+### Task 4: oauth2 flows — extractor ingestion + OAS renderer projection
+
+**The full chain must work end-to-end** (review round 3 finding): the `AuthSchemeNode` TYPE has a `flows` field, but `pushAuthClaims` in `src/extractors/openapi3.ts:167-198` never emits a `flows` claim (only the mcpWellKnown extractor does). Without ingestion, Task 8's behavioral tests and Tasks 10–11's Fern OAuth plan would silently get `tokenUrl: null`. This task closes BOTH ends.
 
 **Files:**
+- Modify: `src/extractors/openapi3.ts:167-198` (`pushAuthClaims` emits the oauth2 `flows` object as a claim, verbatim, when the securityScheme has one)
 - Modify: `src/renderers/oas.ts:167-193`
-- Test: `tests/renderers/oas.test.ts`
+- Test: `tests/extractors/openapi3.test.ts` (or wherever pushAuthClaims is covered — `grep -rl "securitySchemes" tests/extractors/`), `tests/renderers/oas.test.ts`
 
-- [ ] **Step 1: Failing test.** Graph with an oauth2 auth_scheme node whose `flows` claim is `{ clientCredentials: { tokenUrl: "https://api.x.test/oauth/token", scopes: {} } }` → rendered OAS securityScheme is `{ type: "oauth2", flows: <that object> }`, not `flows: {}`. Second test: no flows claim → `flows: {}` (unchanged fallback).
-- [ ] **Step 2: Run → FAIL.**
-- [ ] **Step 3: Implement** in `securitySchemeFor`: read the node's `flows` claim value when present and JSON-shaped; pass through verbatim (no reshaping — provenance-preserving).
-- [ ] **Step 4: Run → PASS.** Then check OAS goldens: `npx vitest run tests/renderers/oas-golden.test.ts` — existing fixtures have no oauth2 flows claims, so goldens must be byte-identical (if not, STOP and investigate).
-- [ ] **Step 5: Commit.** `feat(oas): project oauth2 flows claim into securitySchemes`
+- [ ] **Step 1: Failing extractor test.** Ingesting a spec whose oauth2 scheme declares `flows.clientCredentials.tokenUrl` produces an auth_scheme node with a `flows` claim carrying that object verbatim (source provenance, same confidence tier as the sibling `type` claim).
+- [ ] **Step 2: Run → FAIL** (no flows claim emitted today).
+- [ ] **Step 3: Implement** in `pushAuthClaims`: when `raw.type === "oauth2"` and `raw.flows` is an object, emit a `flows` claim (JSON value passthrough — provenance-preserving, no reshaping).
+- [ ] **Step 4: Failing renderer test.** Graph with an oauth2 auth_scheme node whose `flows` claim is `{ clientCredentials: { tokenUrl: "https://api.x.test/oauth/token", scopes: {} } }` → rendered OAS securityScheme is `{ type: "oauth2", flows: <that object> }`, not `flows: {}`. Second test: no flows claim → `flows: {}` (unchanged fallback).
+- [ ] **Step 5: Run → FAIL, implement** in `securitySchemeFor` (read the claim when present and JSON-shaped; pass through verbatim), **run → PASS.**
+- [ ] **Step 6: Golden stability.** `npx vitest run tests/renderers/oas-golden.test.ts` — existing fixtures have no oauth2 schemes, so OAS goldens must be byte-identical (if not, STOP and investigate). Full `npm test` → exit 0.
+- [ ] **Step 7: Commit.** `feat(oas): ingest + project oauth2 flows end-to-end (extractor claim → securitySchemes)`
 
 ### Task 5: Generated `auth.ts` module (emitter `src/sdk-plugins/auth.ts`)
 
@@ -224,7 +232,7 @@ This is the deliberate "big-bang" task: every change that alters rendered output
 - Modify: `src/sdk-plugins/runtime.ts` — signature becomes `generateRuntimeModule(schemes, retries?: RetriesConfig)` (optional with defaults so older call sites compile during the task); retry-loop emission per the contract below; auth injection moves out into `AuthManager.applyAuth` (runtime imports `./auth.js`).
 - Modify: `src/sdk-plugins/errors.ts` — add emitted `AuthError`, `ConfigError` (extend the base error class as the existing 7 do). The existing `UnauthorizedError` at `src/sdk-plugins/errors.ts:25` is REUSED for 401-after-refresh; do NOT invent `AuthenticationError`.
 - Modify: `src/renderers/sdk.ts` — THE wiring step: compute `envPrefix = slugify(productName).toUpperCase().replace(/-/g, "_")`; call `extractOperations` once, run `detectPagination(ops, oasJson, overlay)`; write generated `src/auth.ts` (always) and `src/pagination.ts` (only when plans exist); pass retries config (overlay defaults) to `generateRuntimeModule`; pass plans to resource emission. Keep every function under 50 lines by extracting private helpers.
-- Create: `tests/fixtures/openapi3/agent-minimal.yaml` — single spec file per repo convention (model on `tests/fixtures/openapi3/minimal.yaml`): oauth2 clientCredentials scheme (tokenUrl `https://api.agentmin.test/oauth/token`) + `POST /oauth/token` op + `GET /items` cursor-paginated (params `cursor`,`limit`; response `{data: [...], next_cursor}`) + `GET /logs` offset-paginated (`offset`,`limit`) + `POST /items` plain. **productName MUST be exactly `agentmin`** (slugifies to `agentmin` → env prefix `AGENTMIN_`; a dotted name would yield `AGENTMIN_TEST_` and break the env assertions).
+- Create: `tests/fixtures/openapi3/agent-minimal.yaml` — single spec file per repo convention (model on `tests/fixtures/openapi3/minimal.yaml`): oauth2 clientCredentials scheme (tokenUrl `https://api.agentmin.test/oauth/token`) + `POST /oauth/token` op + `GET /items` cursor-paginated (params `cursor`,`limit`; response `{data: [...], next_cursor}`) + `GET /logs` offset-paginated (`offset`,`limit`) + `POST /items` plain. **Security wiring is mandatory:** document-level `security: [{<oauth2SchemeId>: []}]` so every operation inherits `auth_requires` edges (the extractor inherits top-level security, `openapi3-ops.ts:430-444`), with `security: []` on `POST /oauth/token` to opt the token endpoint out — without this, `buildSecurity` emits zero securitySchemes and the whole chain is silently authless. **productName MUST be exactly `agentmin`** (slugifies to `agentmin` → env prefix `AGENTMIN_`; a dotted name would yield `AGENTMIN_TEST_` and break the env assertions).
 - Modify: `tests/sdk-plugins/runtime.test.ts` (retry contract assertions; bearer-injection assertions move to auth-module form), `tests/sdk-plugins/errors.test.ts` (AuthError/ConfigError), `tests/renderers/sdk-golden-helpers.ts` (add `AGENT_FIXTURE_ARGS` + `renderSdkGoldenAgent(outDir)` following `REST_FIXTURE_ARGS` shape), `scripts/gen-sdk-goldens.mts` (include agent fixture), `tests/renderers/sdk-golden.test.ts` (third tree in lock + tsc gate)
 - Create: `tests/fixtures/golden/sdk-agent-minimal/**` (generated, committed); regenerate `tests/fixtures/golden/sdk-minimal/**` and `sdk-graphql-minimal/**` (they gain `src/auth.ts` + changed `runtime.ts`/`errors.ts`)
 - Create: `tests/renderers/sdk-runtime-behavior.test.ts`
@@ -271,7 +279,7 @@ Note: the README env table is NOT yet present in these trees — it arrives in T
 - Modify: `src/renderers/fern-project.ts` (signature: `buildFernProject(langs, opts: { oauth: FernOAuthPlan | null })`), `src/renderers/fern-oas-rewrite.ts` (stamp extensions), `src/renderers/sdk-fern.ts` (compute + thread both)
 - Test: `tests/renderers/fern-project.test.ts`, `tests/renderers/fern-oas-rewrite.test.ts`
 
-`FernOAuthPlan` = `{ tokenEndpoint: "POST /oauth/token", requestProps: {...}, responseProps: {...} }`, computed ONLY when: an `oauth2ClientCredentials` descriptor exists AND the token endpoint operation is present in the synthetic OAS (match the descriptor's `tokenUrl` path against the OAS server URL + paths) AND the token URL host equals the API host. Otherwise null → no `auth-schemes` block (Fern falls back to its default bearer mapping) + README snippet path.
+`FernOAuthPlan` = `{ tokenEndpoint: "POST /oauth/token", requestProps: {...}, responseProps: {...} }`, computed ONLY when: an `oauth2ClientCredentials` descriptor exists with a non-null `tokenUrl` AND the tokenUrl's **path** matches an OAS path that has a POST operation (path-presence gate ONLY — the synthetic OAS has no `servers` block, so host comparison is unevaluable; do not attempt it). Otherwise null → no `auth-schemes` block (Fern falls back to its default bearer mapping) + README snippet path.
 
 - [ ] **Step 1: Failing tests.** fern-project: with a plan → generators.yml contains the verified S1 block exactly (auth-schemes + `api.auth: OAuth` + `$request.`/`$response.` prefixed properties, endpoint string `POST /oauth/token`); with null → no auth-schemes key (byte-stable vs today modulo pin bump). fern-oas-rewrite: ops with cursor plans gain `"x-fern-pagination": { cursor: "$request.<requestParam>", next_cursor: "$response.<nextField>", results: "$response.<itemsField>" }`; offset plans gain `{ offset: "$request.<requestParam>", results: "$response.<itemsField>" }`; page style: stamp the offset form with the page param (Fern has no distinct page type at this syntax level — record in KNOWN_GAPS); unplanned ops byte-unchanged; input never mutated.
 - [ ] **Step 2: Run → FAIL.**

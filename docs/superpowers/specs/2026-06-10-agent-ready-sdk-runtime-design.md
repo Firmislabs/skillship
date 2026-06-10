@@ -55,8 +55,11 @@ Three capabilities, in priority order:
   - `Retries { maxRetries=2, backoff: exponential-jitter, honorRetryAfter=true, idempotencyHeader, retryableStatus=[408,409,429,500,502,503,504] }`
   - `Pagination { style: cursor|offset|page, fields, perOperation }`
 - Synthetic OAS emits `oauth2` securitySchemes with placeholder `flows: {}`
-  (`src/renderers/oas.ts:167-179`); the graph carries `flows` as a claim on
-  `AuthSchemeNode` (`src/graph/types.ts:152-160`) but the OAS renderer drops it.
+  (`src/renderers/oas.ts:167-179`). The `AuthSchemeNode` TYPE supports a `flows`
+  claim (`src/graph/types.ts:152-160`), but today only the mcpWellKnown extractor
+  writes one — `pushAuthClaims` in the openapi3 extractor
+  (`src/extractors/openapi3.ts:167-198`) does NOT ingest `flows`, and the OAS
+  renderer drops it. Both ends need work.
 - Fern path: `src/renderers/fern-project.ts` (generators.yml) +
   `src/renderers/fern-oas-rewrite.ts` (operationId/tags rewrite via
   `resolveAssignments`). No pagination/retry/auth config passed to Fern today.
@@ -94,9 +97,11 @@ An `external` descriptor contributes **no** member of its own to the generated
 `AuthConfig` union — such schemes are served exclusively by the always-present
 `tokenProvider` member (plus `defaultHeaders` for exotic header schemes).
 
-To make real `tokenUrl`s flow end-to-end, the OAS renderer
-(`src/renderers/oas.ts:securitySchemeFor`) is extended to project the graph's
-`flows` claim into the `oauth2` securityScheme instead of stamping `flows: {}`.
+To make real `tokenUrl`s flow end-to-end, BOTH ends of the chain are extended:
+the openapi3 extractor's `pushAuthClaims` ingests the oauth2 `flows` object as a
+claim (verbatim passthrough, source provenance), and the OAS renderer
+(`src/renderers/oas.ts:securitySchemeFor`) projects the graph's `flows` claim
+into the `oauth2` securityScheme instead of stamping `flows: {}`.
 When the graph has no flow data, `flows: {}` stays (descriptor gets `tokenUrl: null`).
 The overlay `auth.mode: "oauth2-client-credentials"` can force the oauth2 descriptor
 and the overlay gains an optional `tokenUrl` field for vendors whose specs omit it.
