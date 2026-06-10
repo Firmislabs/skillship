@@ -33,5 +33,8 @@ function classifyJson(head: string, declared: string): string {
 function classifyYaml(text: string, declared: string): string {
   if (/^openapi\s*:\s*['"]?3\./m.test(text)) return "application/openapi+yaml";
   if (/^swagger\s*:\s*['"]?2\./m.test(text)) return "application/swagger+yaml";
+  if (/\btype\s+Query\b/.test(text) || /\bschema\s*\{/.test(text)) {
+    return "application/graphql";
+  }
   return declared;
 }

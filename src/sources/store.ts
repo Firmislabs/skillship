@@ -25,6 +25,7 @@ const EXTENSION_MAP: Readonly<Record<string, string>> = {
   "application/swagger+json": "json",
   "application/x-openref-cli+yaml": "yaml",
   "application/x-openref-sdk+yaml": "yaml",
+  "application/graphql": "graphql",
 };
 
 export function extensionFor(contentType: string): string {

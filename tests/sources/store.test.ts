@@ -101,4 +101,24 @@ describe("storeSource", () => {
     expect(extensionFor("application/octet-stream")).toBe("bin");
     expect(extensionFor("weird/thing")).toBe("bin");
   });
+
+  it("extensionFor maps application/graphql to graphql", () => {
+    expect(extensionFor("application/graphql")).toBe("graphql");
+  });
+
+  it("storeSource with application/graphql writes <sha>.graphql file", () => {
+    const bytes = Buffer.from("type Query { hello: String }\n", "utf8");
+    const expectedSha = createHash("sha256").update(bytes).digest("hex");
+    const node = storeSource(handle.db, sourcesDir, {
+      url: "https://example.com/schema.graphql",
+      bytes,
+      content_type: "application/graphql",
+      surface: "rest",
+    });
+    expect(node.id).toBe(expectedSha);
+    const expectedPath = join(sourcesDir, `${expectedSha}.graphql`);
+    expect(node.cache_path).toBe(expectedPath);
+    expect(existsSync(expectedPath)).toBe(true);
+    expect(readFileSync(expectedPath)).toEqual(bytes);
+  });
 });

@@ -8,6 +8,7 @@ import { runBuild } from "./build.js";
 import { parseFernLangs, assertSdkFlagsCompatible } from "./sdk-langs.js";
 import { runSdkWarm } from "./sdk.js";
 import { fetchGithubRepoBlobs } from "../resolvers/githubFetcher.js";
+import { cliAddSource } from "./add-source.js";
 
 function printConfigSummary(
   configPath: string,
@@ -88,6 +89,31 @@ function makeProgram(): Command {
         ...(fernLangs.length > 0 ? { fernLangs } : {}),
       });
       printBuildSummary(result.artifacts.map((a) => a.path), outDir);
+    });
+
+  program
+    .command("add-source")
+    .description("Fetch a URL, sniff its type, cache it, and update .skillship/config.yaml")
+    .argument("<url>", "URL to fetch")
+    .option("--in <dir>", "project directory (defaults to cwd)")
+    .option("--surface <surface>", "override inferred surface kind")
+    .option(
+      "--timeout-ms <ms>",
+      "fetch timeout in milliseconds",
+      (v) => Number.parseInt(v, 10),
+    )
+    .action(async (url: string, opts: {
+      in?: string;
+      surface?: string;
+      timeoutMs?: number;
+    }) => {
+      const msg = await cliAddSource({
+        url,
+        ...(opts.in !== undefined ? { in: opts.in } : {}),
+        ...(opts.surface !== undefined ? { surface: opts.surface as import("../graph/types.js").SurfaceKind } : {}),
+        ...(opts.timeoutMs !== undefined ? { timeoutMs: opts.timeoutMs } : {}),
+      });
+      process.stdout.write(`${msg}\n`);
     });
 
   const sdk = program

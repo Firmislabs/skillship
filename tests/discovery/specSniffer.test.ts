@@ -68,4 +68,19 @@ describe("inferSpecContentType", () => {
       "application/swagger+json",
     );
   });
+
+  test("detects GraphQL SDL with type Query", () => {
+    const bytes = Buffer.from("type Query {\n  hello: String\n}\n", "utf8");
+    expect(inferSpecContentType(bytes, "text/plain")).toBe("application/graphql");
+  });
+
+  test("detects GraphQL SDL with schema block", () => {
+    const bytes = Buffer.from("schema {\n  query: Query\n}\ntype Query {\n  id: ID\n}\n", "utf8");
+    expect(inferSpecContentType(bytes, "application/yaml")).toBe("application/graphql");
+  });
+
+  test("does not misclassify plain text without GraphQL markers", () => {
+    const bytes = Buffer.from("# Just a README\nHello world\n", "utf8");
+    expect(inferSpecContentType(bytes, "text/plain")).toBe("text/plain");
+  });
 });
