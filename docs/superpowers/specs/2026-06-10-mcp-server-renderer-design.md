@@ -95,8 +95,15 @@ each synthetic-OAS operation as a vendor extension:
 
 Only claims that EXIST are projected (absent claims → key omitted — no guessing
 at the OAS layer). Existing fixtures have no annotation claims, so existing OAS
-goldens stay byte-identical (the extension only appears when claims exist; if a
-fixture needs one for testing, the agent fixture gains an annotated op).
+goldens stay byte-identical (the extension only appears when claims exist).
+**Ingestion side:** today only the zodAst extractor populates these claims —
+OpenAPI specs have no path to them. The openapi3 extractor therefore ALSO
+learns to ingest a per-operation `x-skillship-annotations` vendor extension
+from SOURCE specs into the corresponding claims (verbatim, attested — the same
+narrow-ingestion pattern as `flows`/`schema_json` in Spec A), and the agent
+fixture annotates `DELETE`-less destructive op(s) (e.g. marks `POST /items`
+destructive) so the full chain (source extension → claims → OAS projection →
+catalog → confirm gate) is exercised end-to-end by one fixture.
 The catalog computation reads the extension; where absent it falls back to the
 HTTP-method heuristic at CATALOG level: GET/HEAD → readOnly, DELETE →
 destructive, everything else → plain write (neither flag).
@@ -185,10 +192,15 @@ export function createGateway(deps?: GatewayDeps): (msg: JsonRpcRequest) => Prom
   (guaranteed by Spec A's error contracts).
 - **baseUrl** resolution (chain-closure — verified the synthetic OAS has NO
   `servers` block and the overlay no base-URL field): `RenderSdkInput` gains
-  `baseUrl: string | null`, plumbed from `src/cli/build.ts`, which reads the
-  HTTP surface's `base_url` claim from the graph (the same claim `mcpJson.ts`
-  reads for MCP surfaces — extend the query to HTTP surfaces or read it
-  directly; build.ts has DB access). The catalog bakes it as a literal default.
+  `baseUrl: string | null`. The read happens where `db` already lives — in
+  `runBuild`/`writeAll` scope, NOT inside the SDK renderer (never pass `db`
+  downstream): the REST surface node id is deterministic
+  (`stableId("sfc", [productId, "rest"])`, see `src/extractors/openapi3.ts:70`),
+  so the read is a direct `readBestClaim(db, surfaceId, "base_url")` (the
+  openapi3 extractor emits `base_url` from `doc.servers[0].url` at lines
+  136-145; the agent fixture declares `servers`). The resulting
+  `string | null` is threaded through `assembleSdkArtifacts` into
+  `RenderSdkInput`. The catalog bakes it as a literal default.
   Resolution order at runtime: `<PREFIX>_BASE_URL` env override > baked
   default > null. When null (docs-only inputs may carry no base_url claim),
   search/describe still work and `invoke_operation` returns an isError result
