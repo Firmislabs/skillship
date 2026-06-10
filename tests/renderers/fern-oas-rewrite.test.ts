@@ -302,3 +302,59 @@ describe("buildFernOas — x-skillship-annotations stripping", () => {
     expect(doc.paths["/logs"].get["x-skillship-annotations"]).toBeUndefined();
   });
 });
+
+// Fix 2 (I1): recursive strip — decoupled from the operationId-rewrite loop.
+// Operations WITHOUT operationId must still get stripped;
+// x-skillship-codegen (pre-existing key) must survive untouched.
+describe("Fix 2 I1: recursive x-skillship-annotations strip — robust cases", () => {
+  test("op WITHOUT operationId (not in byOpId map) still has x-skillship-annotations stripped", () => {
+    // This is the robustness gap: the old delete was inside the if (hit) block,
+    // so ops that are present in the doc but absent from byOpId kept their annotations.
+    const oasNoOpId = JSON.stringify({
+      openapi: "3.1.0",
+      paths: {
+        "/things": {
+          get: {
+            // Deliberately no operationId — skipped by extractOperations.
+            tags: ["things"],
+            "x-skillship-annotations": { readOnly: true },
+          },
+        },
+      },
+    });
+
+    // extractOperations skips ops without operationId, so byOpId will be empty.
+    const ops = extractOperations(oasNoOpId);
+    const out = buildFernOas(oasNoOpId, ops, CodegenOverlaySchema.parse({}), new Map());
+    const doc = JSON.parse(out);
+
+    // Must be stripped even though the op was not in byOpId.
+    expect(doc.paths["/things"].get["x-skillship-annotations"]).toBeUndefined();
+  });
+
+  test("x-skillship-codegen key is NOT removed (pre-existing behaviour is unchanged)", () => {
+    const oasWithCodegen = JSON.stringify({
+      openapi: "3.1.0",
+      paths: {
+        "/items": {
+          get: {
+            operationId: "op_list",
+            tags: ["items"],
+            "x-skillship-annotations": { readOnly: true },
+            "x-skillship-codegen": { namespace: "items" },
+          },
+        },
+      },
+    });
+
+    const ops = extractOperations(oasWithCodegen);
+    const out = buildFernOas(oasWithCodegen, ops, CodegenOverlaySchema.parse({}), new Map());
+    const doc = JSON.parse(out);
+
+    // annotations stripped
+    expect(doc.paths["/items"].get["x-skillship-annotations"]).toBeUndefined();
+    // codegen survives
+    expect(doc.paths["/items"].get["x-skillship-codegen"]).toBeDefined();
+    expect((doc.paths["/items"].get["x-skillship-codegen"] as Record<string, unknown>)["namespace"]).toBe("items");
+  });
+});

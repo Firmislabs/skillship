@@ -135,3 +135,92 @@ describe("annotations end-to-end: x-skillship-annotations ingest + project", () 
     expect(ann?.["destructive"]).toBeUndefined();
   });
 });
+
+// Fix 1 (C1): e2e determinism — inline spec variant; no fixtures required.
+// A GET op with x-skillship-annotations.readOnly:false must project readOnly:false
+// in the rendered OAS on EVERY iteration of ingest+render (≥5 repeats).
+describe("Fix 1 C1: e2e determinism — inline OAS with GET + readOnly:false annotation", () => {
+  // Inline OAS bytes (no fixture file needed): one GET with readOnly:false override.
+  // The derived is_read_only=true must be SUPPRESSED; attested false must win.
+  const INLINE_OAS_YAML = `
+openapi: "3.0.3"
+info:
+  title: DeterminismTest
+  version: "1.0.0"
+paths:
+  /things:
+    get:
+      operationId: listThings
+      summary: List things
+      x-skillship-annotations:
+        readOnly: false
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+`.trim();
+
+  test("GET + readOnly:false renders readOnly:false in synthetic OAS across 5 ingest+render iterations (determinism lock)", async () => {
+    const { TextEncoder } = await import("node:util");
+    const bytes = Buffer.from(new TextEncoder().encode(INLINE_OAS_YAML));
+    const sha = createHash("sha256").update(bytes).digest("hex");
+
+    const ITERATIONS = 5;
+    const results: boolean[] = [];
+
+    for (let i = 0; i < ITERATIONS; i++) {
+      const iterTmp = mkdtempSync(join(tmpdir(), `sk-ann-det${i}-`));
+      const { openGraph: openG } = await import("../../src/graph/db.js");
+      const iterGraph = openG(join(iterTmp, "g.db"));
+      try {
+        const config: SkillshipConfig = {
+          product: { domain: `det${i}.example`, github_org: null },
+          sources: [
+            {
+              surface: "rest",
+              url: `https://det${i}.example/spec.yaml`,
+              sha256: sha,
+              content_type: "application/openapi+yaml",
+              fetched_at: NOW,
+            },
+          ],
+          coverage: "bronze",
+        };
+
+        await ingestConfig({
+          db: iterGraph.db,
+          config,
+          productId: `p-det-${i}`,
+          loadBytes: async () => bytes,
+          now: () => NOW,
+        });
+
+        const oasJson = renderSyntheticOpenApi({
+          db: iterGraph.db,
+          productId: `p-det-${i}`,
+          productName: `det${i}.example`,
+          overlay: EMPTY_OVERLAY,
+        });
+
+        const doc = JSON.parse(oasJson) as {
+          paths: Record<string, Record<string, Record<string, unknown>>>;
+        };
+        const getOp = doc.paths["/things"]?.["get"];
+        const ann = getOp?.["x-skillship-annotations"] as Record<string, unknown> | undefined;
+        results.push(ann?.["readOnly"] === false);
+      } finally {
+        iterGraph.close();
+        rmSync(iterTmp, { recursive: true, force: true });
+      }
+    }
+
+    // All iterations must render readOnly:false — no coin-flip allowed.
+    expect(results).toHaveLength(ITERATIONS);
+    for (const [idx, r] of results.entries()) {
+      expect(r, `iteration ${idx}: expected readOnly=false in rendered OAS`).toBe(true);
+    }
+  });
+});

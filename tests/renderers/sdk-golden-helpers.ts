@@ -12,6 +12,7 @@ import { openGraph } from "../../src/graph/db.js";
 import { ingestConfig } from "../../src/ingest/pipeline.js";
 import { renderSyntheticOpenApi } from "../../src/renderers/oas.js";
 import { renderSdkPackage } from "../../src/renderers/sdk.js";
+import { readRestBaseUrl } from "../../src/renderers/claims.js";
 import { CodegenOverlaySchema, type CodegenOverlay } from "../../src/overlays/codegen.js";
 import type { SkillshipConfig } from "../../src/discovery/config.js";
 
@@ -32,6 +33,8 @@ export interface GoldenOas {
   readonly oasJson: string;
   readonly productName: string;
   readonly overlay: CodegenOverlay;
+  /** Base URL read from the ingested REST surface; null when no servers entry. */
+  readonly baseUrl: string | null;
 }
 
 /** Fixture definitions shared by the TS golden path and the Fern golden path
@@ -95,7 +98,8 @@ export async function buildGoldenOas(args: GoldenOasArgs): Promise<GoldenOas> {
       productName: args.productName,
       overlay,
     });
-    return { oasJson, productName: args.productName, overlay };
+    const baseUrl = readRestBaseUrl(graph.db, args.productId);
+    return { oasJson, productName: args.productName, overlay, baseUrl };
   } finally {
     graph.close();
     rmSync(tmp, { recursive: true, force: true });
@@ -125,7 +129,7 @@ interface FixtureArgs {
 async function renderSdkGoldenFromFixture(
   args: FixtureArgs,
 ): Promise<SdkGoldenResult> {
-  const { oasJson, productName, overlay } = await buildGoldenOas({
+  const { oasJson, productName, overlay, baseUrl } = await buildGoldenOas({
     fixturePath: args.fixturePath,
     contentType: args.contentType,
     productId: args.productId,
@@ -136,6 +140,7 @@ async function renderSdkGoldenFromFixture(
     productName,
     outDir: args.outDir,
     overlay,
+    baseUrl,
   });
   return { outDir: args.outDir };
 }

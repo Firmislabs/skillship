@@ -1,6 +1,6 @@
 import type { Database as Sqlite3Database } from "better-sqlite3";
 import { DEFAULT_PRECEDENCE } from "../graph/merge.js";
-import { stableId } from "../extractors/openapi3-util.js";
+import { stableId } from "../shared/stable-id.js";
 
 export function readBestClaim(
   db: Sqlite3Database,

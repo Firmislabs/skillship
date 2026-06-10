@@ -5,6 +5,7 @@ import type {
 } from "./types.js";
 import { isObject, stableId } from "./openapi3-util.js";
 import { isObjectLikeSchema } from "../shared/oas-schema.js";
+import { ANNOTATION_PAIRS, ANNOTATION_EXTENSION_KEY } from "../shared/annotations.js";
 
 export interface EmitOperationArgs {
   readonly surfaceId: string;
@@ -56,14 +57,24 @@ export function emitOperation(a: EmitOperationArgs): void {
   );
   pushBoolClaim(a.claims, opId, a.opDef, "deprecated", `${base}.deprecated`);
 
+  // Emit the derived is_read_only=true claim for read-only HTTP methods ONLY
+  // when the op's x-skillship-annotations does NOT supply an explicit readOnly
+  // boolean. When an attested override is present, skip the derived push so
+  // the graph contains exactly one is_read_only claim (one-claim-per-field
+  // invariant: attested wins deterministically over derived).
   if (a.method === "get" || a.method === "head" || a.method === "options") {
-    a.claims.push({
-      node_id: opId,
-      field: "is_read_only",
-      value: true,
-      span_path: base,
-      confidence: "derived",
-    });
+    const ext = a.opDef[ANNOTATION_EXTENSION_KEY];
+    const annotationOverridesReadOnly =
+      isObject(ext) && typeof ext["readOnly"] === "boolean";
+    if (!annotationOverridesReadOnly) {
+      a.claims.push({
+        node_id: opId,
+        field: "is_read_only",
+        value: true,
+        span_path: base,
+        confidence: "derived",
+      });
+    }
   }
 
   pushAnnotationClaims(a.claims, opId, a.opDef, base);
@@ -168,13 +179,6 @@ function pushBoolClaim(
   }
 }
 
-/** Maps x-skillship-annotations boolean keys to their graph field names. */
-const ANNOTATION_FIELDS: ReadonlyMap<string, string> = new Map([
-  ["destructive", "is_destructive"],
-  ["readOnly", "is_read_only"],
-  ["idempotent", "is_idempotent"],
-]);
-
 /**
  * Reads `x-skillship-annotations` from the op definition and pushes one
  * attested claim per known boolean key. Unknown keys and non-boolean values
@@ -186,10 +190,10 @@ function pushAnnotationClaims(
   opDef: Record<string, unknown>,
   base: string,
 ): void {
-  const ext = opDef["x-skillship-annotations"];
+  const ext = opDef[ANNOTATION_EXTENSION_KEY];
   if (!isObject(ext)) return;
-  const spanPath = `${base}.x-skillship-annotations`;
-  for (const [key, field] of ANNOTATION_FIELDS) {
+  const spanPath = `${base}.${ANNOTATION_EXTENSION_KEY}`;
+  for (const [key, field] of ANNOTATION_PAIRS) {
     const v = ext[key];
     if (typeof v !== "boolean") continue;
     claims.push({

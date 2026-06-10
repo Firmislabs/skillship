@@ -24,6 +24,7 @@ describe("renderSdkPackage — type surface (skeleton)", () => {
         resources: {},
         streaming: [],
       },
+      baseUrl: null,
     };
     expect(sample.productName).toBe("min.example");
   });
@@ -92,6 +93,7 @@ describe("renderSdkPackage — integration", () => {
           productName: "min.example",
           outDir: tmpA,
           overlay: CodegenOverlaySchema.parse({}),
+          baseUrl: null,
         });
         expect(result.typecheckExitCode).toBe(0);
         const files = listFilesRecursive(tmpA).sort();
@@ -127,12 +129,14 @@ describe("renderSdkPackage — integration", () => {
           productName: "min.example",
           outDir: tmpA,
           overlay: CodegenOverlaySchema.parse({}),
+          baseUrl: null,
         });
         await renderSdkPackage({
           oasJson: MINIMAL_OAS,
           productName: "min.example",
           outDir: tmpB,
           overlay: CodegenOverlaySchema.parse({}),
+          baseUrl: null,
         });
         const filesA = listFilesRecursive(tmpA).sort();
         const filesB = listFilesRecursive(tmpB).sort();
@@ -161,6 +165,7 @@ describe("renderSdkPackage — integration", () => {
           productName: "min.example",
           outDir: tmpA,
           overlay: CodegenOverlaySchema.parse({}),
+          baseUrl: null,
         });
         expect(result.files).not.toContain("openapi.json");
         const allFiles = listFilesRecursive(tmpA);
@@ -196,6 +201,7 @@ describe("renderSdkPackage — integration", () => {
           productName: "oauth-test",
           outDir: tmpOauth,
           overlay: CodegenOverlaySchema.parse({}),
+          baseUrl: null,
         });
         expect(result.typecheckExitCode).toBe(0);
         // Task 8: AuthConfig now lives in auth.ts and oauth2 produces a real
@@ -227,6 +233,7 @@ describe("renderSdkPackage — integration", () => {
           productName: "!!!",
           outDir: join(tmpdir(), "sk-sdk-slug-test"),
           overlay: CodegenOverlaySchema.parse({}),
+          baseUrl: null,
         }),
       ).rejects.toThrow(/slugifies to empty/);
     },
@@ -275,6 +282,7 @@ describe("renderSdkPackage — integration", () => {
             productName: "broken",
             outDir,
             overlay: CodegenOverlaySchema.parse({}),
+            baseUrl: null,
           }),
         ).rejects.toThrow();
         // Sentinel must survive
@@ -302,6 +310,7 @@ describe("renderSdkPackage — integration", () => {
           productName: "min.example",
           outDir: outA,
           overlay: CodegenOverlaySchema.parse({}),
+          baseUrl: null,
         });
         expect(result.typecheckExitCode).toBe(0);
       } finally {
@@ -351,6 +360,7 @@ describe("renderSdkPackage — integration", () => {
             productName: "broken",
             outDir,
             overlay: CodegenOverlaySchema.parse({}),
+            baseUrl: null,
           }),
         ).rejects.toThrow();
         expect(() => statSync(outDir)).toThrow();

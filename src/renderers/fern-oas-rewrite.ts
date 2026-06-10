@@ -11,6 +11,7 @@ import {
   type OperationInfo,
 } from "../sdk-plugins/resource-tree.js";
 import type { PaginationPlan } from "./pagination-detect.js";
+import { ANNOTATION_EXTENSION_KEY } from "../shared/annotations.js";
 
 const HTTP_METHODS = new Set([
   "get", "post", "put", "patch", "delete", "head", "options", "trace",
@@ -115,10 +116,34 @@ export function buildFernOas(
           op["x-fern-pagination"] = stamp;
         }
       }
-      // Strip our internal extension — Fern generators do not recognise it and
-      // keeping it would cause the nightly Docker lane to drift on each build.
-      delete op["x-skillship-annotations"];
     }
   }
+  // Strip x-skillship-annotations from EVERY operation in the document in a
+  // dedicated final pass, decoupled from the operationId-rewrite loop above.
+  // This ensures ops that were skipped by the rewrite (no operationId, absent
+  // from byOpId) are still stripped — Fern generators do not recognise the
+  // extension and keeping it would cause the nightly Docker lane to drift.
+  // Only x-skillship-annotations is removed; x-skillship-codegen and all other
+  // x-skillship-* keys are left untouched.
+  stripAnnotationExtensions(doc);
   return JSON.stringify(doc, null, 2);
+}
+
+/**
+ * Recursively walks the document and deletes every key equal to
+ * ANNOTATION_EXTENSION_KEY ("x-skillship-annotations").
+ * Does NOT touch any other x-skillship-* key.
+ * Mutates the object in place; called only on the already-cloned parse result.
+ */
+function stripAnnotationExtensions(value: unknown): void {
+  if (value === null || typeof value !== "object") return;
+  if (Array.isArray(value)) {
+    for (const item of value) stripAnnotationExtensions(item);
+    return;
+  }
+  const obj = value as Record<string, unknown>;
+  delete obj[ANNOTATION_EXTENSION_KEY];
+  for (const child of Object.values(obj)) {
+    stripAnnotationExtensions(child);
+  }
 }

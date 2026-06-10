@@ -4,6 +4,7 @@ import { readBestClaim } from "./claims.js";
 import { applyOverlayToDoc } from "../overlays/codegen.js";
 import type { CodegenOverlay } from "../overlays/codegen.js";
 import { collectNestedSchemaRefs } from "../shared/oas-schema.js";
+import { ANNOTATION_PAIRS } from "../shared/annotations.js";
 
 export interface RenderOasInput {
   readonly db: Sqlite3Database;
@@ -104,16 +105,11 @@ function buildOperation(db: Sqlite3Database, opId: string, schemas: Record<strin
   return op;
 }
 
-/** Maps graph claim fields back to their x-skillship-annotations key names. */
-const ANNOTATION_CLAIM_KEYS: ReadonlyArray<[string, string]> = [
-  ["is_destructive", "destructive"],
-  ["is_read_only", "readOnly"],
-  ["is_idempotent", "idempotent"],
-];
-
 function buildAnnotations(db: Sqlite3Database, opId: string): Record<string, boolean> | undefined {
   const out: Record<string, boolean> = {};
-  for (const [field, key] of ANNOTATION_CLAIM_KEYS) {
+  // ANNOTATION_PAIRS is [extensionKey, graphField]; renderer iterates in reverse
+  // to map graphField → extensionKey.
+  for (const [key, field] of ANNOTATION_PAIRS) {
     const raw = readJson(db, opId, field);
     if (typeof raw === "boolean") out[key] = raw;
   }

@@ -169,6 +169,8 @@ export interface WedgeInputs {
    * Base URL from the REST surface's servers[0].url claim.
    * Stored here for later-wave consumers; intentionally unused by all emitters
    * in Wave 1 — rendered output is byte-identical to the pre-plumbing baseline.
+   * null = spec declared no servers entry (or no REST surface); runtime
+   * consumers fall back to `<PREFIX>_BASE_URL`. Only servers[0] is read.
    */
   readonly baseUrl: string | null;
 }

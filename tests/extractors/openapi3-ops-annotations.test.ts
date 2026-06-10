@@ -168,3 +168,77 @@ describe("pushAnnotationClaims — x-skillship-annotations ingestion", () => {
     expect(claim?.value).toBe(false);
   });
 });
+
+// Fix 1 (C1): one-claim-per-field invariant for is_read_only overrides
+describe("Fix 1 C1: GET + x-skillship-annotations.readOnly:false → exactly one is_read_only claim", () => {
+  test("GET op with readOnly:false annotation emits exactly ONE is_read_only claim, value false, attested", () => {
+    // Before fix: emitOperation pushes a derived is_read_only=true (lines 59-67)
+    // then pushAnnotationClaims pushes attested is_read_only=false — two claims.
+    // After fix: the derived push is skipped when the annotation supplies readOnly.
+    const { nodes, claims } = runEmit(
+      {
+        "x-skillship-annotations": { readOnly: false },
+        responses: { "200": { description: "OK" } },
+      },
+      "get",
+    );
+
+    const opClaims = opClaimsFor(claims, nodes);
+    const readOnlyClaims = opClaims.filter((c) => c.field === "is_read_only");
+    expect(readOnlyClaims).toHaveLength(1);
+    expect(readOnlyClaims[0]!.value).toBe(false);
+    expect(readOnlyClaims[0]!.confidence).toBe("attested");
+  });
+
+  test("GET op without readOnly annotation still emits the derived is_read_only=true claim", () => {
+    // No x-skillship-annotations.readOnly → derived claim must still be emitted.
+    const { nodes, claims } = runEmit(
+      {
+        responses: { "200": { description: "OK" } },
+      },
+      "get",
+    );
+
+    const opClaims = opClaimsFor(claims, nodes);
+    const readOnlyClaims = opClaims.filter((c) => c.field === "is_read_only");
+    expect(readOnlyClaims).toHaveLength(1);
+    expect(readOnlyClaims[0]!.value).toBe(true);
+    expect(readOnlyClaims[0]!.confidence).toBe("derived");
+  });
+
+  test("GET op with readOnly:true annotation also emits exactly ONE is_read_only claim (attested, true)", () => {
+    // When the annotation explicitly sets readOnly:true on a GET, the attested
+    // claim wins and the derived one is skipped. Still exactly one claim.
+    const { nodes, claims } = runEmit(
+      {
+        "x-skillship-annotations": { readOnly: true },
+        responses: { "200": { description: "OK" } },
+      },
+      "get",
+    );
+
+    const opClaims = opClaimsFor(claims, nodes);
+    const readOnlyClaims = opClaims.filter((c) => c.field === "is_read_only");
+    expect(readOnlyClaims).toHaveLength(1);
+    expect(readOnlyClaims[0]!.value).toBe(true);
+    expect(readOnlyClaims[0]!.confidence).toBe("attested");
+  });
+
+  test("POST op with readOnly:false annotation emits exactly ONE is_read_only claim, attested", () => {
+    // POST is not in the derived-read-only set, so there is no derived claim to
+    // skip — the annotation alone is the sole source.
+    const { nodes, claims } = runEmit(
+      {
+        "x-skillship-annotations": { readOnly: false },
+        responses: { "200": { description: "OK" } },
+      },
+      "post",
+    );
+
+    const opClaims = opClaimsFor(claims, nodes);
+    const readOnlyClaims = opClaims.filter((c) => c.field === "is_read_only");
+    expect(readOnlyClaims).toHaveLength(1);
+    expect(readOnlyClaims[0]!.value).toBe(false);
+    expect(readOnlyClaims[0]!.confidence).toBe("attested");
+  });
+});
