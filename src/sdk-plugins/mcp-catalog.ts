@@ -83,6 +83,15 @@ const READ_ONLY_METHODS: ReadonlySet<string> = new Set(["GET", "HEAD"]);
 const IDEMPOTENT_METHODS: ReadonlySet<string> = new Set(["GET", "HEAD", "PUT", "DELETE"]);
 const DESTRUCTIVE_METHODS: ReadonlySet<string> = new Set(["DELETE"]);
 
+/**
+ * The set of extension keys consumed by computeAnnotations.
+ * Derived from ANNOTATION_PAIRS so it cannot drift from the canonical table.
+ * Exported for drift-guard tests.
+ */
+export const CONSUMED_ANNOTATION_KEYS: ReadonlySet<string> = new Set(
+  ANNOTATION_PAIRS.map((p) => p[0]),
+);
+
 function computeAnnotations(
   method: string,
   opDef: OasOperation,
@@ -91,31 +100,28 @@ function computeAnnotations(
   const hasExt = ext !== null && typeof ext === "object" && !Array.isArray(ext);
   const extObj = hasExt ? (ext as Record<string, unknown>) : {};
 
-  // ANNOTATION_PAIRS: [extensionKey, graphField]
-  // extensionKey = "destructive" | "readOnly" | "idempotent"
-  // Map extension keys to result fields
   const m = method.toUpperCase();
 
-  const destructiveHeuristic = DESTRUCTIVE_METHODS.has(m);
-  const readOnlyHeuristic = READ_ONLY_METHODS.has(m);
-  const idempotentHeuristic = IDEMPOTENT_METHODS.has(m);
+  // Compute heuristics from method sets
+  const heuristics: Record<string, boolean> = {
+    destructive: DESTRUCTIVE_METHODS.has(m),
+    readOnly: READ_ONLY_METHODS.has(m),
+    idempotent: IDEMPOTENT_METHODS.has(m),
+  };
 
-  // Extension beats heuristic per key
-  const destructive = typeof extObj["destructive"] === "boolean"
-    ? extObj["destructive"]
-    : destructiveHeuristic;
-  const readOnly = typeof extObj["readOnly"] === "boolean"
-    ? extObj["readOnly"]
-    : readOnlyHeuristic;
-  const idempotent = typeof extObj["idempotent"] === "boolean"
-    ? extObj["idempotent"]
-    : idempotentHeuristic;
+  // Extension beats heuristic per key — iterate ANNOTATION_PAIRS so this
+  // function's consumed keys are always in sync with the canonical table.
+  const result: Record<string, boolean> = {};
+  for (const [extKey] of ANNOTATION_PAIRS) {
+    const extVal = extObj[extKey];
+    result[extKey] = typeof extVal === "boolean" ? extVal : (heuristics[extKey] ?? false);
+  }
 
-  // Suppress unused import warning for ANNOTATION_PAIRS — it's the shared
-  // source of truth. We validate our keys match the canonical table at runtime:
-  void ANNOTATION_PAIRS;
-
-  return { destructive, readOnly, idempotent };
+  return {
+    destructive: result["destructive"] ?? false,
+    readOnly: result["readOnly"] ?? false,
+    idempotent: result["idempotent"] ?? false,
+  };
 }
 
 // ---- Parameter extraction ----

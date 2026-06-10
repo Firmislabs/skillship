@@ -53,7 +53,7 @@ export interface ToolDef {
 }
 
 export interface ToolResult {
-  readonly content: readonly [{ readonly type: "text"; readonly text: string }];
+  readonly content: ReadonlyArray<{ readonly type: "text"; readonly text: string }>;
   readonly isError?: boolean;
 }
 
@@ -88,7 +88,14 @@ export async function processLine(
     const errResp = makeError(null, -32700, "Parse error");
     return JSON.stringify(errResp) + "\\n";
   }
-  const response = await handler(msg);
+  let response: JsonRpcResponse | null;
+  try {
+    response = await handler(msg);
+  } catch (err: unknown) {
+    const id: number | string | null = msg.id ?? null;
+    const message = err instanceof Error ? err.message : String(err);
+    return JSON.stringify(makeError(id, -32603, message)) + "\\n";
+  }
   if (response === null) return null;
   return JSON.stringify(response) + "\\n";
 }`;
@@ -129,6 +136,43 @@ export function runStdioServer(
 }`;
 }
 
+function emitToolsCallBranch(): string {
+  return `
+function handleToolsCall(
+  id: number | string | null,
+  params: Record<string, unknown> | undefined,
+  tools: readonly ToolDef[],
+  callTool: (name: string, args: Record<string, unknown>) => Promise<ToolResult>,
+): Promise<JsonRpcResponse> {
+  if (params === undefined || params === null) {
+    return Promise.resolve(makeError(id, -32602, "Invalid params: params is required for tools/call"));
+  }
+  const name = params["name"];
+  if (typeof name !== "string") {
+    return Promise.resolve(makeError(id, -32602, "Invalid params: name (string) is required"));
+  }
+  const args =
+    typeof params["arguments"] === "object" &&
+    params["arguments"] !== null &&
+    !Array.isArray(params["arguments"])
+      ? (params["arguments"] as Record<string, unknown>)
+      : {};
+  const toolNames = tools.map((t) => t.name);
+  if (!toolNames.includes(name)) {
+    return Promise.resolve(makeResult(id, {
+      content: [
+        {
+          type: "text",
+          text: \`unknown tool '\${name}' — available: \${toolNames.join(", ")}\`,
+        },
+      ],
+      isError: true,
+    } as ToolResult));
+  }
+  return callTool(name, args).then((toolResult) => makeResult(id, toolResult));
+}`;
+}
+
 function emitMakeProtocolHandler(): string {
   return `
 export function makeProtocolHandler(opts: {
@@ -144,16 +188,16 @@ export function makeProtocolHandler(opts: {
   ): Promise<JsonRpcResponse | null> {
     const id: number | string | null = msg.id ?? null;
 
+    if (msg.id === undefined && msg.method.startsWith("notifications/")) {
+      return null;
+    }
+
     if (msg.method === "initialize") {
       return makeResult(id, {
         protocolVersion: PROTOCOL_VERSION,
         capabilities: { tools: {} },
         serverInfo: { name: serverName, version: serverVersion },
       });
-    }
-
-    if (msg.method === "notifications/initialized") {
-      return null;
     }
 
     if (msg.method === "ping") {
@@ -165,34 +209,7 @@ export function makeProtocolHandler(opts: {
     }
 
     if (msg.method === "tools/call") {
-      const params = msg.params;
-      if (params === undefined || params === null) {
-        return makeError(id, -32602, "Invalid params: params is required for tools/call");
-      }
-      const name = params["name"];
-      if (typeof name !== "string") {
-        return makeError(id, -32602, "Invalid params: name (string) is required");
-      }
-      const args =
-        typeof params["arguments"] === "object" &&
-        params["arguments"] !== null &&
-        !Array.isArray(params["arguments"])
-          ? (params["arguments"] as Record<string, unknown>)
-          : {};
-      const toolNames = tools.map((t) => t.name);
-      if (!toolNames.includes(name)) {
-        return makeResult(id, {
-          content: [
-            {
-              type: "text",
-              text: \`unknown tool '\${name}' — available: \${toolNames.join(", ")}\`,
-            },
-          ],
-          isError: true,
-        });
-      }
-      const toolResult = await callTool(name, args);
-      return makeResult(id, toolResult);
+      return handleToolsCall(id, msg.params, tools, callTool);
     }
 
     return makeError(id, -32601, \`Method not found: \${msg.method}\`);
@@ -207,6 +224,7 @@ export function generateMcpProtocolModule(): string {
     emitMakeError(),
     emitProcessLine(),
     emitRunStdioServer(),
+    emitToolsCallBranch(),
     emitMakeProtocolHandler(),
     "",
   ].join("\n");
