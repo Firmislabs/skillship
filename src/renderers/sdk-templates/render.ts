@@ -4,11 +4,17 @@
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import type { AuthSchemeDescriptor } from "../../sdk-plugins/runtime.js";
+import type { AuthSchemeDescriptor, RetriesConfig } from "../../sdk-plugins/runtime.js";
 import type { PaginationPlan } from "../pagination-detect.js";
-import { DEFAULT_RETRIES } from "../sdk-utils.js";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
+
+export interface PagesExample {
+  /** Accessor path on the client, e.g. "items.list" → used as "client.items.listPages()". */
+  readonly accessor: string;
+  /** pageSizeParam from the plan, or null when no size param exists. */
+  readonly pageSizeParam: string | null;
+}
 
 export interface TemplateContext {
   readonly productName: string;
@@ -18,6 +24,10 @@ export interface TemplateContext {
   readonly envPrefix: string;
   readonly schemes: readonly AuthSchemeDescriptor[];
   readonly plans: ReadonlyMap<string, PaginationPlan>;
+  /** Per-product retries config — drives both max-retries count and status-code list in the README. */
+  readonly retries: RetriesConfig;
+  /** Derived from the first plan entry; null when the product has no pagination. */
+  readonly pagesExample: PagesExample | null;
 }
 
 interface TemplateSpec {
@@ -46,8 +56,8 @@ export function renderTemplates(
     README_ENV_TABLE: buildEnvTable(ctx.schemes, ctx.envPrefix),
     README_AUTH_QUICKSTART: buildAuthQuickstart(ctx.schemes, ctx.envPrefix, ctx.packageName),
     README_TOKEN_PROVIDER: buildTokenProviderSection(ctx.packageName),
-    README_PAGINATION: buildPaginationSection(ctx.plans, ctx.packageName),
-    README_RETRIES: buildRetriesSection(),
+    README_PAGINATION: buildPaginationSection(ctx.pagesExample, ctx.packageName),
+    README_RETRIES: buildRetriesSection(ctx.retries),
   };
   const out: Record<string, string> = {};
   for (const spec of TEMPLATES) {
@@ -80,7 +90,15 @@ function buildEnvTable(
   if (rows.length === 0) return "";
   const header = "| Variable | Required | Description |";
   const divider = "|----------|----------|-------------|";
-  return [header, divider, ...rows].join("\n");
+  const table = [header, divider, ...rows].join("\n");
+  return [
+    "Set the following environment variables before constructing the client:",
+    "",
+    table,
+    "",
+    `With these set, \`new Client({ baseUrl: "..." })\` needs no auth option — the client picks them up automatically.`,
+    "Passing `auth` explicitly overrides the environment.",
+  ].join("\n");
 }
 
 function envRows(
@@ -124,6 +142,12 @@ function buildAuthQuickstart(
     if (s.kind === "bearer" && !seen.has("bearer")) {
       seen.add("bearer");
       parts.push(buildBearerQuickstart(envPrefix, packageName));
+    } else if (s.kind === "apiKey" && !seen.has("apiKey")) {
+      seen.add("apiKey");
+      parts.push(buildApiKeyQuickstart(envPrefix, packageName));
+    } else if (s.kind === "basic" && !seen.has("basic")) {
+      seen.add("basic");
+      parts.push(buildBasicQuickstart(envPrefix, packageName));
     } else if (s.kind === "oauth2ClientCredentials" && !seen.has("oauth2")) {
       seen.add("oauth2");
       parts.push(buildOauth2Quickstart(envPrefix, packageName));
@@ -143,6 +167,44 @@ function buildBearerQuickstart(envPrefix: string, packageName: string): string {
     "  new Client({",
     "    baseUrl: \"https://api.example.com\",",
     `    auth: { kind: "bearer", token: process.env.${envPrefix}_TOKEN! },`,
+    "  }),",
+    ");",
+    "```",
+  ].join("\n");
+}
+
+function buildApiKeyQuickstart(envPrefix: string, packageName: string): string {
+  return [
+    "### API key",
+    "",
+    "```ts",
+    `import { Client, attachResources } from "${packageName}";`,
+    "",
+    "const client = attachResources(",
+    "  new Client({",
+    "    baseUrl: \"https://api.example.com\",",
+    `    auth: { kind: "apiKey", key: process.env.${envPrefix}_API_KEY! },`,
+    "  }),",
+    ");",
+    "```",
+  ].join("\n");
+}
+
+function buildBasicQuickstart(envPrefix: string, packageName: string): string {
+  return [
+    "### HTTP Basic",
+    "",
+    "```ts",
+    `import { Client, attachResources } from "${packageName}";`,
+    "",
+    "const client = attachResources(",
+    "  new Client({",
+    "    baseUrl: \"https://api.example.com\",",
+    "    auth: {",
+    `      kind: "basic",`,
+    `      username: process.env.${envPrefix}_USERNAME!,`,
+    `      password: process.env.${envPrefix}_PASSWORD!,`,
+    "    },",
     "  }),",
     ");",
     "```",
@@ -200,11 +262,14 @@ function buildTokenProviderSection(packageName: string): string {
 // ── Pagination section ────────────────────────────────────────────────────────
 
 function buildPaginationSection(
-  plans: ReadonlyMap<string, PaginationPlan>,
+  example: PagesExample | null,
   packageName: string,
 ): string {
-  if (plans.size === 0) return "";
-  return [
+  if (example === null) return "";
+  // Derive the *Pages method name: "items.list" → "client.items.listPages()"
+  const [namespace, methodBase] = example.accessor.split(".");
+  const pagesCall = `client.${namespace}.${methodBase}Pages()`;
+  const lines = [
     "## Pagination",
     "",
     "Operations with paginated results expose a `*Pages()` async-generator variant",
@@ -216,13 +281,16 @@ function buildPaginationSection(
     "const client = attachResources(new Client({ baseUrl: \"https://api.example.com\", auth: { /* ... */ } }));",
     "",
     "// Iterate all pages — the generator fetches the next page on demand.",
-    "for await (const page of client.items.listPages()) {",
+    `for await (const page of ${pagesCall}) {`,
     "  console.log(page);",
     "}",
     "```",
-    "",
-    "Pass `{ query: { limit: N } }` to control page size.",
-  ].join("\n");
+  ];
+  if (example.pageSizeParam !== null) {
+    lines.push("");
+    lines.push(`Pass \`{ query: { ${example.pageSizeParam}: N } }\` to control page size.`);
+  }
+  return lines.join("\n");
 }
 
 // ── Retries section ───────────────────────────────────────────────────────────
@@ -230,9 +298,9 @@ function buildPaginationSection(
 /**
  * Formats a sorted list of status codes into a compact human-readable string,
  * collapsing consecutive runs into "start–end" ranges (e.g. 502, 503, 504 → "502–504").
- * Derived from DEFAULT_RETRIES.retryableStatus so the doc can never drift.
+ * Exported so unit tests can exercise the formatter directly.
  */
-function formatStatusCodes(codes: readonly number[]): string {
+export function formatStatusCodes(codes: readonly number[]): string {
   if (codes.length === 0) return "";
   const sorted = [...codes].sort((a, b) => a - b);
   const groups: Array<[number, number]> = [];
@@ -252,14 +320,17 @@ function formatStatusCodes(codes: readonly number[]): string {
   return groups.map(([s, e]) => (s === e ? String(s) : `${s}–${e}`)).join(", ");
 }
 
-function buildRetriesSection(): string {
-  // Derived from DEFAULT_RETRIES.retryableStatus — stays truthful as the array evolves.
-  const statusList = formatStatusCodes(DEFAULT_RETRIES.retryableStatus);
+function buildRetriesSection(retries: RetriesConfig): string {
+  const statusList = formatStatusCodes(retries.retryableStatus);
+  const statusPhrase =
+    statusList.length > 0
+      ? ` on retryable status codes (${statusList})`
+      : "";
   return [
     "## Retries",
     "",
-    "Failed requests are retried automatically (up to 2 retries by default) for",
-    `idempotent methods on retryable status codes (${statusList}).`,
+    `Failed requests are retried automatically (up to ${retries.maxRetries} retries) for`,
+    `idempotent methods${statusPhrase}.`,
     "POST/PATCH are retried only on 408 and 429.",
     "The `Retry-After` response header is honored when present.",
   ].join("\n");

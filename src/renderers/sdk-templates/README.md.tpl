@@ -10,8 +10,6 @@ npm install {{PACKAGE_NAME}}
 
 ## Authentication
 
-Set the following environment variables before constructing the client:
-
 {{README_ENV_TABLE}}
 
 {{README_AUTH_QUICKSTART}}

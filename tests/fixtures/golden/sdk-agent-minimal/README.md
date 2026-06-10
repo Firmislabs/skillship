@@ -18,6 +18,9 @@ Set the following environment variables before constructing the client:
 | `AGENTMIN_CLIENT_SECRET` | Yes | OAuth2 client secret |
 | `AGENTMIN_TOKEN_URL` | No | Token endpoint (overrides default) |
 
+With these set, `new Client({ baseUrl: "..." })` needs no auth option — the client picks them up automatically.
+Passing `auth` explicitly overrides the environment.
+
 ### OAuth2 client credentials
 
 ```ts
@@ -58,7 +61,7 @@ const client = attachResources(
 
 ## Retries
 
-Failed requests are retried automatically (up to 2 retries by default) for
+Failed requests are retried automatically (up to 2 retries) for
 idempotent methods on retryable status codes (408–409, 429, 500, 502–504).
 POST/PATCH are retried only on 408 and 429.
 The `Retry-After` response header is honored when present.

@@ -38,8 +38,9 @@ import { generateRuntimeModule } from "../sdk-plugins/runtime.js";
 import {
   buildNamespaceTree,
   generateResourceTreeModule,
+  resolveAssignments,
 } from "../sdk-plugins/resource-tree.js";
-import { renderTemplates } from "./sdk-templates/render.js";
+import { renderTemplates, type PagesExample } from "./sdk-templates/render.js";
 import {
   computeWedgeInputs,
   slugify,
@@ -185,6 +186,26 @@ function writeWedgeFile(srcDir: string, name: string, content: string): void {
 
 // ---- Package template emission ----
 
+/**
+ * Derives the pagesExample for the README pagination section from the first
+ * plan entry (insertion order is deterministic — plans is a Map keyed by
+ * operationId in the order ops appear in the OAS doc).
+ * Returns null when there are no pagination plans.
+ */
+function computePagesExample(wedge: WedgeInputs): PagesExample | null {
+  if (wedge.plans.size === 0) return null;
+  // Get the operationId of the first plan entry.
+  const [firstOpId] = wedge.plans.keys();
+  if (firstOpId === undefined) return null;
+  const plan = wedge.plans.get(firstOpId)!;
+  // Resolve assignments to find the namespace + methodName for this op.
+  const assignments = resolveAssignments(wedge.ops, wedge.overlay);
+  const assignment = assignments.find((a) => a.op.operationId === firstOpId);
+  if (assignment === undefined) return null;
+  const accessor = `${assignment.namespace}.${assignment.methodName}`;
+  return { accessor, pageSizeParam: plan.pageSizeParam };
+}
+
 function writePackageTemplates(
   tempDir: string,
   input: RenderSdkInput,
@@ -204,6 +225,8 @@ function writePackageTemplates(
     envPrefix: wedge.envPrefix,
     schemes: wedge.schemes,
     plans: wedge.plans,
+    retries: wedge.retries,
+    pagesExample: computePagesExample(wedge),
   });
   for (const [name, content] of Object.entries(tplOut)) {
     writeFileSync(join(tempDir, name), content, "utf8");
