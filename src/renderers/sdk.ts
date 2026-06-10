@@ -88,7 +88,7 @@ export async function renderSdkPackage(
     // customer paths and security-scheme metadata (Critical 1 fix).
     rmSync(oasPath);
     writeWedgeModules(tempDir, wedge);
-    writePackageTemplates(tempDir, input);
+    writePackageTemplates(tempDir, input, wedge);
     await formatWithPrettier(tempDir);
     const { exitCode, stdout, stderr } = await runTypecheckGate(tempDir);
     if (exitCode !== 0) {
@@ -185,7 +185,11 @@ function writeWedgeFile(srcDir: string, name: string, content: string): void {
 
 // ---- Package template emission ----
 
-function writePackageTemplates(tempDir: string, input: RenderSdkInput): void {
+function writePackageTemplates(
+  tempDir: string,
+  input: RenderSdkInput,
+  wedge: WedgeInputs,
+): void {
   const slug = slugify(input.productName);
   if (!slug) {
     throw new Error(
@@ -197,6 +201,9 @@ function writePackageTemplates(tempDir: string, input: RenderSdkInput): void {
     packageName: `@skillship/${slug}-sdk`,
     year: 2026,
     licenseHolder: "Firmis Labs",
+    envPrefix: wedge.envPrefix,
+    schemes: wedge.schemes,
+    plans: wedge.plans,
   });
   for (const [name, content] of Object.entries(tplOut)) {
     writeFileSync(join(tempDir, name), content, "utf8");

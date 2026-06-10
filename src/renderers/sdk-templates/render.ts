@@ -4,6 +4,8 @@
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import type { AuthSchemeDescriptor } from "../../sdk-plugins/runtime.js";
+import type { PaginationPlan } from "../pagination-detect.js";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 
@@ -12,6 +14,9 @@ export interface TemplateContext {
   readonly packageName: string;
   readonly year: number;
   readonly licenseHolder: string;
+  readonly envPrefix: string;
+  readonly schemes: readonly AuthSchemeDescriptor[];
+  readonly plans: ReadonlyMap<string, PaginationPlan>;
 }
 
 interface TemplateSpec {
@@ -37,11 +42,21 @@ export function renderTemplates(
     PRODUCT_NAME: ctx.productName,
     YEAR: String(ctx.year),
     HOLDER: ctx.licenseHolder,
+    README_ENV_TABLE: buildEnvTable(ctx.schemes, ctx.envPrefix),
+    README_AUTH_QUICKSTART: buildAuthQuickstart(ctx.schemes, ctx.envPrefix, ctx.packageName),
+    README_TOKEN_PROVIDER: buildTokenProviderSection(ctx.packageName),
+    README_PAGINATION: buildPaginationSection(ctx.plans, ctx.packageName),
+    README_RETRIES: buildRetriesSection(),
   };
   const out: Record<string, string> = {};
   for (const spec of TEMPLATES) {
     const raw = readFileSync(join(HERE, spec.tplFile), "utf8");
-    out[spec.outName] = applySubs(raw, subs);
+    let rendered = applySubs(raw, subs);
+    if (spec.outName === "README.md") {
+      // Collapse runs of 3+ newlines (from empty optional sections) to 2.
+      rendered = rendered.replace(/\n{3,}/g, "\n\n");
+    }
+    out[spec.outName] = rendered;
   }
   return out;
 }
@@ -52,4 +67,172 @@ function applySubs(raw: string, subs: Record<string, string>): string {
     if (v === undefined) throw new Error(`renderTemplates: missing substitution for ${key}`);
     return v;
   });
+}
+
+// ── Env-var table ────────────────────────────────────────────────────────────
+
+function buildEnvTable(
+  schemes: readonly AuthSchemeDescriptor[],
+  envPrefix: string,
+): string {
+  const rows = envRows(schemes, envPrefix);
+  if (rows.length === 0) return "";
+  const header = "| Variable | Required | Description |";
+  const divider = "|----------|----------|-------------|";
+  return [header, divider, ...rows].join("\n");
+}
+
+function envRows(
+  schemes: readonly AuthSchemeDescriptor[],
+  envPrefix: string,
+): string[] {
+  const rows: string[] = [];
+  const seen = new Set<string>();
+  for (const s of schemes) {
+    if (s.kind === "bearer" && !seen.has("bearer")) {
+      seen.add("bearer");
+      rows.push(`| \`${envPrefix}_TOKEN\` | Yes | Bearer token |`);
+    } else if (s.kind === "apiKey" && !seen.has("apiKey")) {
+      seen.add("apiKey");
+      rows.push(`| \`${envPrefix}_API_KEY\` | Yes | API key |`);
+    } else if (s.kind === "basic" && !seen.has("basic")) {
+      seen.add("basic");
+      rows.push(`| \`${envPrefix}_USERNAME\` | Yes | HTTP Basic username |`);
+      rows.push(`| \`${envPrefix}_PASSWORD\` | Yes | HTTP Basic password |`);
+    } else if (s.kind === "oauth2ClientCredentials" && !seen.has("oauth2")) {
+      seen.add("oauth2");
+      rows.push(`| \`${envPrefix}_CLIENT_ID\` | Yes | OAuth2 client ID |`);
+      rows.push(`| \`${envPrefix}_CLIENT_SECRET\` | Yes | OAuth2 client secret |`);
+      rows.push(`| \`${envPrefix}_TOKEN_URL\` | No | Token endpoint (overrides default) |`);
+    }
+    // external: no env row
+  }
+  return rows;
+}
+
+// ── Auth quickstart section ───────────────────────────────────────────────────
+
+function buildAuthQuickstart(
+  schemes: readonly AuthSchemeDescriptor[],
+  envPrefix: string,
+  packageName: string,
+): string {
+  const parts: string[] = [];
+  const seen = new Set<string>();
+  for (const s of schemes) {
+    if (s.kind === "bearer" && !seen.has("bearer")) {
+      seen.add("bearer");
+      parts.push(buildBearerQuickstart(envPrefix, packageName));
+    } else if (s.kind === "oauth2ClientCredentials" && !seen.has("oauth2")) {
+      seen.add("oauth2");
+      parts.push(buildOauth2Quickstart(envPrefix, packageName));
+    }
+  }
+  return parts.join("\n\n");
+}
+
+function buildBearerQuickstart(envPrefix: string, packageName: string): string {
+  return [
+    "### Bearer token",
+    "",
+    "```ts",
+    `import { Client, attachResources } from "${packageName}";`,
+    "",
+    "const client = attachResources(",
+    "  new Client({",
+    "    baseUrl: \"https://api.example.com\",",
+    `    auth: { kind: "bearer", token: process.env.${envPrefix}_TOKEN! },`,
+    "  }),",
+    ");",
+    "```",
+  ].join("\n");
+}
+
+function buildOauth2Quickstart(envPrefix: string, packageName: string): string {
+  return [
+    "### OAuth2 client credentials",
+    "",
+    "```ts",
+    `import { Client, attachResources } from "${packageName}";`,
+    "",
+    "const client = attachResources(",
+    "  new Client({",
+    "    baseUrl: \"https://api.example.com\",",
+    "    auth: {",
+    `      kind: "oauth2",`,
+    `      clientId: process.env.${envPrefix}_CLIENT_ID!,`,
+    `      clientSecret: process.env.${envPrefix}_CLIENT_SECRET!,`,
+    "    },",
+    "  }),",
+    ");",
+    "```",
+    "",
+    "The client fetches and caches access tokens automatically, refreshing on 401.",
+  ].join("\n");
+}
+
+// ── tokenProvider section ─────────────────────────────────────────────────────
+
+function buildTokenProviderSection(packageName: string): string {
+  return [
+    "## Custom token provider",
+    "",
+    "Use `tokenProvider` as an escape hatch for auth schemes not covered above",
+    "(e.g. signed tokens, OIDC, proxy injection):",
+    "",
+    "```ts",
+    `import { Client, attachResources } from "${packageName}";`,
+    "",
+    "const client = attachResources(",
+    "  new Client({",
+    "    baseUrl: \"https://api.example.com\",",
+    "    auth: {",
+    `      kind: "tokenProvider",`,
+    "      getToken: async () => yourTokenFetcher(),",
+    "    },",
+    "  }),",
+    ");",
+    "```",
+  ].join("\n");
+}
+
+// ── Pagination section ────────────────────────────────────────────────────────
+
+function buildPaginationSection(
+  plans: ReadonlyMap<string, PaginationPlan>,
+  packageName: string,
+): string {
+  if (plans.size === 0) return "";
+  return [
+    "## Pagination",
+    "",
+    "Operations with paginated results expose a `*Pages()` async-generator variant",
+    "that yields one page of items at a time:",
+    "",
+    "```ts",
+    `import { Client, attachResources } from "${packageName}";`,
+    "",
+    "const client = attachResources(new Client({ baseUrl: \"https://api.example.com\", auth: { /* ... */ } }));",
+    "",
+    "// Iterate all pages — the generator fetches the next page on demand.",
+    "for await (const page of client.items.listPages()) {",
+    "  console.log(page);",
+    "}",
+    "```",
+    "",
+    "Pass `{ query: { limit: N } }` to control page size.",
+  ].join("\n");
+}
+
+// ── Retries section ───────────────────────────────────────────────────────────
+
+function buildRetriesSection(): string {
+  return [
+    "## Retries",
+    "",
+    "Failed requests are retried automatically (up to 2 retries by default) for",
+    "idempotent methods on retryable status codes (408, 429, 500–504).",
+    "POST/PATCH are retried only on 408 and 429.",
+    "The `Retry-After` response header is honored when present.",
+  ].join("\n");
 }
