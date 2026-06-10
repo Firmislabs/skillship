@@ -85,14 +85,6 @@ async function callGateway(
   return res as Record<string, unknown>;
 }
 
-function req(
-  method: string,
-  params?: Record<string, unknown>,
-  id: number | string = 1,
-): JsonRpcRequest {
-  return { jsonrpc: "2.2" as "2.0", id, method, params } as unknown as JsonRpcRequest;
-}
-
 afterEach(() => {
   vi.unstubAllEnvs();
 });
