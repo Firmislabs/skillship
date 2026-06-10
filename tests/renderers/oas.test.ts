@@ -353,3 +353,84 @@ describe("renderSyntheticOpenApi — apiKey non-header location", () => {
     expect(opSecurity[0]).toHaveProperty(schemeKey);
   });
 });
+
+describe("renderSyntheticOpenApi — oauth2 flows projection (T4)", () => {
+  let tmp: string; let graph: GraphDb;
+  beforeEach(() => { tmp = mkdtempSync(join(tmpdir(), "sk-oas-oauth2-")); graph = openGraph(join(tmp, "g.db")); });
+  afterEach(() => { graph.close(); rmSync(tmp, { recursive: true, force: true }); });
+
+  function seedOauth2(withFlows: boolean): void {
+    const db = graph.db;
+    const NOW_TS = "2026-06-10T00:00:00.000Z";
+    const PRODUCT_ID = "p-oauth2";
+    const SURFACE_ID = "sfc_oauth2_surface";
+    const OP_ID = "op_oauth2_get";
+    const AUTH_ID = "ath_oauth2_scheme";
+    const SOURCE_ID = "src_fake_oauth2";
+    db.prepare(
+      `INSERT INTO sources (id, surface, url, content_type, fetched_at, bytes, cache_path)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+    ).run(SOURCE_ID, "rest", "https://api.x.test/openapi.json", "application/json", NOW_TS, 0, ".skillship/sources/fake.json");
+    db.prepare(
+      `INSERT INTO nodes (id, kind, parent_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?)`,
+    ).run(SURFACE_ID, "surface", PRODUCT_ID, NOW_TS, NOW_TS);
+    db.prepare(
+      `INSERT INTO nodes (id, kind, parent_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?)`,
+    ).run(OP_ID, "operation", SURFACE_ID, NOW_TS, NOW_TS);
+    db.prepare(
+      `INSERT INTO nodes (id, kind, parent_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?)`,
+    ).run(AUTH_ID, "auth_scheme", PRODUCT_ID, NOW_TS, NOW_TS);
+
+    const insertClaim = (nodeId: string, field: string, value: unknown, claimId: string): void => {
+      db.prepare(
+        `INSERT INTO claims
+           (id, node_id, field, value_json, source_id, extractor, extracted_at,
+            span_start, span_end, span_path, confidence, chosen, rejection_rationale)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      ).run(claimId, nodeId, field, JSON.stringify(value), SOURCE_ID, "openapi@3", NOW_TS, null, null, null, "attested", 0, null);
+    };
+
+    insertClaim(OP_ID, "method", "GET", "cl_op2_method");
+    insertClaim(OP_ID, "path_or_name", "/things", "cl_op2_path");
+    insertClaim(AUTH_ID, "type", "oauth2", "cl_auth2_type");
+    if (withFlows) {
+      insertClaim(AUTH_ID, "flows", { clientCredentials: { tokenUrl: "https://api.x.test/oauth/token", scopes: {} } }, "cl_auth2_flows");
+    }
+
+    db.prepare(
+      `INSERT INTO edges (id, kind, from_node_id, to_node_id, source_id, rationale, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+    ).run("edg_op2_auth", "auth_requires", OP_ID, AUTH_ID, null, null, NOW_TS);
+  }
+
+  test("oauth2 scheme with flows claim projects flows verbatim into securitySchemes", () => {
+    seedOauth2(true);
+    const doc = JSON.parse(
+      renderSyntheticOpenApi({ db: graph.db, productId: "p-oauth2", productName: "api.x.test", overlay: CodegenOverlaySchema.parse({}) }),
+    );
+    const schemes = doc.components.securitySchemes as Record<string, unknown>;
+    const schemeEntries = Object.entries(schemes);
+    expect(schemeEntries).toHaveLength(1);
+    const schemeValue = schemeEntries[0]![1] as Record<string, unknown>;
+    expect(schemeValue["type"]).toBe("oauth2");
+    const flows = schemeValue["flows"] as Record<string, unknown>;
+    expect(flows).toBeDefined();
+    expect(flows).not.toEqual({});
+    const cc = flows["clientCredentials"] as Record<string, unknown>;
+    expect(cc).toBeDefined();
+    expect(cc["tokenUrl"]).toBe("https://api.x.test/oauth/token");
+  });
+
+  test("oauth2 scheme without flows claim falls back to flows: {} (unchanged behaviour)", () => {
+    seedOauth2(false);
+    const doc = JSON.parse(
+      renderSyntheticOpenApi({ db: graph.db, productId: "p-oauth2", productName: "api.x.test", overlay: CodegenOverlaySchema.parse({}) }),
+    );
+    const schemes = doc.components.securitySchemes as Record<string, unknown>;
+    const schemeEntries = Object.entries(schemes);
+    expect(schemeEntries).toHaveLength(1);
+    const schemeValue = schemeEntries[0]![1] as Record<string, unknown>;
+    expect(schemeValue["type"]).toBe("oauth2");
+    expect(schemeValue["flows"]).toEqual({});
+  });
+});

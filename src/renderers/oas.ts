@@ -172,7 +172,13 @@ function securitySchemeFor(db: Sqlite3Database, authId: string, type: string): R
     const name = readBestClaim(db, authId, "param_name") ?? "Authorization";
     return { type: "apiKey", in: location, name };
   }
-  if (type === "oauth2") return { type: "oauth2", flows: {} };
+  if (type === "oauth2") {
+    const rawFlows = readJson(db, authId, "flows");
+    const flows = (rawFlows !== null && typeof rawFlows === "object" && !Array.isArray(rawFlows))
+      ? rawFlows as Record<string, unknown>
+      : {};
+    return { type: "oauth2", flows };
+  }
   if (type === "mutualtls") return { type: "mutualTLS" };
   // "custom" and any future unknown values: placeholder the overlay can correct
   return { type: "http", scheme: "bearer" };

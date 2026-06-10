@@ -487,3 +487,124 @@ describe("extractOpenApi3 — global security (Gap 4 closure)", () => {
     expect(deleteAuthEdges).toHaveLength(0);
   });
 });
+
+describe("extractOpenApi3 — oauth2 flows claim ingestion (T4)", () => {
+  const oauth2Doc = JSON.stringify({
+    openapi: "3.0.0",
+    info: { title: "OAuth2 API", version: "1.0.0" },
+    components: {
+      securitySchemes: {
+        oauth2Scheme: {
+          type: "oauth2",
+          flows: {
+            clientCredentials: {
+              tokenUrl: "https://api.x.test/oauth/token",
+              scopes: {},
+            },
+          },
+        },
+      },
+    },
+    paths: {
+      "/things": {
+        get: {
+          security: [{ oauth2Scheme: [] }],
+          responses: { "200": { description: "ok" } },
+        },
+      },
+    },
+  });
+
+  function extract() {
+    return extractOpenApi3({
+      bytes: Buffer.from(oauth2Doc, "utf-8"),
+      source: {
+        id: "src-oauth2",
+        kind: "source",
+        surface: "rest",
+        url: "https://api.x.test/openapi.json",
+        content_type: "application/json",
+        fetched_at: "2026-06-10T00:00:00Z",
+        bytes: 512,
+        cache_path: "/tmp/src-oauth2.json",
+      },
+      productId: "product-oauth2",
+    });
+  }
+
+  test("emits a flows claim on the auth_scheme node when securityScheme has flows", () => {
+    const result = extract();
+
+    const authNode = result.nodes.find((n) => n.kind === "auth_scheme");
+    expect(authNode).toBeDefined();
+
+    const typeClaim = result.claims.find(
+      (c) => c.node_id === authNode!.id && c.field === "type",
+    );
+    expect(typeClaim?.value).toBe("oauth2");
+
+    const flowsClaim = result.claims.find(
+      (c) => c.node_id === authNode!.id && c.field === "flows",
+    );
+    expect(flowsClaim).toBeDefined();
+    expect(flowsClaim?.value).toEqual({
+      clientCredentials: {
+        tokenUrl: "https://api.x.test/oauth/token",
+        scopes: {},
+      },
+    });
+    expect(flowsClaim?.confidence).toBe("attested");
+    expect(flowsClaim?.span_path).toBe(
+      '$.components.securitySchemes["oauth2Scheme"].flows',
+    );
+  });
+
+  test("flows claim value is the verbatim flows object (not nested/wrapped)", () => {
+    const result = extract();
+    const authNode = result.nodes.find((n) => n.kind === "auth_scheme");
+    const flowsClaim = result.claims.find(
+      (c) => c.node_id === authNode!.id && c.field === "flows",
+    );
+    expect(flowsClaim).toBeDefined();
+    // Must be the raw flows object at the top level — not { flows: { ... } }
+    const val = flowsClaim!.value as Record<string, unknown>;
+    expect(Object.keys(val)).toEqual(["clientCredentials"]);
+    const cc = val["clientCredentials"] as Record<string, unknown>;
+    expect(cc["tokenUrl"]).toBe("https://api.x.test/oauth/token");
+  });
+
+  test("does not emit a flows claim for non-oauth2 schemes", () => {
+    const doc = JSON.stringify({
+      openapi: "3.0.0",
+      info: { title: "T", version: "1" },
+      components: {
+        securitySchemes: {
+          bearerAuth: { type: "http", scheme: "bearer" },
+        },
+      },
+      paths: {
+        "/x": { get: { security: [{ bearerAuth: [] }], responses: { "200": { description: "ok" } } } },
+      },
+    });
+    const result = extractOpenApi3({
+      bytes: Buffer.from(doc, "utf-8"),
+      source: {
+        id: "src-bearer",
+        kind: "source",
+        surface: "rest",
+        url: "https://api.example/openapi.json",
+        content_type: "application/json",
+        fetched_at: "2026-06-10T00:00:00Z",
+        bytes: 256,
+        cache_path: "/tmp/src-bearer.json",
+      },
+      productId: "product-bearer",
+    });
+    const authNode = result.nodes.find((n) => n.kind === "auth_scheme");
+    expect(authNode).toBeDefined();
+    const flowsClaim = result.claims.find(
+      (c) => c.node_id === authNode!.id && c.field === "flows",
+    );
+    expect(flowsClaim).toBeUndefined();
+  });
+});

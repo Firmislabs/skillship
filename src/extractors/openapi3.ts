@@ -196,6 +196,15 @@ function pushAuthClaims(
       confidence: "attested",
     });
   }
+  if (def.type === "oauth2" && isObject(def.flows)) {
+    claims.push({
+      node_id: id,
+      field: "flows",
+      value: def.flows,
+      span_path: `${base}.flows`,
+      confidence: "attested",
+    });
+  }
 }
 
 function normalizeAuthType(def: Record<string, unknown>): string {
