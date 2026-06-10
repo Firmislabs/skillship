@@ -48,7 +48,10 @@ Constraints discovered: `get-token.endpoint` must name an operation that exists 
 **S2 (x-fern-pagination): parsed into the IR, NOT emitted by either pinned-candidate generator.**
 The CLI converts per-endpoint `x-fern-pagination` (cursor and offset forms) correctly — `fern ir` output shows `endpoints[].pagination` nodes and `sdkConfig.hasPaginatedEndpoints: true`. But python 5.14.12 and rust 0.40.4 both emit plain methods (no `SyncPager`; rust's `core/pagination.rs` paginator classes are emitted as unused boilerplate). Root-cause investigation against Fern source: **see "S2 verdict" subsection below** (filled in from the investigation before plan execution). Plan default: **stamp the extension anyway** (forward-compatible, generation-verified harmless) but do not claim pager support; Python/Rust pagination is a documented asymmetry in KNOWN_GAPS.md unless the verdict provides a working recipe.
 
-**S2 verdict:** PENDING-INVESTIGATION — this subsection is replaced with the verified verdict before plan execution begins (Task 11 consumes it).
+**S2 verdict (investigated against fern-api/fern source, 2026-06-10): no supported recipe — TS-only pagination, stamp the extension anyway.**
+- **Python:** pager emission requires `GeneratorConfig.generatePaginatedClients`, which the CLI sets from a **server-side org entitlement** (Venus `paginationEnabled`); in `--local` mode without `FERN_TOKEN` it is hardcoded `false` (`runLocalGenerationForWorkspace.ts` ~line 394: `orgBody?.paginationEnabled ?? false`). No generators.yml key, api setting, or env var overrides it (full SDKCustomConfig audited — nothing pagination-enabling). The `core/pagination.py` boilerplate is emitted from the IR alone, which is why it appears while methods stay plain. Patching the compiled CLI bundle would work but is unsupported and breaks on every npx cache refresh — REJECTED for a deterministic pipeline.
+- **Rust:** pager generation (`generatePaginatedMethods`) is dead code — the call site was deliberately removed upstream in PR #9781 (2025-10-07); both 0.36.8 and 0.40.4 post-date it. No flag reaches it.
+- **Plan consequence:** Task 11 stamps `x-fern-pagination` from the shared plans (verified harmless at generation; auto-activates pagers on regen if Fern ever lifts the gates), Task 13 records "pagination helpers: TypeScript only; Python/Rust expose plain list methods with cursor/offset params" in KNOWN_GAPS.md and the Fern-side READMEs are not modified (Fern owns them).
 
 **S3 (Fern retries): built-in, both languages, no config needed.**
 Python: `max_retries` constructor param (default 2 — matches overlay default) + per-request `request_options.max_retries`; `core/http_client.py` honors `Retry-After`, then `X-RateLimit-Reset` (+jitter), then exponential backoff with jitter. Rust: `ClientConfig.max_retries` (default 3) + builder `max_retries(u32)` + retryable-status loop with exponential backoff. Documented difference: rust default is 3 vs overlay's 2; not configurable at generation time; record in KNOWN_GAPS.md, do not patch output.
@@ -274,7 +277,7 @@ Emitted engine contract: `export async function* paginate<Item>(fetchPage: (curs
 - [ ] **Step 2: Run → FAIL.**
 - [ ] **Step 3: Implement** both (pure functions; detection reuses `detectPagination` output passed in — do NOT re-detect inside Fern code).
 - [ ] **Step 4: Run → PASS** + typecheck + existing fern tests green.
-- [ ] **Step 5: Apply S2 verdict.** If the investigation produced a working pager recipe (generator version/config), apply it here (and revisit Task 1 pins in a follow-up commit); otherwise proceed — stamping is forward-compatible and generation-verified harmless.
+- [ ] **Step 5: S2 verdict is final (see spike section): no pager recipe exists.** Stamping stays (forward-compatible); make no claims of Python/Rust pager support anywhere (READMEs, docs).
 - [ ] **Step 6: Commit.** `feat(fern): conditional OAuth auth-schemes + x-fern-pagination stamping from shared plans`
 
 ### Task 12: Fern goldens for the agent fixture
