@@ -39,15 +39,14 @@ import { generateRuntimeModule } from "../sdk-plugins/runtime.js";
 import {
   buildNamespaceTree,
   generateResourceTreeModule,
-  resolveAssignments,
 } from "../sdk-plugins/resource-tree.js";
 import {
   renderTemplates,
-  type FirstRequestExample,
-  type PagesExample,
 } from "./sdk-templates/render.js";
 import {
   computeWedgeInputs,
+  computePagesExample,
+  computeFirstRequestExample,
   slugify,
   type WedgeInputs,
 } from "./sdk-utils.js";
@@ -190,39 +189,6 @@ function writeWedgeFile(srcDir: string, name: string, content: string): void {
 }
 
 // ---- Package template emission ----
-
-/**
- * Derives the pagesExample for the README pagination section from the first
- * plan entry (insertion order is deterministic — plans is a Map keyed by
- * operationId in the order ops appear in the OAS doc).
- * Returns null when there are no pagination plans.
- */
-function computePagesExample(wedge: WedgeInputs): PagesExample | null {
-  if (wedge.plans.size === 0) return null;
-  // Get the operationId of the first plan entry.
-  const [firstOpId] = wedge.plans.keys();
-  if (firstOpId === undefined) return null;
-  const plan = wedge.plans.get(firstOpId)!;
-  // Resolve assignments to find the namespace + methodName for this op.
-  const assignments = resolveAssignments(wedge.ops, wedge.overlay);
-  const assignment = assignments.find((a) => a.op.operationId === firstOpId);
-  if (assignment === undefined) return null;
-  const accessor = `${assignment.namespace}.${assignment.methodName}`;
-  return { accessor, pageSizeParam: plan.pageSizeParam };
-}
-
-/**
- * Derives the firstRequestExample for the README "Make a request" section.
- * Returns the accessor for the first non-paginated operation in assignment order.
- * Returns null when there are no ops at all.
- */
-function computeFirstRequestExample(wedge: WedgeInputs): FirstRequestExample | null {
-  const assignments = resolveAssignments(wedge.ops, wedge.overlay);
-  if (assignments.length === 0) return null;
-  const first = assignments.find((a) => !wedge.plans.has(a.op.operationId));
-  const target = first ?? assignments[0]!;
-  return { accessor: `${target.namespace}.${target.methodName}` };
-}
 
 function writePackageTemplates(
   tempDir: string,

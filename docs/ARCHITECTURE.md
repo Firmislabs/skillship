@@ -125,7 +125,8 @@ output tree.
 - `sdk-plugins/pagination.ts` — TS pagination iterator/pager module generation
 - `sdk-plugins/runtime-emit.ts` — TS runtime module (retries, Retry-After, fetch wrapper)
 - `sdk-plugins/resource-tree.ts` + `resource-tree-pages.ts` — namespace tree + *Pages method generation
-- `fern-oas-rewrite.ts` — stamps `x-fern-pagination` + `operationId` rewrites before Fern Docker; Fern OAuth auth-schemes emission is gated (DORMANT — see KNOWN_GAPS.md)
+- `fern-oas-rewrite.ts` — stamps `x-fern-pagination` + `operationId`/`tags` rewrites before Fern Docker (pagination + naming only; does NOT gate auth-schemes)
+- `sdk-fern.ts` `computeFernOAuthPlan` → `fern-project.ts` `buildAuthSchemesBlock` — Fern OAuth auth-schemes emission; currently DORMANT (gated on request-body property projection — see KNOWN_GAPS.md)
 - `sdk-templates/render.ts` — README/package.json/tsconfig/LICENSE/npmignore template rendering
 
 ```

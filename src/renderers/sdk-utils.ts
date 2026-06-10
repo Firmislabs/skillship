@@ -2,6 +2,7 @@
 // OAS extraction helpers for sdk.ts.
 // Kept separate to stay under the 300-line file cap while sdk.ts accumulates
 // correctness fixes (EXDEV fallback, collision guards, slug validation, etc.).
+// Also owns computePagesExample / computeFirstRequestExample (moved from sdk.ts).
 
 import type {
   AuthSchemeDescriptor,
@@ -10,9 +11,13 @@ import type {
 import type { CodegenOverlay } from "../overlays/codegen.js";
 import type { OperationInfo } from "../sdk-plugins/resource-tree.js";
 import {
+  resolveAssignments,
+} from "../sdk-plugins/resource-tree.js";
+import {
   detectPagination,
   type PaginationPlan,
 } from "./pagination-detect.js";
+import type { PagesExample, FirstRequestExample } from "./sdk-templates/render.js";
 
 // ---- Minimal OAS doc shape (read-only, subset used by extractors) ----
 
@@ -217,4 +222,37 @@ export function computeWedgeInputs(args: {
     envPrefix: deriveEnvPrefix(args.productName),
     retries: resolveRetries(args.overlay),
   };
+}
+
+// ---- README example derivation ----
+
+/**
+ * Derives the pagesExample for the README pagination section from the first
+ * plan entry (insertion order is deterministic — plans is a Map keyed by
+ * operationId in the order ops appear in the OAS doc).
+ * Returns null when there are no pagination plans.
+ */
+export function computePagesExample(wedge: WedgeInputs): PagesExample | null {
+  if (wedge.plans.size === 0) return null;
+  const [firstOpId] = wedge.plans.keys();
+  if (firstOpId === undefined) return null;
+  const plan = wedge.plans.get(firstOpId)!;
+  const assignments = resolveAssignments(wedge.ops, wedge.overlay);
+  const assignment = assignments.find((a) => a.op.operationId === firstOpId);
+  if (assignment === undefined) return null;
+  const accessor = `${assignment.namespace}.${assignment.methodName}`;
+  return { accessor, pageSizeParam: plan.pageSizeParam };
+}
+
+/**
+ * Derives the firstRequestExample for the README "Make a request" section.
+ * Returns the accessor for the first non-paginated operation in assignment order.
+ * Returns null when there are no ops at all.
+ */
+export function computeFirstRequestExample(wedge: WedgeInputs): FirstRequestExample | null {
+  const assignments = resolveAssignments(wedge.ops, wedge.overlay);
+  if (assignments.length === 0) return null;
+  const first = assignments.find((a) => !wedge.plans.has(a.op.operationId));
+  const target = first ?? assignments[0]!;
+  return { accessor: `${target.namespace}.${target.methodName}` };
 }
