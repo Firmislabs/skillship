@@ -358,3 +358,44 @@ describe("Fix 2 I1: recursive x-skillship-annotations strip — robust cases", (
     expect((doc.paths["/items"].get["x-skillship-codegen"] as Record<string, unknown>)["namespace"]).toBe("items");
   });
 });
+
+// ---- Dotted itemsField passthrough (envelope detection) ----
+
+describe("buildFernOas — dotted itemsField stamp passthrough", () => {
+  const oasForEnvelope = JSON.stringify({
+    openapi: "3.1.0",
+    paths: {
+      "/items": {
+        get: {
+          operationId: "op_envelope",
+          tags: ["items"],
+          parameters: [
+            { name: "cursor", in: "query", schema: { type: "string" } },
+          ],
+        },
+      },
+    },
+  });
+
+  test("cursor plan with dotted itemsField 'data.results' stamps $response.data.results", () => {
+    // Verifies that buildPaginationStamp interpolates $response.${itemsField} mechanically —
+    // a dotted itemsField (from envelope detection) must be passed through unchanged.
+    const envelopePlan: PaginationPlan = {
+      style: "cursor",
+      requestParam: "cursor",
+      pageSizeParam: null,
+      itemsField: "data.results",
+      nextField: "data.next_cursor",
+    };
+    const ops = extractOperations(oasForEnvelope);
+    const plans = new Map<string, PaginationPlan>([["op_envelope", envelopePlan]]);
+    const out = buildFernOas(oasForEnvelope, ops, CodegenOverlaySchema.parse({}), plans);
+    const doc = JSON.parse(out);
+
+    const stamp = doc.paths["/items"].get["x-fern-pagination"];
+    expect(stamp).toBeDefined();
+    expect(stamp.results).toBe("$response.data.results");
+    expect(stamp.next_cursor).toBe("$response.data.next_cursor");
+    expect(stamp.cursor).toBe("$request.cursor");
+  });
+});

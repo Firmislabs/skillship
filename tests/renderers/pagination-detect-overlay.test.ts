@@ -10,6 +10,7 @@ import type { OperationInfo } from "../../src/sdk-plugins/resource-tree.js";
 import { CodegenOverlaySchema } from "../../src/overlays/codegen.js";
 import {
   makeGetOas,
+  makeGetOasWithEnvelope,
   makePostOas,
   makeOp,
   EMPTY_OVERLAY,
@@ -244,5 +245,43 @@ describe("overlay product-wide itemsField default", () => {
     expect(result.has("listItems")).toBe(true);
     const plan = result.get("listItems")!;
     expect(plan.itemsField).toBe("data");
+  });
+});
+
+// ============================
+// OVERLAY: product-wide style + envelope response (tier-2)
+// ============================
+
+describe("overlay product-wide style — envelope response (tier 2)", () => {
+  test("product-wide style applied to GET whose 200 response has a single-envelope object wrapping a single array", () => {
+    // The qualifier for tier-2 must also accept enveloped responses.
+    // Response: { data: { results: [...] } } — no direct array at top level, but
+    // the single object prop "data" contains one array "results".
+    const overlay = CodegenOverlaySchema.parse({
+      pagination: {
+        style: "cursor",
+        fields: { requestParam: "cursor", nextField: "next_cursor", itemsField: "data.results" },
+        perOperation: {},
+      },
+    });
+    const envelopeSchema = {
+      type: "object",
+      properties: {
+        data: {
+          type: "object",
+          properties: {
+            results: { type: "array", items: {} },
+            next_cursor: { type: "string" },
+          },
+        },
+      },
+    };
+    const oasJson = makeGetOasWithEnvelope("listItems", CURSOR_PARAMS, envelopeSchema);
+    const ops: readonly OperationInfo[] = [makeOp("listItems")];
+    const result = detectPagination(ops, oasJson, overlay);
+    expect(result.has("listItems")).toBe(true);
+    const plan = result.get("listItems")!;
+    expect(plan.style).toBe("cursor");
+    expect(plan.itemsField).toBe("data.results");
   });
 });

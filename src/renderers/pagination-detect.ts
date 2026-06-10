@@ -1,9 +1,5 @@
 // src/renderers/pagination-detect.ts
-// Single source of truth for which operations paginate.
-// Resolution order:
-//   1. overlay.pagination.perOperation[opId] — explicit always wins.
-//   2. overlay.pagination.style (product-wide) — applied to qualifying GETs only.
-//   3. Conservative auto-detection — only when overlay is silent.
+// Resolution: perOperation overlay > product-wide overlay > conservative auto-detect.
 // False negatives are acceptable; false positives are not.
 
 import type { OperationInfo } from "../sdk-plugins/resource-tree.js";
@@ -127,30 +123,48 @@ function getQueryParams(oasOp: OasOperation): readonly OasParam[] {
   return (oasOp.parameters ?? []).filter((p) => p.in === "query");
 }
 
-// ---- Structural qualifier for product-wide style ----
-// A GET whose 200 response schema is an object with at least one array property.
+// ---- Envelope descent helpers ----
+
+interface EnvelopeInfo {
+  readonly envelopeKey: string;
+  readonly arrayKey: string;
+  readonly innerProps: Record<string, OasSchema>;
+}
+
+/** Returns envelope info (exactly one object prop containing exactly one array); null on ambiguity. */
+function descendEnvelope(props: Record<string, OasSchema>): EnvelopeInfo | null {
+  const arrayCount = Object.values(props).filter((p) => p.type === "array").length;
+  if (arrayCount > 0) return null; // direct arrays present — no envelope descent
+  const objectKeys = Object.keys(props).filter(
+    (k) => isObjectLikeSchema(props[k]!),
+  );
+  if (objectKeys.length !== 1) return null; // ambiguous or absent envelope
+  const envelopeKey = objectKeys[0]!;
+  const innerProps = props[envelopeKey]!.properties ?? {};
+  const innerArrayKeys = Object.keys(innerProps).filter((k) => innerProps[k]?.type === "array");
+  if (innerArrayKeys.length !== 1) return null; // ambiguous items inside envelope
+  return { envelopeKey, arrayKey: innerArrayKeys[0]!, innerProps };
+}
 
 function qualifiesForProductWide(oasOp: OasOperation, op: OperationInfo): boolean {
   if (op.method !== "GET") return false;
   const schema = get200Schema(oasOp);
   if (!schema || !isObjectLikeSchema(schema)) return false;
   const props = schema.properties ?? {};
-  return Object.values(props).some((p) => p.type === "array");
+  if (Object.values(props).some((p) => p.type === "array")) return true;
+  return descendEnvelope(props) !== null;
 }
-
-// ---- Auto-detection helpers (≤50 lines each) ----
 
 function autoDetectCursor(
   oasOp: OasOperation,
   props: Record<string, OasSchema>,
   itemsField: string,
+  envelopeKey?: string,
 ): PaginationPlan | null {
-  // Find a cursor-like response field
-  const nextField = Object.keys(props).find((k) => CURSOR_RESPONSE_FIELDS.has(k)) ?? null;
-  if (!nextField) return null;
-
-  // Find a cursor-like request param — schema.type MUST be "string".
-  // An integer-typed param named "cursor" is a false positive; the contract forbids those.
+  const rawNextKey = Object.keys(props).find((k) => CURSOR_RESPONSE_FIELDS.has(k)) ?? null;
+  if (!rawNextKey) return null;
+  const nextField = envelopeKey !== undefined ? `${envelopeKey}.${rawNextKey}` : rawNextKey;
+  // Request param must have schema.type==="string" (integer-typed cursor is a false positive).
   const queryParams = getQueryParams(oasOp);
   const requestParamEntry = queryParams.find(
     (p) => p.name && CURSOR_REQUEST_PARAMS.has(p.name) && p.schema?.type === "string",
@@ -158,7 +172,6 @@ function autoDetectCursor(
   if (!requestParamEntry?.name) return null;
   const requestParam = requestParamEntry.name;
 
-  // Optional page-size param
   const pageSizeEntry = queryParams.find((p) => p.name && PAGE_SIZE_PARAMS.has(p.name));
   const pageSizeParam = pageSizeEntry?.name ?? null;
 
@@ -245,20 +258,30 @@ function resolveOperationPlan(
   const oasOp = findOasOperation(doc, op);
   if (oasOp === null) return null;
   const schema = get200Schema(oasOp);
-  // OAS 3.1 makes `type: object` optional when `properties` is present.
-  // Accept object-like schemas: explicit type:"object" OR propertied schema without type.
-  // Still exclude arrays and primitives (they lack a meaningful `properties` map).
+  // OAS 3.1: type:"object" is optional when properties is present — accept both.
   if (!schema || !isObjectLikeSchema(schema)) return null;
 
-  // Hoist the exactly-one-array-prop check — both auto-detect branches need it.
   const props = schema.properties ?? {};
   const arrayProps = Object.keys(props).filter((k) => props[k]?.type === "array");
-  if (arrayProps.length !== 1) return null;
-  const itemsField = arrayProps[0]!;
 
-  // Cursor checked first (takes precedence over offset/page)
-  const cursorPlan = autoDetectCursor(oasOp, props, itemsField);
-  if (cursorPlan !== null) return cursorPlan;
+  if (arrayProps.length === 1) {
+    // Direct array in the top-level response object.
+    const itemsField = arrayProps[0]!;
+    const cursorPlan = autoDetectCursor(oasOp, props, itemsField);
+    if (cursorPlan !== null) return cursorPlan;
+    return autoDetectOffsetOrPage(oasOp, itemsField);
+  }
 
-  return autoDetectOffsetOrPage(oasOp, itemsField);
+  if (arrayProps.length === 0) {
+    // No direct array — try envelope descent.
+    const env = descendEnvelope(props);
+    if (env === null) return null;
+    const itemsField = `${env.envelopeKey}.${env.arrayKey}`;
+    const cursorPlan = autoDetectCursor(oasOp, env.innerProps, itemsField, env.envelopeKey);
+    if (cursorPlan !== null) return cursorPlan;
+    return autoDetectOffsetOrPage(oasOp, itemsField);
+  }
+
+  // arrayProps.length > 1 → ambiguous top-level arrays → no plan.
+  return null;
 }

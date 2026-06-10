@@ -127,3 +127,43 @@ export const PAGE_PARAMS: OasParam[] = [
   { name: "page", in: "query", schema: { type: "integer" } },
   { name: "per_page", in: "query", schema: { type: "integer" } },
 ];
+
+// ---- envelope response schemas ----
+// Envelope: 200-response is an object with EXACTLY ONE object-typed property (the envelope)
+// which itself has EXACTLY ONE array property.
+// Example: { data: { results: [...], next_cursor: "..." } }
+
+export interface OasEnvelopeSchema {
+  type?: string;
+  properties?: Record<string, {
+    type?: string;
+    properties?: Record<string, { type: string; items?: unknown }>;
+  }>;
+}
+
+export function makeGetOasWithEnvelope(
+  opId: string,
+  params: OasParam[],
+  responseSchema: OasEnvelopeSchema,
+): string {
+  return JSON.stringify({
+    openapi: "3.1.0",
+    info: { title: "test", version: "1.0.0" },
+    paths: {
+      "/items": {
+        get: {
+          operationId: opId,
+          tags: ["items"],
+          parameters: params,
+          responses: {
+            "200": {
+              content: {
+                "application/json": { schema: responseSchema },
+              },
+            },
+          },
+        },
+      },
+    },
+  });
+}

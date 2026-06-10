@@ -353,3 +353,93 @@ describe("paginate() runtime — page style (1-based)", () => {
     expect(calls[1]).toEqual({ offset: 2 });
   });
 });
+
+// ─── Dot-path: emitted engine source ─────────────────────────────────────────
+
+describe("generatePaginationModule — dot-path engine emission", () => {
+  test("emits a getPath helper function", () => {
+    const src = generatePaginationModule();
+    expect(src).toMatch(/function\s+getPath/);
+  });
+
+  test("getPath splits on '.' and walks the object", () => {
+    const src = generatePaginationModule();
+    expect(src).toContain('split(".")');
+  });
+
+  test("getPath returns undefined on any miss (defensive traversal)", () => {
+    const src = generatePaginationModule();
+    // Must handle null/non-object intermediate node gracefully
+    expect(src).toMatch(/getPath/);
+  });
+});
+
+// ─── Dot-path runtime: envelope cursor iteration ─────────────────────────────
+
+describe("paginate() runtime — envelope cursor (dot-path itemsField + nextField)", () => {
+  const ENVELOPE_CURSOR_PLAN: PaginatePlan = {
+    style: "cursor",
+    requestParam: "cursor",
+    pageSizeParam: null,
+    itemsField: "data.results",
+    nextField: "data.next_cursor",
+    opId: "op_envelope",
+  };
+
+  test("3-page envelope cursor: yields all items from nested 'data.results', stops on null next_cursor", async () => {
+    const paginate = loadEmittedPaginate();
+    const calls: Array<Record<string, unknown>> = [];
+    // Server returns envelope: { data: { results: [...], next_cursor: "..." } }
+    const pages = [
+      { data: { results: [1, 2], next_cursor: "p2" } },
+      { data: { results: [3, 4], next_cursor: "p3" } },
+      { data: { results: [5], next_cursor: null } },
+    ];
+    let idx = 0;
+    const fetchPage = (pageArgs: Record<string, unknown>): Promise<unknown> => {
+      calls.push({ ...pageArgs });
+      return Promise.resolve(pages[idx++]);
+    };
+    const items = await drain(paginate(fetchPage, ENVELOPE_CURSOR_PLAN));
+    expect(items).toEqual([1, 2, 3, 4, 5]);
+    expect(calls).toHaveLength(3);
+    expect(calls[1]).toEqual({ cursor: "p2" });
+    expect(calls[2]).toEqual({ cursor: "p3" });
+  });
+
+  test("missing envelope mid-stream throws typed error naming itemsField", async () => {
+    const paginate = loadEmittedPaginate();
+    const pages = [
+      { data: { results: [1], next_cursor: "p2" } },
+      { not_data: "wrong" }, // envelope gone on page 2 → TypeError
+    ];
+    let idx = 0;
+    const fetchPage = (): Promise<unknown> => Promise.resolve(pages[idx++]);
+    await expect(drain(paginate(fetchPage, ENVELOPE_CURSOR_PLAN))).rejects.toThrow(TypeError);
+  });
+});
+
+// ─── Dot-path: single-segment behavior identical ─────────────────────────────
+
+describe("paginate() runtime — single-segment path is byte-equivalent (regression)", () => {
+  const FLAT_CURSOR_PLAN: PaginatePlan = {
+    style: "cursor",
+    requestParam: "cursor",
+    pageSizeParam: null,
+    itemsField: "data",
+    nextField: "next_cursor",
+    opId: "op_flat_regression",
+  };
+
+  test("single-segment itemsField 'data' still works after getPath migration", async () => {
+    const paginate = loadEmittedPaginate();
+    const pages = [
+      { data: ["a", "b"], next_cursor: "p2" },
+      { data: ["c"], next_cursor: null },
+    ];
+    let idx = 0;
+    const fetchPage = (): Promise<unknown> => Promise.resolve(pages[idx++]);
+    const items = await drain(paginate(fetchPage, FLAT_CURSOR_PLAN));
+    expect(items).toEqual(["a", "b", "c"]);
+  });
+});

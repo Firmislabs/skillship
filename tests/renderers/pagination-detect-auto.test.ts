@@ -7,6 +7,7 @@ import { detectPagination } from "../../src/renderers/pagination-detect.js";
 import type { OperationInfo } from "../../src/sdk-plugins/resource-tree.js";
 import {
   makeGetOas,
+  makeGetOasWithEnvelope,
   makeOp,
   EMPTY_OVERLAY,
   CURSOR_SCHEMA,
@@ -170,5 +171,61 @@ describe("auto-detect page", () => {
     const plan = result.get("listItems")!;
     expect(plan.style).toBe("page");
     expect(plan.pageSizeParam).toBe("page_size");
+  });
+});
+
+// ============================
+// AUTO-DETECT: envelope descent (tier 3)
+// ============================
+
+describe("auto-detect envelope descent", () => {
+  test("cursor: envelope wraps array — itemsField is 'data.results', nextField is 'data.next_cursor'", () => {
+    // Response: { data: { results: [...], next_cursor: "..." } }
+    // The 200-response object has NO direct array, EXACTLY ONE object prop ("data")
+    // whose schema has EXACTLY ONE array prop ("results") and a cursor field.
+    const envelopeSchema = {
+      type: "object",
+      properties: {
+        data: {
+          type: "object",
+          properties: {
+            results: { type: "array", items: {} },
+            next_cursor: { type: "string" },
+          },
+        },
+      },
+    };
+    const oasJson = makeGetOasWithEnvelope("listItems", CURSOR_PARAMS, envelopeSchema);
+    const ops: readonly OperationInfo[] = [makeOp("listItems")];
+    const result = detectPagination(ops, oasJson, EMPTY_OVERLAY);
+    expect(result.has("listItems")).toBe(true);
+    const plan = result.get("listItems")!;
+    expect(plan.style).toBe("cursor");
+    expect(plan.itemsField).toBe("data.results");
+    expect(plan.nextField).toBe("data.next_cursor");
+    expect(plan.requestParam).toBe("cursor");
+  });
+
+  test("page: envelope wraps array — itemsField is 'envelope.items', nextField null", () => {
+    const envelopeSchema = {
+      type: "object",
+      properties: {
+        envelope: {
+          type: "object",
+          properties: {
+            items: { type: "array", items: {} },
+            total: { type: "integer" },
+          },
+        },
+      },
+    };
+    const oasJson = makeGetOasWithEnvelope("listPages", PAGE_PARAMS, envelopeSchema);
+    const ops: readonly OperationInfo[] = [makeOp("listPages")];
+    const result = detectPagination(ops, oasJson, EMPTY_OVERLAY);
+    expect(result.has("listPages")).toBe(true);
+    const plan = result.get("listPages")!;
+    expect(plan.style).toBe("page");
+    expect(plan.itemsField).toBe("envelope.items");
+    expect(plan.nextField).toBeNull();
   });
 });

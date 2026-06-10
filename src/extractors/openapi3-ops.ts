@@ -233,6 +233,30 @@ function emitParameters(
   });
 }
 
+/**
+ * Resolves the effective type string for a parameter schema.
+ * When the schema has `oneOf` or `anyOf` and ANY branch declares `{type:"integer"}`,
+ * returns "integer" — enabling integer-gated page detection for Listmonk-style
+ * params like `per_page: oneOf:[integer, string "all"]`.
+ * Falls back to the direct `type` string, or "unknown" when neither is present.
+ */
+function resolveParamType(schema: Record<string, unknown> | undefined): string {
+  if (schema === undefined) return "unknown";
+  if (typeof schema.type === "string") return schema.type;
+  const composite = Array.isArray(schema.oneOf)
+    ? (schema.oneOf as unknown[])
+    : Array.isArray(schema.anyOf)
+      ? (schema.anyOf as unknown[])
+      : undefined;
+  if (composite !== undefined) {
+    const hasInteger = composite.some(
+      (branch) => isObject(branch) && branch.type === "integer",
+    );
+    if (hasInteger) return "integer";
+  }
+  return "unknown";
+}
+
 function pushParamClaims(
   claims: ExtractedClaim[],
   paramId: string,
@@ -263,7 +287,7 @@ function pushParamClaims(
     confidence: "attested",
   });
   const schema = isObject(raw.schema) ? raw.schema : undefined;
-  const type = typeof schema?.type === "string" ? schema.type : "unknown";
+  const type = resolveParamType(schema);
   claims.push({
     node_id: paramId,
     field: "type",

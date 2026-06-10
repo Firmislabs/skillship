@@ -8,6 +8,7 @@ import { detectPagination } from "../../src/renderers/pagination-detect.js";
 import type { OperationInfo } from "../../src/sdk-plugins/resource-tree.js";
 import {
   makeGetOas,
+  makeGetOasWithEnvelope,
   makePostOas,
   makeOp,
   EMPTY_OVERLAY,
@@ -213,5 +214,70 @@ describe("edge cases", () => {
     expect(result.has("listUsers")).toBe(true);
     expect(result.get("listUsers")!.style).toBe("offset");
     expect(result.has("createToken")).toBe(false);
+  });
+});
+
+// ============================
+// ENVELOPE ambiguity guards (conservatism contract)
+// ============================
+
+describe("envelope ambiguity → no plan (conservatism contract)", () => {
+  test("two object props at top level → ambiguous envelope → no plan", () => {
+    // Two object props: ambiguous which is the envelope → conservatism → no plan.
+    const schema = {
+      type: "object",
+      properties: {
+        data: {
+          type: "object",
+          properties: { results: { type: "array", items: {} } },
+        },
+        meta: {
+          type: "object",
+          properties: { page: { type: "integer" } },
+        },
+      },
+    };
+    const oasJson = makeGetOasWithEnvelope("listItems", CURSOR_PARAMS, schema);
+    const ops: readonly OperationInfo[] = [makeOp("listItems")];
+    const result = detectPagination(ops, oasJson, EMPTY_OVERLAY);
+    expect(result.has("listItems")).toBe(false);
+  });
+
+  test("envelope with two array props inside → ambiguous items → no plan", () => {
+    // The envelope object has TWO array props — can't tell which is items.
+    const schema = {
+      type: "object",
+      properties: {
+        data: {
+          type: "object",
+          properties: {
+            results: { type: "array", items: {} },
+            errors: { type: "array", items: {} },
+          },
+        },
+      },
+    };
+    const oasJson = makeGetOasWithEnvelope("listItems", CURSOR_PARAMS, schema);
+    const ops: readonly OperationInfo[] = [makeOp("listItems")];
+    const result = detectPagination(ops, oasJson, EMPTY_OVERLAY);
+    expect(result.has("listItems")).toBe(false);
+  });
+
+  test("top-level array prop present alongside an envelope object → ambiguous → no plan", () => {
+    // Both a direct array AND an envelope object at top level → no plan.
+    const schema = {
+      type: "object",
+      properties: {
+        items: { type: "array", items: {} },
+        data: {
+          type: "object",
+          properties: { results: { type: "array", items: {} } },
+        },
+      },
+    };
+    const oasJson = makeGetOasWithEnvelope("listItems", CURSOR_PARAMS, schema);
+    const ops: readonly OperationInfo[] = [makeOp("listItems")];
+    const result = detectPagination(ops, oasJson, EMPTY_OVERLAY);
+    expect(result.has("listItems")).toBe(false);
   });
 });
