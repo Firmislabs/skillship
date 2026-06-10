@@ -1,0 +1,295 @@
+import { describe, expect, test } from "vitest";
+import { generateAuthModule } from "../../src/sdk-plugins/auth.js";
+import type { AuthSchemeDescriptor } from "../../src/sdk-plugins/runtime.js";
+
+// ─── fixtures ────────────────────────────────────────────────────────────────
+const bearerOnly: readonly AuthSchemeDescriptor[] = [
+  { kind: "bearer", id: "bearer_main" },
+];
+const apiKeyOnly: readonly AuthSchemeDescriptor[] = [
+  { kind: "apiKey", id: "k1", in: "header", name: "X-API-Key" },
+];
+const basicOnly: readonly AuthSchemeDescriptor[] = [
+  { kind: "basic", id: "ba1" },
+];
+const oauth2Baked: readonly AuthSchemeDescriptor[] = [
+  {
+    kind: "oauth2ClientCredentials",
+    id: "oauth_main",
+    tokenUrl: "https://auth.example.com/token",
+    scopes: ["read", "write"],
+  },
+];
+const oauth2NullUrl: readonly AuthSchemeDescriptor[] = [
+  {
+    kind: "oauth2ClientCredentials",
+    id: "oauth_main",
+    tokenUrl: null,
+    scopes: [],
+  },
+];
+const externalOnly: readonly AuthSchemeDescriptor[] = [
+  { kind: "external", id: "ext1", schemeType: "custom" },
+];
+const mixed: readonly AuthSchemeDescriptor[] = [
+  { kind: "bearer", id: "b1" },
+  { kind: "apiKey", id: "k1", in: "query", name: "api_key" },
+  { kind: "oauth2ClientCredentials", id: "o1", tokenUrl: null, scopes: [] },
+];
+
+const ENV_PREFIX = "ACME";
+
+// ─── header comment ──────────────────────────────────────────────────────────
+describe("generateAuthModule — header", () => {
+  test("emits auto-generated header comment", () => {
+    const code = generateAuthModule(bearerOnly, ENV_PREFIX);
+    expect(code).toContain("Auto-generated");
+    expect(code).toContain("Do not edit by hand");
+  });
+
+  test("imports AuthError and ConfigError from ./errors.js", () => {
+    const code = generateAuthModule(bearerOnly, ENV_PREFIX);
+    expect(code).toContain("AuthError");
+    expect(code).toContain("ConfigError");
+    expect(code).toContain('from "./errors.js"');
+  });
+});
+
+// ─── AuthConfig union ────────────────────────────────────────────────────────
+describe("generateAuthModule — AuthConfig union", () => {
+  test("tokenProvider member is ALWAYS present regardless of schemes", () => {
+    for (const schemes of [bearerOnly, apiKeyOnly, basicOnly, oauth2Baked, externalOnly, []]) {
+      const code = generateAuthModule(schemes, ENV_PREFIX);
+      expect(code, `schemes=${JSON.stringify(schemes)}`).toContain('kind: "tokenProvider"');
+      expect(code).toContain("getToken: () => Promise<string>");
+    }
+  });
+
+  test("bearer scheme emits bearer member with token: string", () => {
+    const code = generateAuthModule(bearerOnly, ENV_PREFIX);
+    expect(code).toContain('kind: "bearer"');
+    expect(code).toMatch(/kind:\s*"bearer"[^}]*token:\s*string/s);
+  });
+
+  test("apiKey scheme emits apiKey member", () => {
+    const code = generateAuthModule(apiKeyOnly, ENV_PREFIX);
+    expect(code).toContain('kind: "apiKey"');
+    expect(code).toContain("value: string");
+  });
+
+  test("basic scheme emits basic member with username/password", () => {
+    const code = generateAuthModule(basicOnly, ENV_PREFIX);
+    expect(code).toContain('kind: "basic"');
+    expect(code).toContain("username: string");
+    expect(code).toContain("password: string");
+  });
+
+  test("oauth2ClientCredentials emits oauth2 member with required + optional fields", () => {
+    const code = generateAuthModule(oauth2Baked, ENV_PREFIX);
+    expect(code).toContain('kind: "oauth2"');
+    expect(code).toContain("clientId: string");
+    expect(code).toContain("clientSecret: string");
+    expect(code).toContain("tokenUrl?: string");
+    expect(code).toContain("scopes?: string[]");
+  });
+
+  test("external descriptor contributes NO member to AuthConfig", () => {
+    const code = generateAuthModule(externalOnly, ENV_PREFIX);
+    expect(code).not.toContain('kind: "external"');
+    // tokenProvider still present
+    expect(code).toContain('kind: "tokenProvider"');
+  });
+
+  test("empty schemes still emit valid AuthConfig with tokenProvider only", () => {
+    const code = generateAuthModule([], ENV_PREFIX);
+    expect(code).toMatch(/export type AuthConfig/);
+    expect(code).toContain('kind: "tokenProvider"');
+  });
+});
+
+// ─── resolveAuthFromEnv ──────────────────────────────────────────────────────
+describe("generateAuthModule — resolveAuthFromEnv", () => {
+  test("function is exported", () => {
+    const code = generateAuthModule(bearerOnly, ENV_PREFIX);
+    expect(code).toContain("export function resolveAuthFromEnv");
+  });
+
+  test("return type includes null", () => {
+    const code = generateAuthModule(bearerOnly, ENV_PREFIX);
+    expect(code).toMatch(/resolveAuthFromEnv\s*\(\s*\)\s*:\s*AuthConfig\s*\|\s*null/);
+  });
+
+  test("bearer scheme uses ACME_TOKEN env var", () => {
+    const code = generateAuthModule(bearerOnly, ENV_PREFIX);
+    expect(code).toContain("ACME_TOKEN");
+  });
+
+  test("apiKey scheme uses ACME_API_KEY env var", () => {
+    const code = generateAuthModule(apiKeyOnly, ENV_PREFIX);
+    expect(code).toContain("ACME_API_KEY");
+  });
+
+  test("basic scheme uses ACME_USERNAME and ACME_PASSWORD env vars", () => {
+    const code = generateAuthModule(basicOnly, ENV_PREFIX);
+    expect(code).toContain("ACME_USERNAME");
+    expect(code).toContain("ACME_PASSWORD");
+  });
+
+  test("oauth2 scheme uses ACME_CLIENT_ID and ACME_CLIENT_SECRET", () => {
+    const code = generateAuthModule(oauth2Baked, ENV_PREFIX);
+    expect(code).toContain("ACME_CLIENT_ID");
+    expect(code).toContain("ACME_CLIENT_SECRET");
+  });
+
+  test("oauth2 scheme emits ACME_TOKEN_URL optional override", () => {
+    const code = generateAuthModule(oauth2Baked, ENV_PREFIX);
+    expect(code).toContain("ACME_TOKEN_URL");
+  });
+
+  test("returns null when nothing matches", () => {
+    const code = generateAuthModule(bearerOnly, ENV_PREFIX);
+    expect(code).toContain("return null");
+  });
+
+  test("env prefix is baked literally — different prefix produces different var names", () => {
+    const codeAcme = generateAuthModule(bearerOnly, "ACME");
+    const codeFoo = generateAuthModule(bearerOnly, "FOO");
+    expect(codeAcme).toContain("ACME_TOKEN");
+    expect(codeFoo).toContain("FOO_TOKEN");
+    expect(codeFoo).not.toContain("ACME_TOKEN");
+  });
+});
+
+// ─── AuthManager ─────────────────────────────────────────────────────────────
+describe("generateAuthModule — AuthManager class", () => {
+  test("export class AuthManager is present", () => {
+    const code = generateAuthModule(bearerOnly, ENV_PREFIX);
+    expect(code).toContain("export class AuthManager");
+  });
+
+  test("constructor receives auth: AuthConfig and fetchImpl: typeof fetch", () => {
+    const code = generateAuthModule(bearerOnly, ENV_PREFIX);
+    expect(code).toMatch(/constructor\s*\([^)]*auth\s*:\s*AuthConfig/);
+    expect(code).toMatch(/fetchImpl\s*:\s*typeof fetch/);
+  });
+
+  test("applyAuth method is present with correct signature", () => {
+    const code = generateAuthModule(bearerOnly, ENV_PREFIX);
+    expect(code).toContain("applyAuth");
+    expect(code).toMatch(/applyAuth\s*\([^)]*headers[^)]*searchParams[^)]*\)/);
+    expect(code).toMatch(/Promise<void>/);
+  });
+
+  test("onUnauthorized method is present and returns boolean", () => {
+    const code = generateAuthModule(bearerOnly, ENV_PREFIX);
+    expect(code).toContain("onUnauthorized");
+    expect(code).toMatch(/onUnauthorized\s*\([^)]*\)\s*:\s*boolean/);
+  });
+});
+
+// ─── oauth2 token-fetch logic ────────────────────────────────────────────────
+describe("generateAuthModule — oauth2 token fetch", () => {
+  test("uses grant_type=client_credentials", () => {
+    const code = generateAuthModule(oauth2Baked, ENV_PREFIX);
+    expect(code).toContain("grant_type=client_credentials");
+  });
+
+  test("uses HTTP Basic auth for client credentials (btoa)", () => {
+    const code = generateAuthModule(oauth2Baked, ENV_PREFIX);
+    expect(code).toContain("btoa(");
+    expect(code).toMatch(/Authorization.*Basic/);
+  });
+
+  test("uses opts.fetch / fetchImpl — never globalThis.fetch directly", () => {
+    const code = generateAuthModule(oauth2Baked, ENV_PREFIX);
+    expect(code).not.toContain("globalThis.fetch");
+    expect(code).toContain("fetchImpl");
+  });
+
+  test("cache expiry is now + (expires_in ?? 300) - 60", () => {
+    const code = generateAuthModule(oauth2Baked, ENV_PREFIX);
+    expect(code).toMatch(/expires_in\s*\?\?\s*300/);
+    expect(code).toMatch(/Date\.now\(\)/);
+    // subtracts 60 seconds for safety margin
+    expect(code).toMatch(/[-–]\s*60/);
+  });
+
+  test("single-flight via cached in-flight Promise", () => {
+    const code = generateAuthModule(oauth2Baked, ENV_PREFIX);
+    // inflight promise variable
+    expect(code).toMatch(/inflight|inFlight|in_flight/i);
+  });
+
+  test("invalidate() clears the token cache", () => {
+    const code = generateAuthModule(oauth2Baked, ENV_PREFIX);
+    expect(code).toContain("invalidate");
+  });
+
+  test("throws AuthError on malformed token response (missing access_token)", () => {
+    const code = generateAuthModule(oauth2Baked, ENV_PREFIX);
+    expect(code).toContain("access_token");
+    expect(code).toContain("malformed token response");
+    expect(code).toContain("AuthError");
+  });
+
+  test("throws AuthError with status + tokenUrl on non-2xx — never exposes the secret", () => {
+    const code = generateAuthModule(oauth2Baked, ENV_PREFIX);
+    // should reference status or ok check
+    expect(code).toMatch(/\.ok|status\s*[><!]/);
+    // error message must not embed clientSecret
+    expect(code).not.toMatch(/clientSecret.*Error|Error.*clientSecret/);
+  });
+
+  test("baked tokenUrl appears as default when descriptor has non-null tokenUrl", () => {
+    const code = generateAuthModule(oauth2Baked, ENV_PREFIX);
+    expect(code).toContain("https://auth.example.com/token");
+  });
+
+  test("null tokenUrl requires user supply — emits ConfigError when missing", () => {
+    const code = generateAuthModule(oauth2NullUrl, ENV_PREFIX);
+    expect(code).toContain("ConfigError");
+    // no baked default URL
+    expect(code).not.toContain("https://auth.example.com/token");
+  });
+});
+
+// ─── tokenProvider ────────────────────────────────────────────────────────────
+describe("generateAuthModule — tokenProvider branch", () => {
+  test("applyAuth handles tokenProvider by calling getToken() and setting Authorization header", () => {
+    const code = generateAuthModule(bearerOnly, ENV_PREFIX);
+    expect(code).toContain("tokenProvider");
+    expect(code).toContain("getToken");
+    expect(code).toMatch(/Authorization.*Bearer/);
+  });
+
+  test("onUnauthorized returns true for tokenProvider (retry-capable)", () => {
+    const code = generateAuthModule(bearerOnly, ENV_PREFIX);
+    // onUnauthorized should return true for oauth2/tokenProvider
+    expect(code).toContain("return true");
+  });
+});
+
+// ─── self-review guards ──────────────────────────────────────────────────────
+describe("generateAuthModule — self-review", () => {
+  test("no 'any' type in emitted code", () => {
+    for (const schemes of [bearerOnly, oauth2Baked, mixed]) {
+      const code = generateAuthModule(schemes, ENV_PREFIX);
+      // allow the word in comments but not as a type annotation
+      expect(code, `schemes=${JSON.stringify(schemes)}`).not.toMatch(/:\s*any\b/);
+      expect(code).not.toMatch(/<any>/);
+    }
+  });
+
+  test("emitter output is deterministic (same input → same output)", () => {
+    const a = generateAuthModule(oauth2Baked, ENV_PREFIX);
+    const b = generateAuthModule(oauth2Baked, ENV_PREFIX);
+    expect(a).toBe(b);
+  });
+
+  test("no globalThis.fetch reference in emitted code for any scheme", () => {
+    for (const schemes of [bearerOnly, oauth2Baked, mixed]) {
+      const code = generateAuthModule(schemes, ENV_PREFIX);
+      expect(code, `schemes=${JSON.stringify(schemes)}`).not.toContain("globalThis.fetch");
+    }
+  });
+});
