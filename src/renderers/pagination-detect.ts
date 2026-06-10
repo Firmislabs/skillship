@@ -1,0 +1,286 @@
+// src/renderers/pagination-detect.ts
+// Single source of truth for which operations paginate.
+// Resolution order:
+//   1. overlay.pagination.perOperation[opId] — explicit always wins.
+//   2. overlay.pagination.style (product-wide) — applied to qualifying GETs only.
+//   3. Conservative auto-detection — only when overlay is silent.
+// False negatives are acceptable; false positives are not.
+
+import type { OperationInfo } from "../sdk-plugins/resource-tree.js";
+import type { CodegenOverlay } from "../overlays/codegen.js";
+
+export interface PaginationPlan {
+  readonly style: "cursor" | "offset" | "page";
+  readonly requestParam: string;
+  readonly pageSizeParam: string | null;
+  readonly itemsField: string;
+  readonly nextField: string | null;
+}
+
+// ---- Style-specific conventional defaults ----
+
+const CURSOR_DEFAULTS = {
+  requestParam: "cursor",
+  pageSizeParam: null as string | null,
+  itemsField: "data",
+  nextField: "next_cursor",
+} as const;
+
+const OFFSET_DEFAULTS = {
+  requestParam: "offset",
+  pageSizeParam: null as string | null,
+  itemsField: "data",
+  nextField: null as string | null,
+} as const;
+
+const PAGE_DEFAULTS = {
+  requestParam: "page",
+  pageSizeParam: null as string | null,
+  itemsField: "data",
+  nextField: null as string | null,
+} as const;
+
+type PaginationStyle = "cursor" | "offset" | "page";
+type OverlayFields = NonNullable<NonNullable<CodegenOverlay["pagination"]>["fields"]>;
+
+function planFromOverlayStyle(
+  style: PaginationStyle,
+  fields: OverlayFields,
+): PaginationPlan {
+  if (style === "cursor") {
+    return {
+      style,
+      requestParam: fields.requestParam ?? CURSOR_DEFAULTS.requestParam,
+      pageSizeParam: fields.pageSizeParam ?? CURSOR_DEFAULTS.pageSizeParam,
+      itemsField: fields.itemsField ?? CURSOR_DEFAULTS.itemsField,
+      nextField: fields.nextField ?? CURSOR_DEFAULTS.nextField,
+    };
+  }
+  if (style === "offset") {
+    return {
+      style,
+      requestParam: fields.requestParam ?? OFFSET_DEFAULTS.requestParam,
+      pageSizeParam: fields.pageSizeParam ?? OFFSET_DEFAULTS.pageSizeParam,
+      itemsField: fields.itemsField ?? OFFSET_DEFAULTS.itemsField,
+      nextField: fields.nextField ?? OFFSET_DEFAULTS.nextField,
+    };
+  }
+  // page
+  return {
+    style,
+    requestParam: fields.requestParam ?? PAGE_DEFAULTS.requestParam,
+    pageSizeParam: fields.pageSizeParam ?? PAGE_DEFAULTS.pageSizeParam,
+    itemsField: fields.itemsField ?? PAGE_DEFAULTS.itemsField,
+    nextField: fields.nextField ?? PAGE_DEFAULTS.nextField,
+  };
+}
+
+// ---- Minimal OAS types for reading paths/responses/parameters ----
+
+interface OasSchema {
+  readonly type?: string;
+  readonly properties?: Record<string, OasSchema>;
+  readonly items?: unknown;
+}
+
+interface OasParam {
+  readonly name?: string;
+  readonly in?: string;
+  readonly schema?: OasSchema;
+}
+
+interface OasOperation {
+  readonly operationId?: string;
+  readonly parameters?: readonly OasParam[];
+  readonly responses?: Record<string, OasResponse>;
+}
+
+interface OasResponse {
+  readonly content?: Record<string, { readonly schema?: OasSchema }>;
+}
+
+type OasPathItem = Record<string, OasOperation>;
+
+interface OasDoc {
+  readonly paths?: Record<string, OasPathItem>;
+}
+
+// ---- Synonym tables ----
+
+const CURSOR_RESPONSE_FIELDS: ReadonlySet<string> = new Set([
+  "next_cursor",
+  "nextCursor",
+  "next_page_token",
+  "cursor",
+]);
+
+const CURSOR_REQUEST_PARAMS: ReadonlySet<string> = new Set([
+  "cursor",
+  "page_token",
+  "starting_after",
+]);
+
+const PAGE_SIZE_PARAMS: ReadonlySet<string> = new Set(["limit", "per_page", "page_size"]);
+
+// ---- OAS operation lookup helpers ----
+
+const HTTP_METHODS = ["get", "post", "put", "patch", "delete", "head", "options", "trace"] as const;
+
+function findOasOperation(
+  doc: OasDoc,
+  op: OperationInfo,
+): OasOperation | null {
+  const pathItem = doc.paths?.[op.path];
+  if (!pathItem) return null;
+  const method = op.method.toLowerCase();
+  // Verify it's one of the known HTTP methods to avoid index access on non-method keys
+  if (!HTTP_METHODS.includes(method as typeof HTTP_METHODS[number])) return null;
+  const oasOp = pathItem[method];
+  if (!oasOp || typeof oasOp !== "object") return null;
+  return oasOp;
+}
+
+function get200Schema(oasOp: OasOperation): OasSchema | null {
+  const resp = oasOp.responses?.["200"];
+  if (!resp) return null;
+  const jsonContent = resp.content?.["application/json"];
+  if (!jsonContent) return null;
+  return jsonContent.schema ?? null;
+}
+
+function getQueryParams(oasOp: OasOperation): readonly OasParam[] {
+  return (oasOp.parameters ?? []).filter((p) => p.in === "query");
+}
+
+// ---- Structural qualifier for product-wide style ----
+// A GET whose 200 response schema is an object with at least one array property.
+
+function qualifiesForProductWide(oasOp: OasOperation, op: OperationInfo): boolean {
+  if (op.method !== "GET") return false;
+  const schema = get200Schema(oasOp);
+  if (!schema || schema.type !== "object") return false;
+  const props = schema.properties ?? {};
+  return Object.values(props).some((p) => p.type === "array");
+}
+
+// ---- Auto-detection helpers (≤50 lines each) ----
+
+function autoDetectCursor(
+  oasOp: OasOperation,
+  schema: OasSchema,
+): PaginationPlan | null {
+  const props = schema.properties ?? {};
+  const arrayProps = Object.keys(props).filter((k) => props[k]?.type === "array");
+  if (arrayProps.length !== 1) return null;
+  const itemsField = arrayProps[0]!;
+
+  // Find a cursor-like response field
+  const nextField = Object.keys(props).find((k) => CURSOR_RESPONSE_FIELDS.has(k)) ?? null;
+  if (!nextField) return null;
+
+  // Find a cursor-like request param
+  const queryParams = getQueryParams(oasOp);
+  const requestParamEntry = queryParams.find((p) => p.name && CURSOR_REQUEST_PARAMS.has(p.name));
+  if (!requestParamEntry?.name) return null;
+  const requestParam = requestParamEntry.name;
+
+  // Optional page-size param
+  const pageSizeEntry = queryParams.find((p) => p.name && PAGE_SIZE_PARAMS.has(p.name));
+  const pageSizeParam = pageSizeEntry?.name ?? null;
+
+  return { style: "cursor", requestParam, pageSizeParam, itemsField, nextField };
+}
+
+function autoDetectOffsetOrPage(
+  oasOp: OasOperation,
+  schema: OasSchema,
+): PaginationPlan | null {
+  const props = schema.properties ?? {};
+  const arrayProps = Object.keys(props).filter((k) => props[k]?.type === "array");
+  if (arrayProps.length !== 1) return null;
+  const itemsField = arrayProps[0]!;
+
+  const queryParams = getQueryParams(oasOp);
+  const intParams = new Set(
+    queryParams
+      .filter((p) => p.schema?.type === "integer" && p.name)
+      .map((p) => p.name as string),
+  );
+
+  // page detection: page + (per_page | page_size)
+  if (intParams.has("page")) {
+    const pageSizeParam = intParams.has("per_page")
+      ? "per_page"
+      : intParams.has("page_size")
+        ? "page_size"
+        : null;
+    if (pageSizeParam !== null) {
+      return { style: "page", requestParam: "page", pageSizeParam, itemsField, nextField: null };
+    }
+  }
+
+  // offset detection: offset + limit
+  if (intParams.has("offset") && intParams.has("limit")) {
+    return { style: "offset", requestParam: "offset", pageSizeParam: "limit", itemsField, nextField: null };
+  }
+
+  return null;
+}
+
+// ---- Main exported function ----
+
+export function detectPagination(
+  ops: readonly OperationInfo[],
+  oasJson: string,
+  overlay: CodegenOverlay,
+): ReadonlyMap<string, PaginationPlan> {
+  const doc = (oasJson.trim() === "{}" ? {} : JSON.parse(oasJson)) as OasDoc;
+  const result = new Map<string, PaginationPlan>();
+  const paginationOverlay = overlay.pagination;
+
+  for (const op of ops) {
+    const plan = resolveOperationPlan(op, doc, paginationOverlay);
+    if (plan !== null) {
+      result.set(op.operationId, plan);
+    }
+  }
+
+  return result;
+}
+
+function resolveOperationPlan(
+  op: OperationInfo,
+  doc: OasDoc,
+  paginationOverlay: CodegenOverlay["pagination"],
+): PaginationPlan | null {
+  const fields: OverlayFields = paginationOverlay?.fields ?? {};
+
+  // 1. perOperation explicit style wins
+  const perOpStyle = paginationOverlay?.perOperation?.[op.operationId];
+  if (perOpStyle !== undefined) {
+    return planFromOverlayStyle(perOpStyle, fields);
+  }
+
+  // 2. product-wide style — applied only to structurally qualifying GETs
+  const productStyle = paginationOverlay?.style;
+  if (productStyle !== undefined) {
+    const oasOp = findOasOperation(doc, op);
+    if (oasOp !== null && qualifiesForProductWide(oasOp, op)) {
+      return planFromOverlayStyle(productStyle, fields);
+    }
+    return null;
+  }
+
+  // 3. Conservative auto-detection (overlay is silent)
+  if (op.method !== "GET") return null;
+  const oasOp = findOasOperation(doc, op);
+  if (oasOp === null) return null;
+  const schema = get200Schema(oasOp);
+  if (!schema || schema.type !== "object") return null;
+
+  // Cursor checked first (takes precedence over offset/page)
+  const cursorPlan = autoDetectCursor(oasOp, schema);
+  if (cursorPlan !== null) return cursorPlan;
+
+  return autoDetectOffsetOrPage(oasOp, schema);
+}
