@@ -59,7 +59,7 @@ const PAGINATE_OFFSET_PAGE = `async function* paginateOffsetOrPage<Item>(
   plan: PaginatePlan,
   requestedPageSize: number | undefined,
 ): AsyncGenerator<Item> {
-  let counter = 0;
+  let counter = plan.style === "page" ? 1 : 0;
   for (;;) {
     const pageArgs: Record<string, unknown> = { [plan.requestParam]: counter };
     const body = await fetchPage(pageArgs);

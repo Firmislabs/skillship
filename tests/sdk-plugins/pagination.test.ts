@@ -267,3 +267,89 @@ describe("paginate() runtime — offset/page style", () => {
     expect(calls).toHaveLength(2);
   });
 });
+
+describe("paginate() runtime — page style (1-based)", () => {
+  const PAGE_PLAN: PaginatePlan = {
+    style: "page",
+    requestParam: "page",
+    pageSizeParam: "per_page",
+    itemsField: "data",
+    nextField: null,
+    opId: "op_page",
+  };
+
+  test("Fix 1 — page style: first fetch sends page=1 (not page=0)", async () => {
+    // GitHub/GitLab page-style APIs are 1-based. Counter must start at 1 for
+    // page style (not 0 which would either 4xx or duplicate the first page).
+    const paginate = loadEmittedPaginate();
+    const calls: Array<Record<string, unknown>> = [];
+    const pages = [
+      { data: ["a", "b"] }, // full page → continue
+      { data: ["c"] },       // partial page (< per_page=2) → stop
+    ];
+    let idx = 0;
+    const fetchPage = (pageArgs: Record<string, unknown>): Promise<unknown> => {
+      calls.push({ ...pageArgs });
+      if (idx >= pages.length) throw new Error("fetchPage called too many times");
+      return Promise.resolve(pages[idx++]);
+    };
+    const items = await drain(paginate(fetchPage, PAGE_PLAN, 2));
+    expect(items).toEqual(["a", "b", "c"]);
+    // CRITICAL: sequence must be [{page:1},{page:2}], NOT [{page:0},{page:1}]
+    expect(calls).toHaveLength(2);
+    expect(calls[0]).toEqual({ page: 1 });
+    expect(calls[1]).toEqual({ page: 2 });
+  });
+
+  test("page style: 3-page sequence uses [{page:1},{page:2},{page:3}] (not 0-based)", async () => {
+    // Exhaustive: full 2 pages then short page; recorded pageArgs must be 1-based.
+    const paginate = loadEmittedPaginate();
+    const calls: Array<Record<string, unknown>> = [];
+    const pages = [
+      { data: [1, 2] }, // full page → continue
+      { data: [3, 4] }, // full page → continue
+      { data: [5] },    // partial page → stop
+    ];
+    let idx = 0;
+    const fetchPage = (pageArgs: Record<string, unknown>): Promise<unknown> => {
+      calls.push({ ...pageArgs });
+      if (idx >= pages.length) throw new Error("fetchPage called too many times");
+      return Promise.resolve(pages[idx++]);
+    };
+    const items = await drain(paginate(fetchPage, PAGE_PLAN, 2));
+    expect(items).toEqual([1, 2, 3, 4, 5]);
+    expect(calls).toHaveLength(3);
+    expect(calls[0]).toEqual({ page: 1 });
+    expect(calls[1]).toEqual({ page: 2 });
+    expect(calls[2]).toEqual({ page: 3 });
+  });
+
+  test("offset style: counter still starts at 0 (offset is 0-based, unaffected by fix)", async () => {
+    // Confirm the fix does NOT change offset-style — offset starts at 0.
+    const paginate = loadEmittedPaginate();
+    const calls: Array<Record<string, unknown>> = [];
+    const OFFSET_PLAN_CHECK: PaginatePlan = {
+      style: "offset",
+      requestParam: "offset",
+      pageSizeParam: "limit",
+      itemsField: "items",
+      nextField: null,
+      opId: "op_offset_check",
+    };
+    const pages = [
+      { items: ["x", "y"] }, // full page → continue
+      { items: ["z"] },       // partial page → stop
+    ];
+    let idx = 0;
+    const fetchPage = (pageArgs: Record<string, unknown>): Promise<unknown> => {
+      calls.push({ ...pageArgs });
+      if (idx >= pages.length) throw new Error("fetchPage called too many times");
+      return Promise.resolve(pages[idx++]);
+    };
+    const items = await drain(paginate(fetchPage, OFFSET_PLAN_CHECK, 2));
+    expect(items).toEqual(["x", "y", "z"]);
+    // Offset starts at 0, then increments by items.length (2) → next is 2
+    expect(calls[0]).toEqual({ offset: 0 });
+    expect(calls[1]).toEqual({ offset: 2 });
+  });
+});
