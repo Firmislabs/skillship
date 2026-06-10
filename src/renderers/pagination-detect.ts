@@ -178,9 +178,12 @@ function autoDetectCursor(
   const nextField = Object.keys(props).find((k) => CURSOR_RESPONSE_FIELDS.has(k)) ?? null;
   if (!nextField) return null;
 
-  // Find a cursor-like request param
+  // Find a cursor-like request param — schema.type MUST be "string".
+  // An integer-typed param named "cursor" is a false positive; the contract forbids those.
   const queryParams = getQueryParams(oasOp);
-  const requestParamEntry = queryParams.find((p) => p.name && CURSOR_REQUEST_PARAMS.has(p.name));
+  const requestParamEntry = queryParams.find(
+    (p) => p.name && CURSOR_REQUEST_PARAMS.has(p.name) && p.schema?.type === "string",
+  );
   if (!requestParamEntry?.name) return null;
   const requestParam = requestParamEntry.name;
 

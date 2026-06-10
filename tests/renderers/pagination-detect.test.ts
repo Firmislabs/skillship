@@ -511,6 +511,60 @@ describe("ambiguity → no plan", () => {
 });
 
 // ============================
+// AUTO-DETECT: cursor false-positive guard (string type required)
+// ============================
+
+describe("auto-detect cursor false-positive guard", () => {
+  test("integer-typed param named cursor → no plan (string type required)", () => {
+    // The contract: false positives are NOT acceptable.
+    // A query param named "cursor" with schema.type === "integer" must NOT trigger
+    // cursor auto-detection — only string-typed (or schema-absent) should NOT match;
+    // strictly: only schema.type === "string" is accepted.
+    const params: OasParam[] = [
+      { name: "cursor", in: "query", schema: { type: "integer" } },
+      { name: "limit", in: "query", schema: { type: "integer" } },
+    ];
+    const oasJson = makeGetOas("listItems", params, CURSOR_SCHEMA);
+    const ops: readonly OperationInfo[] = [makeOp("listItems")];
+    const result = detectPagination(ops, oasJson, EMPTY_OVERLAY);
+    expect(result.has("listItems")).toBe(false);
+  });
+});
+
+// ============================
+// OVERLAY: product-wide itemsField default
+// ============================
+
+describe("overlay product-wide itemsField default", () => {
+  test("product-wide overlay on qualifying GET with two array props and no fields.itemsField → itemsField is 'data'", () => {
+    // Pins the documented default-guess for overlay-driven mode.
+    // When fields.itemsField is absent the plan must resolve to CURSOR_DEFAULTS.itemsField === "data".
+    const overlay = CodegenOverlaySchema.parse({
+      pagination: {
+        style: "cursor",
+        fields: { requestParam: "cursor", nextField: "next_cursor" },
+        perOperation: {},
+      },
+    });
+    const twoArraySchema: OasResponseSchema = {
+      type: "object",
+      properties: {
+        data: { type: "array", items: {} },
+        errors: { type: "array", items: {} },
+        next_cursor: { type: "string" },
+      },
+    };
+    const oasJson = makeGetOas("listItems", CURSOR_PARAMS, twoArraySchema);
+    const ops: readonly OperationInfo[] = [makeOp("listItems")];
+    const result = detectPagination(ops, oasJson, overlay);
+    // product-wide overlay qualifies on ≥1 array prop (structural guard), so plan IS present
+    expect(result.has("listItems")).toBe(true);
+    const plan = result.get("listItems")!;
+    expect(plan.itemsField).toBe("data");
+  });
+});
+
+// ============================
 // cursor takes precedence over offset when both sets of params present
 // ============================
 
