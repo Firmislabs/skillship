@@ -177,4 +177,35 @@ describe("pushResponseClaims — inline schema → schema_json claim", () => {
     const respClaims = responseClaimsFor(claims, nodes);
     expect(respClaims.find((c) => c.field === "schema_json")).toBeUndefined();
   });
+
+  test("object-like schema without explicit type keyword emits schema_json (OAS 3.1 — type:object optional when properties present)", () => {
+    // OAS 3.1 makes `type: object` optional when `properties` is present.
+    // Real specs commonly omit it. The extractor must still emit schema_json.
+    const inlineSchema = {
+      properties: {
+        data: { type: "array", items: { type: "object" } },
+        next_cursor: { type: "string" },
+      },
+      required: ["data"],
+    };
+    const { nodes, claims } = runEmit({
+      responses: {
+        "200": {
+          description: "OK",
+          content: {
+            "application/json": { schema: inlineSchema },
+          },
+        },
+      },
+    });
+
+    const respClaims = responseClaimsFor(claims, nodes);
+    const schemaJsonClaim = respClaims.find((c) => c.field === "schema_json");
+    expect(schemaJsonClaim).toBeDefined();
+    expect(schemaJsonClaim?.value).toEqual(inlineSchema);
+    expect(schemaJsonClaim?.confidence).toBe("attested");
+    // Must NOT emit schema_ref when there is no $ref
+    const schemaRefClaim = respClaims.find((c) => c.field === "schema_ref");
+    expect(schemaRefClaim).toBeUndefined();
+  });
 });

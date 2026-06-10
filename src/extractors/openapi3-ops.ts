@@ -325,7 +325,14 @@ function pushResponseClaims(
       span_path: `${respBase}.content["${ct}"].schema.$ref`,
       confidence: "attested",
     });
-  } else if (schema !== undefined && schema.type === "object") {
+  } else if (
+    schema !== undefined &&
+    // OAS 3.1 makes `type: object` optional when `properties` is present.
+    // Accept object-like schemas: explicit type:"object" OR propertied schema without type.
+    // Still exclude $ref (handled above), arrays, and primitives.
+    (schema.type === "object" ||
+      (schema.properties !== undefined && schema.type === undefined))
+  ) {
     // Inline object schema (no $ref): persist verbatim so pagination-detect
     // tier 2–3 can read response properties from the synthetic OAS.
     claims.push({

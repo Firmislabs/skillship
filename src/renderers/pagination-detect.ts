@@ -244,7 +244,17 @@ function resolveOperationPlan(
   const oasOp = findOasOperation(doc, op);
   if (oasOp === null) return null;
   const schema = get200Schema(oasOp);
-  if (!schema || schema.type !== "object") return null;
+  // OAS 3.1 makes `type: object` optional when `properties` is present.
+  // Accept object-like schemas: explicit type:"object" OR propertied schema without type.
+  // Still exclude arrays and primitives (they lack a meaningful `properties` map).
+  if (
+    !schema ||
+    !(
+      schema.type === "object" ||
+      (schema.properties !== undefined && schema.type === undefined)
+    )
+  )
+    return null;
 
   // Hoist the exactly-one-array-prop check — both auto-detect branches need it.
   const props = schema.properties ?? {};

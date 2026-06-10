@@ -14,8 +14,9 @@ export interface OasParam {
 }
 
 export interface OasResponseSchema {
-  type: string;
+  type?: string;
   properties?: Record<string, { type: string; items?: unknown }>;
+  required?: string[];
 }
 
 export function makeGetOas(
