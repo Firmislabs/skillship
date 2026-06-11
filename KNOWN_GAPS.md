@@ -283,3 +283,33 @@ All four gaps from the Listmonk dogfood (Spec C, design 2026-06-11) are now impl
 ### openapi3-ops.ts line budget — split queued
 
 `src/extractors/openapi3-ops.ts` is at ~535 lines (above the 300-line house rule). The split is queued: param-claims emission is a natural extraction boundary → sibling file `openapi3-ops-params.ts`. Deferred to avoid a non-hardening golden cascade; recorded here for the next maintainer.
+
+## Real-world dogfood findings — open gaps (2026-06-11)
+
+Three-product dogfood (Listmonk, Grocy, Wiki.js) — full report at
+`docs/dogfood/2026-06-11-real-world-dogfood-findings.md`. Open items:
+
+### Tier 1 — REST polish (proposed Spec D)
+- **$ref'd parameters silently dropped** at extraction (`emitParameters`
+  skips `$ref` entries; path-item-level `parameters` never read) — kills
+  pagination/filtering on $ref-heavy specs (Grocy: 37 refs / 10 ops lost,
+  pagination detection 0/86 as collateral), with no build warning.
+- **add-source cannot authenticate** (no `--header`); instance-gated spec
+  endpoints 401 with a raw stack trace; credential-in-URL workaround leaks
+  the key into config.yaml AND manifest.json (`sources[].url` needs redaction).
+- 204 No Content invokes render as empty MCP output (success vs no-op
+  indistinguishable).
+- Discovery has no instance-served-spec concept; artifact naming follows the
+  init domain rather than the actual source; generic-CRUD entity APIs defeat
+  keyword search (entity names live in path params).
+- Interim honesty fix queued: loud "GraphQL support is preview" build warning.
+
+### Tier 2 — GraphQL structurally unshipped (proposed Spec E)
+Namespaced SDLs extract as root stubs only (0 of Wiki.js's 119 leaf ops);
+Query/Mutation same-name collision silently halves rendered ops vs SKILL.md's
+count; NO GraphQL document is ever constructed (every invoke 500s — flat
+schemas fail equally); mutations carry no destructive flag (gate inert);
+surface mislabeled `rest`; references/llms near-empty; invoke errors discard
+response bodies and 200-with-`errors[]` would read as success; init never
+probes `/graphql` introspection. Eight-point Spec E outline in the dogfood
+report.
