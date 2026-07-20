@@ -63,6 +63,12 @@ export function buildProbeTargets(base: URL): ProbeTarget[] {
   for (const p of REST_PROBE_PATHS) {
     targets.push({ surface: "rest", url: new URL(p, base).toString() });
   }
+  const mcpProtectedResourcePath =
+    "/.well-known/oauth-protected-resource/mcp";
+  targets.push({
+    surface: "mcp",
+    url: new URL(mcpProtectedResourcePath, base).toString(),
+  });
   if (!isNonPublicHost(base.hostname)) {
     for (const sub of API_SUBHOSTS) {
       for (const p of REST_PROBE_PATHS) {
@@ -70,8 +76,10 @@ export function buildProbeTargets(base: URL): ProbeTarget[] {
         targets.push({ surface: "rest", url });
       }
     }
-    const mcpUrl = `${base.protocol}//mcp.${base.hostname}/.well-known/oauth-protected-resource/mcp`;
-    targets.push({ surface: "mcp", url: mcpUrl });
+    targets.push({
+      surface: "mcp",
+      url: `${base.protocol}//mcp.${base.hostname}${mcpProtectedResourcePath}`,
+    });
   }
   return targets;
 }

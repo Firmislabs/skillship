@@ -24,7 +24,7 @@ describe("normalizeBase", () => {
 });
 
 describe("buildProbeTargets", () => {
-  it("emits llms.txt, sitemap, OpenAPI guesses, + mcp subdomain for real hosts", () => {
+  it("emits llms.txt, sitemap, OpenAPI guesses, and MCP probes for real hosts", () => {
     const targets = buildProbeTargets(normalizeBase("supabase.com"));
     const urls = targets.map((t) => t.url);
     expect(urls).toContain("https://supabase.com/llms.txt");
@@ -36,6 +36,9 @@ describe("buildProbeTargets", () => {
     expect(urls).toContain("https://supabase.com/swagger.json");
     expect(urls).toContain(
       "https://mcp.supabase.com/.well-known/oauth-protected-resource/mcp",
+    );
+    expect(urls).toContain(
+      "https://supabase.com/.well-known/oauth-protected-resource/mcp",
     );
   });
 
@@ -61,6 +64,9 @@ describe("buildProbeTargets", () => {
     const urls = targets.map((t) => t.url);
     expect(urls.every((u) => !u.includes("app.127.0.0.1"))).toBe(true);
     expect(urls.every((u) => !u.includes("api.127.0.0.1"))).toBe(true);
+    expect(urls).toContain(
+      "http://127.0.0.1:9999/.well-known/oauth-protected-resource/mcp",
+    );
   });
 
   it("omits the mcp subdomain probe for localhost/IP hosts", () => {
