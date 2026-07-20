@@ -1,6 +1,6 @@
 # Evaluation harness: five vendors picked for surface-mix diversity.
 # Each vendor's actual .skillship/ project lives under eval/projects/<id>/.
-# That directory is *not* created automatically — seed it by running
+# That directory is *not* created automatically - seed it by running
 # `skillship init --domain <domain>` (or handcraft one for air-gapped runs).
 vendors:
   - id: supabase
@@ -76,4 +76,12 @@ vendors:
     expected:
       surfaces: [rest, docs, llms_txt, mcp]
       ops_min: 20
+      baseline_path: null
+
+  - id: xquik
+    domain: xquik.com
+    github_org: Xquik-dev
+    expected:
+      surfaces: [rest, mcp]
+      ops_min: 90
       baseline_path: null

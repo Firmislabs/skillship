@@ -1,0 +1,27 @@
+vendor: xquik
+tasks:
+  - id: search-tweets
+    goal: "Search recent X posts matching a query."
+    expected_ops:
+      - method: GET
+        path: "/api/v1/x/tweets/search"
+  - id: get-user-posts
+    goal: "Fetch posts for an X user."
+    expected_ops:
+      - method: GET
+        path: "/api/v1/x/users/{id}/tweets"
+  - id: create-post
+    goal: "Create a new X post."
+    expected_ops:
+      - method: POST
+        path: "/api/v1/x/tweets"
+  - id: start-extraction
+    goal: "Start a bulk extraction job."
+    expected_ops:
+      - method: POST
+        path: "/api/v1/extractions"
+  - id: register-webhook
+    goal: "Register a webhook endpoint for activity events."
+    expected_ops:
+      - method: POST
+        path: "/api/v1/webhooks"
